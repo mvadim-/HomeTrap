@@ -233,6 +233,7 @@ def test_real_sender_adapters_use_timeout_tls_login_and_continue(monkeypatch) ->
         return TelegramResponse()
 
     smtp_calls = []
+    tls_context = object()
 
     class FakeSmtp:
         def __init__(self, host, port, timeout):
@@ -244,8 +245,8 @@ def test_real_sender_adapters_use_timeout_tls_login_and_continue(monkeypatch) ->
         def __exit__(self, *_args):
             return None
 
-        def starttls(self):
-            smtp_calls.append(("starttls",))
+        def starttls(self, *, context):
+            smtp_calls.append(("starttls", context))
 
         def login(self, username, password):
             smtp_calls.append(("login", username, password))
@@ -255,6 +256,9 @@ def test_real_sender_adapters_use_timeout_tls_login_and_continue(monkeypatch) ->
 
     monkeypatch.setattr("app.services.notify.httpx.post", fake_post)
     monkeypatch.setattr("app.services.notify.smtplib.SMTP", FakeSmtp)
+    monkeypatch.setattr(
+        "app.services.notify.ssl.create_default_context", lambda: tls_context
+    )
     TelegramSender("token", "chat").send("Subject", "Message")
     EmailSender(
         smtp_host="smtp.test",
@@ -268,7 +272,7 @@ def test_real_sender_adapters_use_timeout_tls_login_and_continue(monkeypatch) ->
     assert telegram_requests[0][2] == 10
     assert smtp_calls == [
         ("connect", "smtp.test", 587, 10),
-        ("starttls",),
+        ("starttls", tls_context),
         ("login", "user", "password"),
         ("send", "to@test"),
     ]

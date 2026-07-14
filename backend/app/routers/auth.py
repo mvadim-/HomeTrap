@@ -68,7 +68,7 @@ def login(
     settings: Settings = request.app.state.settings
     client_ip = _client_ip(request, settings)
     limiter: LoginRateLimiter = request.app.state.login_rate_limiter
-    if limiter.is_limited(client_ip):
+    if not limiter.try_acquire(client_ip):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many login attempts",

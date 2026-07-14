@@ -7,6 +7,7 @@ import hmac
 import time
 from collections import defaultdict, deque
 from collections.abc import Iterator
+from threading import Lock
 
 import bcrypt
 from fastapi import Depends, HTTPException, Request, Response, status
@@ -31,25 +32,43 @@ class LoginRateLimiter:
         self.limit = limit
         self.window_seconds = window_seconds
         self._failures: dict[str, deque[float]] = defaultdict(deque)
+        self._pending: dict[str, int] = defaultdict(int)
+        self._lock = Lock()
 
-    def is_limited(self, client_ip: str, now: float | None = None) -> bool:
+    def try_acquire(self, client_ip: str, now: float | None = None) -> bool:
         current_time = now if now is not None else time.monotonic()
-        failures = self._failures[client_ip]
-        cutoff = current_time - self.window_seconds
-        while failures and failures[0] <= cutoff:
-            failures.popleft()
-        if not failures:
-            self._failures.pop(client_ip, None)
-            return False
-        return len(failures) >= self.limit
+        with self._lock:
+            failures = self._failures[client_ip]
+            cutoff = current_time - self.window_seconds
+            while failures and failures[0] <= cutoff:
+                failures.popleft()
+            if not failures:
+                self._failures.pop(client_ip, None)
+            if len(failures) + self._pending[client_ip] >= self.limit:
+                if not self._pending[client_ip]:
+                    self._pending.pop(client_ip, None)
+                return False
+            self._pending[client_ip] += 1
+            return True
 
     def record_failure(self, client_ip: str, now: float | None = None) -> None:
-        self._failures[client_ip].append(
-            now if now is not None else time.monotonic()
-        )
+        with self._lock:
+            self._complete_pending(client_ip)
+            self._failures[client_ip].append(
+                now if now is not None else time.monotonic()
+            )
 
     def clear(self, client_ip: str) -> None:
-        self._failures.pop(client_ip, None)
+        with self._lock:
+            self._complete_pending(client_ip)
+            self._failures.pop(client_ip, None)
+
+    def _complete_pending(self, client_ip: str) -> None:
+        pending = self._pending[client_ip] - 1
+        if pending:
+            self._pending[client_ip] = pending
+        else:
+            self._pending.pop(client_ip, None)
 
 
 def hash_password(password: str) -> str:

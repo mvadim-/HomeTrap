@@ -210,6 +210,11 @@ def _import_services(
             )
             if tariff_value is None or valid_from in existing_dates:
                 continue
+            if tariff_value <= 0:
+                raise ImportFormatError(
+                    f"{sheet.title}: тариф для «{name}» за {valid_from:%Y-%m} "
+                    "має бути додатним"
+                )
             session.add(Tariff(service=service, value=tariff_value, valid_from=valid_from))
             existing_dates.add(valid_from)
             report.tariffs_created += 1

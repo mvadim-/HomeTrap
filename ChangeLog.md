@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-14 21:01] Закриття фінальних зауважень безпеки
+
+- `backend/app/auth.py`, `backend/app/routers/auth.py`, `backend/tests/test_auth.py` —
+  ліміт входу атомарно резервує спробу до bcrypt і не допускає обходу паралельними
+  запитами.
+- `backend/app/services/notify.py`, `backend/tests/test_notify.py` — SMTP STARTTLS
+  використовує системний перевірочний SSL-контекст із валідацією сертифіката та
+  hostname.
+- `backend/app/services/importer.py`, `backend/tests/test_importer.py` — XLSX-імпорт
+  відхиляє нульові й від’ємні тарифи та відкочує створені сутності.
+- Docker-перевірки пройдено: 59 backend-тестів, Ruff, 37 frontend-тестів,
+  frontend build, production Compose config і multi-stage image build.
+- Production-зміна потребує перебудови й перезапуску контейнера за `docs/deploy.md`;
+  автоматичне розгортання в межах цього циклу не виконується.
+
 ## [2026-07-14 20:50] Відновлення коректної хронології чернеток
 
 - `backend/app/services/importer.py`, `backend/tests/test_importer.py` — XLSX-імпорт

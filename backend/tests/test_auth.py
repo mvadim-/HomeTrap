@@ -1,3 +1,6 @@
+import asyncio
+import threading
+
 import bcrypt
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -119,6 +122,47 @@ async def test_login_is_rate_limited_after_five_failures(tmp_path) -> None:
 
         assert blocked_response.status_code == 429
     finally:
+        await client.aclose()
+        await lifespan.__aexit__(None, None, None)
+
+
+async def test_concurrent_logins_cannot_bypass_rate_limit(tmp_path, monkeypatch) -> None:
+    _, lifespan, client = await _create_client(tmp_path)
+    started = threading.Event()
+    release = threading.Event()
+    calls_lock = threading.Lock()
+    password_checks = 0
+
+    def slow_verify_password(_password: str, _password_hash: str) -> bool:
+        nonlocal password_checks
+        with calls_lock:
+            password_checks += 1
+            if password_checks == LOGIN_ATTEMPT_LIMIT:
+                started.set()
+        release.wait(timeout=5)
+        return False
+
+    monkeypatch.setattr("app.routers.auth.verify_password", slow_verify_password)
+    try:
+        requests = [
+            asyncio.create_task(
+                client.post(
+                    "/api/auth/login",
+                    json={"username": "admin", "password": "wrong-password"},
+                )
+            )
+            for _ in range(LOGIN_ATTEMPT_LIMIT * 2)
+        ]
+        assert await asyncio.to_thread(started.wait, 5)
+        await asyncio.sleep(0.05)
+        release.set()
+        responses = await asyncio.gather(*requests)
+
+        assert password_checks == LOGIN_ATTEMPT_LIMIT
+        assert [response.status_code for response in responses].count(401) == 5
+        assert [response.status_code for response in responses].count(429) == 5
+    finally:
+        release.set()
         await client.aclose()
         await lifespan.__aexit__(None, None, None)
 

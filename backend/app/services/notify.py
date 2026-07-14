@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import smtplib
+import ssl
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from email.message import EmailMessage
@@ -80,7 +81,7 @@ class EmailSender:
         email.set_content(message)
         with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10) as smtp:
             if self.use_tls:
-                smtp.starttls()
+                smtp.starttls(context=ssl.create_default_context())
             if self.smtp_username:
                 smtp.login(self.smtp_username, self.smtp_password)
             smtp.send_message(email)
