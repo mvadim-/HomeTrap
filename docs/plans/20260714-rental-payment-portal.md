@@ -233,11 +233,11 @@ docs/
 - Create: `backend/app/routers/stats.py`, `backend/tests/test_stats.py`
 - Modify: `backend/app/main.py`
 
-- [ ] `GET /api/stats/consumption?apartment_id&months=12` — споживання по metered-послугах помісячно
-- [ ] `GET /api/stats/income?apartment_id|portfolio&months=12` — оренда/комуналка/разом помісячно + підсумки за період
-- [ ] `GET /api/stats/dashboard` — плитки дашборда: нараховано/оплачено за місяць, заборгованість, список «потребує уваги»
-- [ ] тести: агрегація на кількох рахунках, порожня історія, портфель із 2 квартир
-- [ ] прогнати тести — мають пройти перед таском 9
+- [x] `GET /api/stats/consumption?apartment_id&months=12` — споживання по metered-послугах помісячно
+- [x] `GET /api/stats/income?apartment_id|portfolio&months=12` — оренда/комуналка/разом помісячно + підсумки за період
+- [x] `GET /api/stats/dashboard` — плитки дашборда: нараховано/оплачено за місяць, заборгованість, список «потребує уваги»
+- [x] тести: агрегація на кількох рахунках, порожня історія, портфель із 2 квартир
+- [x] прогнати тести — мають пройти перед таском 9
 
 ### Task 9: Імпорт історії з Google Sheets (XLSX)
 

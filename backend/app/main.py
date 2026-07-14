@@ -10,6 +10,7 @@ from app.routers.auth import router as auth_router
 from app.routers.invoices import router as invoices_router
 from app.routers.rates import router as rates_router
 from app.routers.services import router as services_router
+from app.routers.stats import router as stats_router
 from app.services.scheduler import start_scheduler
 
 APP_VERSION = "0.1.0"
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(services_router)
     application.include_router(rates_router)
     application.include_router(invoices_router)
+    application.include_router(stats_router)
 
     @application.get("/api/health")
     async def health() -> dict[str, str]:

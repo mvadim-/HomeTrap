@@ -165,3 +165,60 @@ class InvoiceListItem(ApiSchema):
     rent_amount_uah: Decimal
     utilities_total: Decimal
     grand_total: Decimal
+
+
+class ConsumptionPoint(ApiSchema):
+    period: date
+    consumed: Decimal
+
+
+class ConsumptionSeries(ApiSchema):
+    service_id: int
+    service_name: str
+    unit: str | None
+    values: list[ConsumptionPoint]
+
+
+class ConsumptionStats(ApiSchema):
+    apartment_id: int
+    months: int
+    series: list[ConsumptionSeries]
+
+
+class IncomePoint(ApiSchema):
+    period: date
+    rent: Decimal
+    utilities: Decimal
+    total: Decimal
+
+
+class IncomeTotals(ApiSchema):
+    rent: Decimal
+    utilities: Decimal
+    total: Decimal
+
+
+class IncomeStats(ApiSchema):
+    scope: str
+    apartment_id: int | None
+    months: int
+    values: list[IncomePoint]
+    totals: IncomeTotals
+
+
+class DashboardAttentionItem(ApiSchema):
+    invoice_id: int
+    apartment_id: int
+    apartment_name: str
+    period: date
+    status: str
+    grand_total: Decimal
+    reason: str
+
+
+class DashboardStats(ApiSchema):
+    period: date
+    charged: Decimal
+    paid: Decimal
+    outstanding: Decimal
+    needs_attention: list[DashboardAttentionItem]
