@@ -1,5 +1,17 @@
 # ChangeLog
 
+## [2026-07-14 18:22] Автентифікація адміністратора
+
+- `backend/app/auth.py`, `backend/app/routers/auth.py` — додано створення адміністратора
+  з env, bcrypt-хешування, підписану HttpOnly session cookie, login/logout/me та
+  in-memory rate limit невдалих входів за IP.
+- `backend/app/config.py`, `backend/app/main.py` — додано admin-налаштування, життєвий
+  цикл DB-сесій і підключення auth-роутера.
+- `backend/tests/test_auth.py` — додано перевірки bootstrap адміністратора, успішного й
+  хибного входу, захищеного `/api/auth/me`, виходу та відповіді 429 після п'яти спроб.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 3 позначено виконаним після
+  успішних `pytest` і `ruff check` у Docker.
+
 ## [2026-07-14 18:18] Моделі БД та початкова міграція
 
 - `backend/app/db.py`, `backend/app/models.py` — додано SQLAlchemy 2.0 моделі всіх

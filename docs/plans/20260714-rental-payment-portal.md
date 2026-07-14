@@ -167,12 +167,12 @@ docs/
 - Create: `backend/app/auth.py`, `backend/app/routers/auth.py`, `backend/tests/test_auth.py`
 - Modify: `backend/app/main.py`, `backend/app/config.py`
 
-- [ ] створення адміна з env (ADMIN_USERNAME/ADMIN_PASSWORD) при першому старті, bcrypt-хеш
-- [ ] `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` (під `require_auth`); підписана HttpOnly session cookie
-- [ ] залежність `require_auth` для всіх приватних роутерів
-- [ ] rate limit на login (проста in-memory: 5 спроб / 15 хв з IP)
-- [ ] тести: успішний вхід, хибний пароль, `GET /api/auth/me` без cookie → 401, rate limit → 429
-- [ ] прогнати тести — мають пройти перед таском 4
+- [x] створення адміна з env (ADMIN_USERNAME/ADMIN_PASSWORD) при першому старті, bcrypt-хеш
+- [x] `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` (під `require_auth`); підписана HttpOnly session cookie
+- [x] залежність `require_auth` для всіх приватних роутерів
+- [x] rate limit на login (проста in-memory: 5 спроб / 15 хв з IP)
+- [x] тести: успішний вхід, хибний пароль, `GET /api/auth/me` без cookie → 401, rate limit → 429
+- [x] прогнати тести — мають пройти перед таском 4
 
 ### Task 4: CRUD квартир, послуг і тарифів
 
