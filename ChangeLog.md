@@ -1,5 +1,21 @@
 # ChangeLog
 
+## [2026-07-14 19:19] Дашборд і керування квартирами
+
+- `frontend/src/pages/Dashboard.tsx`, `frontend/src/pages/Apartments.tsx` — додано
+  портфельні показники, курс НБУ, статуси квартир, список рахунків, що потребують
+  уваги, та каталог квартир.
+- `frontend/src/pages/ApartmentDetail.tsx`, `frontend/src/pages/portal.css` — додано
+  адаптивну картку квартири, таблицю послуг і тарифів, форми додавання/редагування
+  послуг і нових тарифів та disabled-заглушку посилання орендаря.
+- `frontend/src/api/client.ts`, `frontend/src/App.tsx` — типізовано dashboard,
+  apartments, services і tariffs API та підключено нові захищені маршрути.
+- `frontend/src/pages/*.test.tsx` — перевірено mock-дашборд, картку квартири,
+  таблицю послуг, тариф і форму редагування; у Docker пройшли 5 frontend і 41
+  backend тест, Vite build та Ruff. Зміни є production UI; для деплою слід виконати
+  production Docker-інструкції, які будуть додані в окремому таску плану.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 12 позначено виконаним.
+
 ## [2026-07-14 19:13] Frontend-каркас, тема та вхід
 
 - `frontend/src/*` — додано React Router, API-клієнт із cookie-сесією та переходом на

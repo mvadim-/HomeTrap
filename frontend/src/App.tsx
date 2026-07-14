@@ -3,6 +3,9 @@ import { Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 
 import { getCurrentUser } from "./api/client";
 import { Layout } from "./components/Layout";
+import { ApartmentDetail } from "./pages/ApartmentDetail";
+import { Apartments } from "./pages/Apartments";
+import { Dashboard } from "./pages/Dashboard";
 import { Login } from "./pages/Login";
 
 export function ProtectedRoute() {
@@ -43,8 +46,9 @@ export function App() {
       <Route path="/login" element={<Login />} />
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>
-          <Route index element={<PlaceholderPage title="Дашборд" />} />
-          <Route path="apartments" element={<PlaceholderPage title="Квартири" />} />
+          <Route index element={<Dashboard />} />
+          <Route path="apartments" element={<Apartments />} />
+          <Route path="apartments/:apartmentId" element={<ApartmentDetail />} />
           <Route path="invoices" element={<PlaceholderPage title="Рахунки" />} />
           <Route path="stats" element={<PlaceholderPage title="Статистика" />} />
           <Route path="settings" element={<PlaceholderPage title="Налаштування" />} />

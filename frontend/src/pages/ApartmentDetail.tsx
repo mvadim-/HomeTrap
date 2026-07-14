@@ -1,0 +1,183 @@
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+
+import {
+  ApiError,
+  Apartment,
+  Service,
+  ServicePayload,
+  Tariff,
+  createService,
+  createTariff,
+  getApartment,
+  getServices,
+  getTariffs,
+  updateService,
+} from "../api/client";
+import "./portal.css";
+
+const emptyService: ServicePayload = {
+  name: "",
+  kind: "metered",
+  unit: "",
+  provider_account: "",
+  sort_order: 0,
+};
+
+export function ApartmentDetail() {
+  const { apartmentId } = useParams();
+  const id = Number(apartmentId);
+  const [apartment, setApartment] = useState<Apartment | null>(null);
+  const [services, setServices] = useState<Service[]>([]);
+  const [tariffs, setTariffs] = useState<Record<number, Tariff[]>>({});
+  const [serviceForm, setServiceForm] = useState<ServicePayload>(emptyService);
+  const [editingServiceId, setEditingServiceId] = useState<number | null>(null);
+  const [showServiceForm, setShowServiceForm] = useState(false);
+  const [tariffServiceId, setTariffServiceId] = useState<number | null>(null);
+  const [tariffValue, setTariffValue] = useState("");
+  const [tariffDate, setTariffDate] = useState("");
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    const [apartmentData, serviceItems] = await Promise.all([getApartment(id), getServices(id)]);
+    const tariffEntries = await Promise.all(
+      serviceItems.map(async (service) => [service.id, await getTariffs(service.id)] as const),
+    );
+    setApartment(apartmentData);
+    setServices(serviceItems);
+    setTariffs(Object.fromEntries(tariffEntries));
+  }, [id]);
+
+  useEffect(() => {
+    if (!Number.isInteger(id) || id < 1) {
+      setError("Некоректний ідентифікатор квартири.");
+      return;
+    }
+    load().catch(() => setError("Не вдалося завантажити квартиру."));
+  }, [id, load]);
+
+  function beginServiceEdit(service?: Service) {
+    if (service) {
+      setEditingServiceId(service.id);
+      setServiceForm({
+        name: service.name,
+        kind: service.kind,
+        unit: service.unit ?? "",
+        provider_account: service.provider_account ?? "",
+        sort_order: service.sort_order,
+        is_active: service.is_active,
+      });
+    } else {
+      setEditingServiceId(null);
+      setServiceForm(emptyService);
+    }
+    setShowServiceForm(true);
+    setError("");
+  }
+
+  async function submitService(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    const payload = {
+      ...serviceForm,
+      unit: serviceForm.unit || null,
+      provider_account: serviceForm.provider_account || null,
+    };
+    try {
+      if (editingServiceId) await updateService(id, editingServiceId, payload);
+      else await createService(id, payload);
+      setShowServiceForm(false);
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof ApiError ? requestError.message : "Не вдалося зберегти послугу.");
+    }
+  }
+
+  async function submitTariff(event: FormEvent, serviceId: number) {
+    event.preventDefault();
+    setError("");
+    try {
+      await createTariff(serviceId, { value: tariffValue, valid_from: tariffDate });
+      setTariffServiceId(null);
+      setTariffValue("");
+      setTariffDate("");
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof ApiError ? requestError.message : "Не вдалося додати тариф.");
+    }
+  }
+
+  if (error && !apartment) return <p className="error-message">{error}</p>;
+  if (!apartment) return <p className="muted-text">Завантажуємо квартиру…</p>;
+
+  return (
+    <>
+      <header className="page-header">
+        <div><Link className="muted-text" to="/apartments">← Квартири</Link><h1>{apartment.name}</h1><p>{apartment.address}</p></div>
+        <button className="secondary-button" type="button" disabled title="Функція з'явиться в наступній версії">Посилання орендаря</button>
+      </header>
+      {error && <p className="error-message">{error}</p>}
+
+      <div className="detail-grid">
+        <section className="section-card">
+          <h2>Реквізити</h2>
+          <dl className="details-list">
+            <dt>Оренда</dt><dd>{apartment.rent_amount} {apartment.rent_currency}</dd>
+            <dt>Статус</dt><dd>{apartment.is_active ? "Активна" : "Архівна"}</dd>
+            <dt>Примітки</dt><dd>{apartment.notes || "—"}</dd>
+          </dl>
+        </section>
+
+        <section className="section-card">
+          <div className="section-heading">
+            <div><h2>Послуги й тарифи</h2><p>Тарифна історія з датою початку дії</p></div>
+            <button className="button" type="button" onClick={() => beginServiceEdit()}>Додати послугу</button>
+          </div>
+
+          {showServiceForm && (
+            <form className="inline-form" onSubmit={submitService}>
+              <label>Назва<input required value={serviceForm.name} onChange={(event) => setServiceForm({ ...serviceForm, name: event.target.value })} /></label>
+              <label>Тип<select value={serviceForm.kind} onChange={(event) => setServiceForm({ ...serviceForm, kind: event.target.value as ServicePayload["kind"] })}><option value="metered">За лічильником</option><option value="fixed">Фіксована</option></select></label>
+              <label>Одиниця<input value={serviceForm.unit ?? ""} onChange={(event) => setServiceForm({ ...serviceForm, unit: event.target.value })} /></label>
+              <label>Особовий рахунок<input value={serviceForm.provider_account ?? ""} onChange={(event) => setServiceForm({ ...serviceForm, provider_account: event.target.value })} /></label>
+              <label>Порядок<input type="number" value={serviceForm.sort_order} onChange={(event) => setServiceForm({ ...serviceForm, sort_order: Number(event.target.value) })} /></label>
+              <div className="form-actions"><button className="button" type="submit">{editingServiceId ? "Зберегти" : "Додати"}</button><button className="secondary-button" type="button" onClick={() => setShowServiceForm(false)}>Скасувати</button></div>
+            </form>
+          )}
+
+          <div className="table-wrap">
+            <table className="services-table">
+              <thead><tr><th>Послуга</th><th>Рахунок</th><th>Тариф</th><th>Діє з</th><th>Дії</th></tr></thead>
+              <tbody>
+                {services.map((service) => {
+                  const serviceTariffs = tariffs[service.id] ?? [];
+                  const currentTariff = serviceTariffs.at(-1);
+                  return (
+                    <tr key={service.id}>
+                      <td><strong>{service.name}</strong><div className="muted-text">{service.kind === "metered" ? `Лічильник${service.unit ? ` · ${service.unit}` : ""}` : "Фіксована"}</div></td>
+                      <td>{service.provider_account || "—"}</td>
+                      <td>{currentTariff ? `${currentTariff.value} ₴` : "—"}</td>
+                      <td>{currentTariff?.valid_from ?? "—"}</td>
+                      <td>
+                        <button className="table-action" type="button" onClick={() => beginServiceEdit(service)}>Редагувати</button><br />
+                        <button className="table-action" type="button" onClick={() => setTariffServiceId(tariffServiceId === service.id ? null : service.id)}>Новий тариф</button>
+                        {tariffServiceId === service.id && (
+                          <form className="tariff-form" onSubmit={(event) => submitTariff(event, service.id)}>
+                            <label>Сума<input aria-label={`Тариф ${service.name}`} required min="0.00001" step="0.00001" type="number" value={tariffValue} onChange={(event) => setTariffValue(event.target.value)} /></label>
+                            <label>Діє з<input aria-label={`Дата тарифу ${service.name}`} required type="date" value={tariffDate} onChange={(event) => setTariffDate(event.target.value)} /></label>
+                            <button className="button" type="submit">Додати</button>
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {services.length === 0 && <tr><td className="empty-state" colSpan={5}>Послуг ще немає.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </>
+  );
+}
