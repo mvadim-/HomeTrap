@@ -1,4 +1,5 @@
 from functools import lru_cache
+from ipaddress import ip_network
 from pathlib import Path
 
 from pydantic import AliasChoices, Field
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ADMIN_PASSWORD", "HOMETRAP_ADMIN_PASSWORD"),
     )
     scheduler_enabled: bool = True
+    trusted_proxy_cidrs: str = ""
 
     model_config = SettingsConfigDict(
         env_prefix="HOMETRAP_",
@@ -34,6 +36,12 @@ def get_settings() -> Settings:
 
 
 def validate_production_settings(settings: Settings) -> None:
+    try:
+        for value in settings.trusted_proxy_cidrs.split(","):
+            if value.strip():
+                ip_network(value.strip(), strict=False)
+    except ValueError as error:
+        raise RuntimeError("HOMETRAP_TRUSTED_PROXY_CIDRS contains an invalid CIDR") from error
     if settings.debug:
         return
     weak_secrets = {

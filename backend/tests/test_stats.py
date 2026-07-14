@@ -196,6 +196,25 @@ async def test_consumption_groups_metered_services_by_month(tmp_path) -> None:
             "10.000",
             "12.000",
         ]
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            gas = session.query(Service).filter_by(
+                apartment_id=first_id,
+                name="Газ",
+            ).one()
+            gas.kind = "fixed"
+            session.commit()
+        engine.dispose()
+
+        after_kind_change = await client.get(
+            "/api/stats/consumption",
+            params={"apartment_id": first_id, "months": 2},
+        )
+        assert [
+            point["consumed"]
+            for point in after_kind_change.json()["series"][0]["values"]
+        ] == ["10.000", "12.000"]
     finally:
         await _close(lifespan, client)
 

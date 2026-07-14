@@ -251,6 +251,9 @@ def _import_month(
             Invoice.period == period,
         ),
     )
+    if existing is not None:
+        report.invoices_skipped += 1
+        return
 
     header_index, mapping, rows = _find_table(sheet, {"service", "amount"})
     metadata = _metadata(sheet)
@@ -273,27 +276,19 @@ def _import_month(
         rent_uah = (rent_usd * rate).quantize(MONEY, rounding=ROUND_HALF_UP)
     resolved_rate = rate if rate is not None and rate > 0 else ZERO
 
-    if existing is None:
-        invoice = Invoice(
-            apartment=apartment,
-            period=period,
-            status=InvoiceStatus.PAID.value,
-            issued_at=datetime.now(UTC),
-            paid_at=datetime.now(UTC),
-            exchange_rate=resolved_rate,
-            rent_amount_usd=rent_usd.quantize(MONEY, rounding=ROUND_HALF_UP),
-            rent_amount_uah=rent_uah.quantize(MONEY, rounding=ROUND_HALF_UP),
-            utilities_total=ZERO,
-            grand_total=ZERO,
-        )
-        report.invoices_created += 1
-    else:
-        invoice = existing
-        invoice.lines.clear()
-        invoice.exchange_rate = resolved_rate
-        invoice.rent_amount_usd = rent_usd.quantize(MONEY, rounding=ROUND_HALF_UP)
-        invoice.rent_amount_uah = rent_uah.quantize(MONEY, rounding=ROUND_HALF_UP)
-        report.invoices_skipped += 1
+    invoice = Invoice(
+        apartment=apartment,
+        period=period,
+        status=InvoiceStatus.PAID.value,
+        issued_at=datetime.now(UTC),
+        paid_at=datetime.now(UTC),
+        exchange_rate=resolved_rate,
+        rent_amount_usd=rent_usd.quantize(MONEY, rounding=ROUND_HALF_UP),
+        rent_amount_uah=rent_uah.quantize(MONEY, rounding=ROUND_HALF_UP),
+        utilities_total=ZERO,
+        grand_total=ZERO,
+    )
+    report.invoices_created += 1
     utilities_total = ZERO
     for row in rows[header_index + 1 :]:
         name_value = _value(row, mapping, "service")

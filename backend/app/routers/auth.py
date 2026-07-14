@@ -1,3 +1,5 @@
+from ipaddress import ip_address, ip_network
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -27,8 +29,33 @@ class UserResponse(BaseModel):
     username: str
 
 
-def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+def _client_ip(request: Request, settings: Settings) -> str:
+    peer = request.client.host if request.client else "unknown"
+    try:
+        peer_address = ip_address(peer)
+        trusted_proxies = [
+            ip_network(value.strip(), strict=False)
+            for value in settings.trusted_proxy_cidrs.split(",")
+            if value.strip()
+        ]
+    except ValueError:
+        return peer
+    if not any(peer_address in network for network in trusted_proxies):
+        return peer
+
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if not forwarded_for:
+        return peer
+    try:
+        forwarded_addresses = [
+            ip_address(value.strip()) for value in forwarded_for.split(",")
+        ]
+    except ValueError:
+        return peer
+    for address in reversed(forwarded_addresses):
+        if not any(address in network for network in trusted_proxies):
+            return str(address)
+    return str(forwarded_addresses[0])
 
 
 @router.post("/login", response_model=UserResponse)
@@ -38,7 +65,8 @@ def login(
     response: Response,
     session: Session = Depends(get_db),
 ) -> User:
-    client_ip = _client_ip(request)
+    settings: Settings = request.app.state.settings
+    client_ip = _client_ip(request, settings)
     limiter: LoginRateLimiter = request.app.state.login_rate_limiter
     if limiter.is_limited(client_ip):
         raise HTTPException(
@@ -55,7 +83,6 @@ def login(
         )
 
     limiter.clear(client_ip)
-    settings: Settings = request.app.state.settings
     set_session_cookie(response, user.id, settings)
     return user
 

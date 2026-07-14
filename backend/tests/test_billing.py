@@ -52,7 +52,12 @@ async def _close(lifespan, client: AsyncClient) -> None:
     await lifespan.__aexit__(None, None, None)
 
 
-def _seed_billing_data(application, *, with_previous: bool = True) -> tuple[int, int]:
+def _seed_billing_data(
+    application,
+    *,
+    with_previous: bool = True,
+    previous_period: date = date(2026, 6, 1),
+) -> tuple[int, int]:
     engine = create_database_engine(application.state.settings.database_path)
     with create_session_factory(engine)() as session:
         apartment = Apartment(
@@ -89,7 +94,7 @@ def _seed_billing_data(application, *, with_previous: bool = True) -> tuple[int,
         if with_previous:
             previous = Invoice(
                 apartment=apartment,
-                period=date(2026, 6, 1),
+                period=previous_period,
                 exchange_rate=Decimal("44.000000"),
                 rent_amount_usd=Decimal("325.00"),
                 rent_amount_uah=Decimal("14300.00"),
@@ -185,7 +190,10 @@ async def test_reading_is_carried_and_tariff_uses_invoice_period(
 ) -> None:
     application, lifespan, client = await _client(tmp_path, monkeypatch)
     try:
-        apartment_id, gas_id = _seed_billing_data(application)
+        apartment_id, gas_id = _seed_billing_data(
+            application,
+            previous_period=date(2026, 2, 1),
+        )
         march = await client.post(
             f"/api/apartments/{apartment_id}/invoices",
             json={"period": "2026-03-01"},
@@ -203,6 +211,31 @@ async def test_reading_is_carried_and_tariff_uses_invoice_period(
         )
         assert gas_line["prev_reading"] == "100.000"
         assert gas_line["tariff_value"] == "7.95689"
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_backdated_draft_is_rejected_when_later_invoice_exists(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    application, lifespan, client = await _client(tmp_path, monkeypatch)
+    try:
+        apartment_id, _ = _seed_billing_data(application)
+        response = await client.post(
+            f"/api/apartments/{apartment_id}/invoices",
+            json={"period": "2026-03-01"},
+        )
+        assert response.status_code == 409
+        assert "later invoice" in response.json()["detail"]
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            invoices = session.scalars(
+                select(Invoice).where(Invoice.apartment_id == apartment_id)
+            ).all()
+            assert [invoice.period for invoice in invoices] == [date(2026, 6, 1)]
+        engine.dispose()
     finally:
         await _close(lifespan, client)
 

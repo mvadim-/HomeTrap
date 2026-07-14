@@ -66,6 +66,7 @@ def create_draft(
 ) -> Invoice:
     if period.day != 1:
         raise BillingError("Invoice period must be the first day of a month")
+    _reject_if_later_invoice_exists(session, apartment.id, period)
 
     previous = _previous_readings(session, apartment.id, period)
     services = session.scalars(
@@ -127,7 +128,7 @@ def update_draft(
 ) -> Invoice:
     if invoice.status != "draft":
         raise BillingError("Only draft invoices can be edited")
-    _reject_if_later_invoice_exists(session, invoice)
+    _reject_if_later_invoice_exists(session, invoice.apartment_id, invoice.period)
     lines_by_id = {line.id: line for line in invoice.lines}
     unknown_ids = readings.keys() - lines_by_id.keys()
     if unknown_ids:
@@ -179,7 +180,7 @@ def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoi
         invoice.status = InvoiceStatus.ISSUED.value
         invoice.issued_at = now
     elif action == "revert-to-draft" and invoice.status == InvoiceStatus.ISSUED.value:
-        _reject_if_later_invoice_exists(session, invoice)
+        _reject_if_later_invoice_exists(session, invoice.apartment_id, invoice.period)
         invoice.status = InvoiceStatus.DRAFT.value
         invoice.issued_at = None
     elif action == "mark-paid" and invoice.status == InvoiceStatus.ISSUED.value:
@@ -194,12 +195,16 @@ def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoi
     return get_invoice(session, invoice.id)
 
 
-def _reject_if_later_invoice_exists(session: Session, invoice: Invoice) -> None:
+def _reject_if_later_invoice_exists(
+    session: Session,
+    apartment_id: int,
+    period: date,
+) -> None:
     later_id = session.scalar(
         select(Invoice.id)
         .where(
-            Invoice.apartment_id == invoice.apartment_id,
-            Invoice.period > invoice.period,
+            Invoice.apartment_id == apartment_id,
+            Invoice.period > period,
         )
         .limit(1)
     )

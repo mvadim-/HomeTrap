@@ -10,7 +10,12 @@ from app.main import create_app
 from app.models import User
 
 
-async def _create_client(tmp_path):
+async def _create_client(
+    tmp_path,
+    *,
+    trusted_proxy_cidrs: str = "",
+    client_address: tuple[str, int] = ("127.0.0.1", 123),
+):
     settings = Settings(
         database_path=tmp_path / "auth.db",
         secret_key="test-session-secret",
@@ -18,12 +23,13 @@ async def _create_client(tmp_path):
         scheduler_enabled=False,
         admin_username="admin",
         admin_password="correct-password",
+        trusted_proxy_cidrs=trusted_proxy_cidrs,
     )
     application = create_app(settings)
     lifespan = application.router.lifespan_context(application)
     await lifespan.__aenter__()
     client = AsyncClient(
-        transport=ASGITransport(app=application),
+        transport=ASGITransport(app=application, client=client_address),
         base_url="http://test",
     )
     return application, lifespan, client
@@ -117,6 +123,55 @@ async def test_login_is_rate_limited_after_five_failures(tmp_path) -> None:
         await lifespan.__aexit__(None, None, None)
 
 
+async def test_login_rate_limit_uses_forwarded_ip_only_from_trusted_proxy(tmp_path) -> None:
+    _, lifespan, client = await _create_client(
+        tmp_path,
+        trusted_proxy_cidrs="172.18.0.1/32",
+        client_address=("172.18.0.1", 123),
+    )
+    try:
+        for _ in range(LOGIN_ATTEMPT_LIMIT):
+            response = await client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": "198.51.100.10"},
+                json={"username": "admin", "password": "wrong-password"},
+            )
+            assert response.status_code == 401
+
+        other_client = await client.post(
+            "/api/auth/login",
+            headers={"X-Forwarded-For": "198.51.100.11"},
+            json={"username": "admin", "password": "correct-password"},
+        )
+        assert other_client.status_code == 200
+    finally:
+        await client.aclose()
+        await lifespan.__aexit__(None, None, None)
+
+    _, lifespan, client = await _create_client(
+        tmp_path,
+        trusted_proxy_cidrs="172.18.0.1/32",
+        client_address=("192.0.2.20", 123),
+    )
+    try:
+        for attempt in range(LOGIN_ATTEMPT_LIMIT):
+            response = await client.post(
+                "/api/auth/login",
+                headers={"X-Forwarded-For": f"198.51.100.{attempt}"},
+                json={"username": "admin", "password": "wrong-password"},
+            )
+            assert response.status_code == 401
+        blocked = await client.post(
+            "/api/auth/login",
+            headers={"X-Forwarded-For": "198.51.100.200"},
+            json={"username": "admin", "password": "correct-password"},
+        )
+        assert blocked.status_code == 429
+    finally:
+        await client.aclose()
+        await lifespan.__aexit__(None, None, None)
+
+
 def test_production_rejects_default_or_placeholder_session_secret() -> None:
     with pytest.raises(RuntimeError, match="HOMETRAP_SECRET_KEY"):
         validate_production_settings(Settings(debug=False))
@@ -127,6 +182,10 @@ def test_production_rejects_default_or_placeholder_session_secret() -> None:
     validate_production_settings(
         Settings(debug=False, secret_key="a-unique-production-secret-with-32-characters")
     )
+    with pytest.raises(RuntimeError, match="HOMETRAP_TRUSTED_PROXY_CIDRS"):
+        validate_production_settings(
+            Settings(debug=True, trusted_proxy_cidrs="not-a-network")
+        )
 
 
 def test_malformed_base64_session_is_invalid() -> None:

@@ -118,6 +118,9 @@ async def test_dry_run_previews_without_writing_and_import_is_idempotent(tmp_pat
         imported = await _upload(client, apartment_id, content)
         engine = create_database_engine(application.state.settings.database_path)
         with create_session_factory(engine)() as session:
+            first_invoice = session.scalar(select(Invoice).order_by(Invoice.id))
+            first_invoice.status = "issued"
+            first_invoice.rent_amount_uah = 1
             first_line = session.scalar(select(InvoiceLine).order_by(InvoiceLine.id))
             session.delete(first_line)
             session.commit()
@@ -130,7 +133,10 @@ async def test_dry_run_previews_without_writing_and_import_is_idempotent(tmp_pat
         assert repeated.json()["tariffs_created"] == 0
         engine = create_database_engine(application.state.settings.database_path)
         with create_session_factory(engine)() as session:
-            assert session.scalar(select(func.count(InvoiceLine.id))) == 4
+            preserved = session.scalar(select(Invoice).order_by(Invoice.id))
+            assert preserved.status == "issued"
+            assert str(preserved.rent_amount_uah) == "1.00"
+            assert session.scalar(select(func.count(InvoiceLine.id))) == 3
         engine.dispose()
     finally:
         await _close(lifespan, client)

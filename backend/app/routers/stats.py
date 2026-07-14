@@ -57,7 +57,7 @@ def consumption_stats(
         .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
         .where(
             Service.apartment_id == apartment_id,
-            Service.kind == ServiceKind.METERED.value,
+            InvoiceLine.service_kind == ServiceKind.METERED.value,
             Invoice.period >= _period_start(months),
             Invoice.period <= _month_start(date.today()),
             InvoiceLine.consumed.is_not(None),

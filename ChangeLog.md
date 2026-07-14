@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-14 20:28] Захист історичних рахунків і proxy-aware login
+
+- `backend/app/services/importer.py`, `backend/app/services/billing.py` — повторний
+  XLSX-імпорт не змінює наявні рахунки, а backdated-чернетка не створюється, якщо
+  для квартири вже існує пізніший рахунок.
+- `backend/app/routers/stats.py` — історія споживання фільтрується за snapshot типу
+  рядка рахунку й не зникає після зміни поточного типу послуги.
+- `backend/app/config.py`, `backend/app/routers/auth.py`, `.env.example` — rate limit
+  розділяє клієнтів за `X-Forwarded-For` лише для явно довірених CIDR безпосереднього
+  proxy; запити від інших peer не можуть підробити IP цим заголовком.
+- `backend/tests/test_auth.py`, `backend/tests/test_billing.py`,
+  `backend/tests/test_importer.py`, `backend/tests/test_stats.py` — додано регресійні
+  сценарії для незмінності імпорту, backdated-періодів, snapshot-статистики та
+  безпечної обробки proxy IP.
+- `docs/deploy.md` — додано production-налаштування точного Docker gateway CIDR для
+  Synology reverse proxy. Для розгортання оновіть `.env` за інструкцією та перебудуйте
+  контейнер; автоматичне розгортання в межах цього циклу не виконувалося.
+
 ## [2026-07-14 20:14] Виправлення за результатами комплексного рев'ю
 
 - `backend/app/config.py`, `backend/app/auth.py`, `backend/app/main.py` — production
