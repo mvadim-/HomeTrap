@@ -142,11 +142,11 @@ docs/
 - Create: `backend/tests/test_health.py`
 - Modify: `ChangeLog.md`
 
-- [ ] FastAPI app factory з `/api/health`; конфіг з env (шлях до БД, secret, debug)
-- [ ] `requirements.txt`: fastapi, uvicorn, sqlalchemy, alembic, pydantic-settings, httpx, apscheduler, bcrypt, openpyxl, python-multipart, pytest, pytest-asyncio, ruff
-- [ ] конфіг pytest: `asyncio_mode = "auto"`; dev-контейнер backend з hot-reload (uvicorn --reload, volume з кодом)
-- [ ] написати тест: `/api/health` повертає 200 і версію
-- [ ] прогнати тести в Docker — мають пройти перед таском 2
+- [x] FastAPI app factory з `/api/health`; конфіг з env (шлях до БД, secret, debug)
+- [x] `requirements.txt`: fastapi, uvicorn, sqlalchemy, alembic, pydantic-settings, httpx, apscheduler, bcrypt, openpyxl, python-multipart, pytest, pytest-asyncio, ruff
+- [x] конфіг pytest: `asyncio_mode = "auto"`; dev-контейнер backend з hot-reload (uvicorn --reload, volume з кодом)
+- [x] написати тест: `/api/health` повертає 200 і версію
+- [x] прогнати тести в Docker — мають пройти перед таском 2
 
 ### Task 2: Моделі БД та міграції Alembic
 

@@ -1,0 +1,1 @@
+"""HomeTrap backend application package."""

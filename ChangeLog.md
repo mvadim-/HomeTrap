@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-14 18:12] Каркас backend і Docker dev-середовище
+
+- `backend/app/*` — додано FastAPI app factory, `/api/health` і env-конфігурацію БД,
+  secret та debug-режиму.
+- `backend/requirements.txt`, `backend/pytest.ini`, `backend/tests/test_health.py` — додано
+  backend-залежності, асинхронну конфігурацію pytest і тест health endpoint.
+- `docker/Dockerfile`, `docker/docker-compose.dev.yml` — додано Python-образ і backend
+  dev-сервіс із hot-reload, volume для коду та SQLite.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 1 позначено виконаним після
+  успішних `pytest` і `ruff check` у Docker.
+
 ## [2026-07-14 17:40] Правки плану після авто-рев'ю
 
 - `docs/plans/20260714-rental-payment-portal.md` — враховано знахідки plan-review агента:
