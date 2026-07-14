@@ -385,13 +385,179 @@
   font-size: 1.35rem;
 }
 
+.stats-apartment-select {
+  display: grid;
+  gap: 6px;
+  min-width: 220px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.stats-apartment-select select {
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.stats-section + .stats-section {
+  margin-top: 20px;
+}
+
+.consumption-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.consumption-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.chart-card-heading,
+.chart-legend,
+.scope-switch {
+  display: flex;
+  align-items: center;
+}
+
+.chart-card-heading {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chart-card-heading h3 {
+  margin: 0 0 3px;
+  font-size: 1rem;
+}
+
+.chart-card-heading span,
+.chart-label {
+  color: var(--color-text-muted);
+}
+
+.chart-card-heading span {
+  font-size: 0.78rem;
+}
+
+.chart-card-heading strong {
+  font-size: 1.2rem;
+}
+
+.mini-chart,
+.income-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.mini-chart {
+  margin-top: 10px;
+}
+
+.chart-axis {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+
+.chart-label {
+  fill: var(--color-text-muted);
+  font-size: 10px;
+}
+
+.chart-point,
+.income-rent,
+.income-utilities {
+  cursor: help;
+}
+
+.chart-point:focus,
+.income-rent:focus,
+.income-utilities:focus {
+  outline: none;
+  filter: brightness(1.12);
+  stroke: var(--color-text);
+  stroke-width: 2;
+}
+
+.income-heading {
+  align-items: center;
+}
+
+.scope-switch {
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--color-surface-muted);
+}
+
+.scope-switch button {
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.scope-switch button.active {
+  color: var(--color-text);
+  background: var(--color-surface);
+  box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+.scope-switch button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chart-legend {
+  justify-content: flex-end;
+  gap: 18px;
+  margin-bottom: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.rent-swatch,
+.income-rent {
+  fill: #71836b;
+  background: #71836b;
+}
+
+.utilities-swatch,
+.income-utilities {
+  fill: #d7b47a;
+  background: #d7b47a;
+}
+
 @media (max-width: 900px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .content-grid,
-  .detail-grid {
+  .detail-grid,
+  .consumption-grid {
     grid-template-columns: 1fr;
   }
 
@@ -403,7 +569,8 @@
 
 @media (max-width: 600px) {
   .page-header,
-  .section-heading {
+  .section-heading,
+  .income-heading {
     align-items: flex-start;
     flex-direction: column;
   }
@@ -424,5 +591,20 @@
   .invoice-totals .grand-total {
     padding-left: 0;
     border-left: 0;
+  }
+
+  .stats-apartment-select,
+  .scope-switch {
+    width: 100%;
+  }
+
+  .scope-switch button {
+    flex: 1;
+  }
+
+  .chart-legend {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
   }
 }

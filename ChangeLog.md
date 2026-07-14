@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-14 19:32] Статистика у frontend
+
+- `frontend/src/pages/Stats.tsx`, `frontend/src/pages/portal.css` — додано адаптивні
+  SVG-графіки споживання газу, світла й води з тултіпами, стековий графік доходу
+  та перемикач статистики квартири/портфеля без сторонньої chart-бібліотеки.
+- `frontend/src/api/client.ts`, `frontend/src/App.tsx` — типізовано API статистики та
+  підключено сторінку до захищеного маршруту `/stats`.
+- `frontend/src/pages/Stats.test.tsx` — перевірено графіки, перемикання масштабу й
+  порожню історію; у Docker пройшли 11 frontend і 41 backend тест, Vite build та
+  Ruff. Зміни є production UI; розгортання виконується після Task 16 за майбутнім
+  `docs/deploy.md`.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 14 позначено виконаним.
+
 ## [2026-07-14 19:27] Інтерфейс рахунків
 
 - `frontend/src/pages/Invoices.tsx`, `frontend/src/pages/InvoiceEdit.tsx` — додано

@@ -9,6 +9,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { InvoiceEdit } from "./pages/InvoiceEdit";
 import { Invoices } from "./pages/Invoices";
 import { Login } from "./pages/Login";
+import { Stats } from "./pages/Stats";
 
 export function ProtectedRoute() {
   const location = useLocation();
@@ -53,7 +54,7 @@ export function App() {
           <Route path="apartments/:apartmentId" element={<ApartmentDetail />} />
           <Route path="invoices" element={<Invoices />} />
           <Route path="invoices/:invoiceId" element={<InvoiceEdit />} />
-          <Route path="stats" element={<PlaceholderPage title="Статистика" />} />
+          <Route path="stats" element={<Stats />} />
           <Route path="settings" element={<PlaceholderPage title="Налаштування" />} />
         </Route>
       </Route>

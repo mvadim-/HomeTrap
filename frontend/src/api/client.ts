@@ -90,6 +90,43 @@ export interface DashboardStats {
   needs_attention: DashboardAttentionItem[];
 }
 
+export interface ConsumptionPoint {
+  period: string;
+  consumed: string;
+}
+
+export interface ConsumptionSeries {
+  service_id: number;
+  service_name: string;
+  unit: string | null;
+  values: ConsumptionPoint[];
+}
+
+export interface ConsumptionStats {
+  apartment_id: number;
+  months: number;
+  series: ConsumptionSeries[];
+}
+
+export interface IncomePoint {
+  period: string;
+  rent: string;
+  utilities: string;
+  total: string;
+}
+
+export interface IncomeStats {
+  scope: "apartment" | "portfolio";
+  apartment_id: number | null;
+  months: number;
+  values: IncomePoint[];
+  totals: {
+    rent: string;
+    utilities: string;
+    total: string;
+  };
+}
+
 export interface Service {
   id: number;
   apartment_id: number;
@@ -176,6 +213,17 @@ export function getCurrentRate(): Promise<ExchangeRate> {
 
 export function getDashboard(): Promise<DashboardStats> {
   return request<DashboardStats>("/api/stats/dashboard");
+}
+
+export function getConsumptionStats(apartmentId: number, months = 12): Promise<ConsumptionStats> {
+  const query = new URLSearchParams({ apartment_id: String(apartmentId), months: String(months) });
+  return request<ConsumptionStats>(`/api/stats/consumption?${query.toString()}`);
+}
+
+export function getIncomeStats(apartmentId?: number, months = 12): Promise<IncomeStats> {
+  const query = new URLSearchParams({ months: String(months) });
+  if (apartmentId) query.set("apartment_id", String(apartmentId));
+  return request<IncomeStats>(`/api/stats/income?${query.toString()}`);
 }
 
 export function getApartments(): Promise<Apartment[]> {
