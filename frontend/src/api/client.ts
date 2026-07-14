@@ -18,6 +18,49 @@ export interface InvoiceSummary {
   grand_total: string;
 }
 
+export type InvoiceStatus = "draft" | "issued" | "paid";
+
+export interface InvoiceListItem {
+  id: number;
+  apartment_id: number;
+  period: string;
+  status: InvoiceStatus;
+  issued_at: string | null;
+  paid_at: string | null;
+  exchange_rate: string;
+  rent_amount_usd: string;
+  rent_amount_uah: string;
+  utilities_total: string;
+  grand_total: string;
+}
+
+export interface InvoiceLine {
+  id: number;
+  service_id: number;
+  service_name: string;
+  prev_reading: string | null;
+  curr_reading: string | null;
+  consumed: string | null;
+  tariff_value: string;
+  amount: string;
+}
+
+export interface InvoiceWarning {
+  code: string;
+  service_id: number;
+  message: string;
+}
+
+export interface Invoice extends InvoiceListItem {
+  lines: InvoiceLine[];
+  warnings: InvoiceWarning[];
+}
+
+export interface InvoiceUpdatePayload {
+  exchange_rate: string;
+  lines: Array<{ id: number; curr_reading: string | null }>;
+}
+
 export interface Apartment {
   id: number;
   name: string;
@@ -177,4 +220,40 @@ export function createTariff(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getInvoices(filters: {
+  apartmentId?: number;
+  status?: InvoiceStatus;
+} = {}): Promise<InvoiceListItem[]> {
+  const query = new URLSearchParams();
+  if (filters.apartmentId) query.set("apartment_id", String(filters.apartmentId));
+  if (filters.status) query.set("status", filters.status);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return request<InvoiceListItem[]>(`/api/invoices${suffix}`);
+}
+
+export function getInvoice(id: number): Promise<Invoice> {
+  return request<Invoice>(`/api/invoices/${id}`);
+}
+
+export function createInvoice(apartmentId: number, period: string): Promise<Invoice> {
+  return request<Invoice>(`/api/apartments/${apartmentId}/invoices`, {
+    method: "POST",
+    body: JSON.stringify({ period }),
+  });
+}
+
+export function updateInvoice(id: number, payload: InvoiceUpdatePayload): Promise<Invoice> {
+  return request<Invoice>(`/api/invoices/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function transitionInvoice(
+  id: number,
+  action: "issue" | "revert-to-draft" | "mark-paid" | "unmark-paid",
+): Promise<Invoice> {
+  return request<Invoice>(`/api/invoices/${id}/${action}`, { method: "POST" });
 }

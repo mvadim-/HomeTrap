@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-14 19:27] Інтерфейс рахунків
+
+- `frontend/src/pages/Invoices.tsx`, `frontend/src/pages/InvoiceEdit.tsx` — додано
+  список рахунків із фільтрами та статусами, створення чернетки, перегляд рахунку,
+  виставлення, повернення в чернетку, оплату з відображенням дати й скасування оплати.
+- `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/api/client.ts` — додано
+  типізований invoice API, живий перерахунок показників, тарифів, курсу та підсумків,
+  редагування чернетки й показ попереджень українською.
+- `frontend/src/**/*.test.tsx`, `frontend/src/pages/portal.css`, `frontend/src/App.tsx` —
+  додано адаптивні стилі, маршрути та перевірки калькулятора, фільтрів і статусних
+  переходів; у Docker пройшли 9 frontend-тестів і production Vite build. Зміни є
+  production UI; розгортання виконується після Task 16 за майбутнім `docs/deploy.md`.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 13 позначено виконаним.
+
 ## [2026-07-14 19:19] Дашборд і керування квартирами
 
 - `frontend/src/pages/Dashboard.tsx`, `frontend/src/pages/Apartments.tsx` — додано

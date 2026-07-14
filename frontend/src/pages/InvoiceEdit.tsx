@@ -1,0 +1,86 @@
+import { useCallback, useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+
+import {
+  ApiError,
+  Invoice,
+  InvoiceUpdatePayload,
+  getInvoice,
+  getServices,
+  transitionInvoice,
+  updateInvoice,
+} from "../api/client";
+import { InvoiceCalculator } from "../components/InvoiceCalculator";
+import "./portal.css";
+
+const statusLabels = { draft: "Чернетка", issued: "Виставлений", paid: "Оплачений" } as const;
+
+function dateLabel(value: string): string {
+  return new Intl.DateTimeFormat("uk-UA", { dateStyle: "medium" }).format(new Date(value));
+}
+
+export function InvoiceEdit() {
+  const { invoiceId } = useParams();
+  const id = Number(invoiceId);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [meteredServiceIds, setMeteredServiceIds] = useState<Set<number>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    const item = await getInvoice(id);
+    const services = await getServices(item.apartment_id);
+    setInvoice(item);
+    setMeteredServiceIds(new Set(services.filter((service) => service.kind === "metered").map((service) => service.id)));
+  }, [id]);
+
+  useEffect(() => {
+    if (!Number.isInteger(id) || id < 1) {
+      setError("Некоректний ідентифікатор рахунку.");
+      return;
+    }
+    load().catch(() => setError("Не вдалося завантажити рахунок."));
+  }, [id, load]);
+
+  async function save(payload: InvoiceUpdatePayload) {
+    setSaving(true);
+    setError("");
+    try {
+      setInvoice(await updateInvoice(id, payload));
+    } catch (requestError) {
+      setError(requestError instanceof ApiError ? requestError.message : "Не вдалося зберегти рахунок.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function changeStatus(action: "issue" | "revert-to-draft" | "mark-paid" | "unmark-paid") {
+    setSaving(true);
+    setError("");
+    try {
+      setInvoice(await transitionInvoice(id, action));
+    } catch (requestError) {
+      setError(requestError instanceof ApiError ? requestError.message : "Не вдалося змінити статус рахунку.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (error && !invoice) return <p className="error-message">{error}</p>;
+  if (!invoice) return <p className="muted-text">Завантажуємо рахунок…</p>;
+
+  return (
+    <>
+      <header className="page-header invoice-header">
+        <div><Link className="muted-text" to="/invoices">← Рахунки</Link><h1>Рахунок за {new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${invoice.period}T00:00:00Z`))}</h1><p><span className={`status-badge ${invoice.status}`}>{statusLabels[invoice.status]}</span>{invoice.paid_at && <> · Оплачено {dateLabel(invoice.paid_at)}</>}</p></div>
+        <div className="invoice-actions">
+          {invoice.status === "draft" && <button className="button" disabled={saving} type="button" onClick={() => changeStatus("issue")}>Виставити</button>}
+          {invoice.status === "issued" && <><button className="secondary-button" disabled={saving} type="button" onClick={() => changeStatus("revert-to-draft")}>Повернути в чернетку</button><button className="button" disabled={saving} type="button" onClick={() => changeStatus("mark-paid")}>Позначити оплаченим</button></>}
+          {invoice.status === "paid" && <button className="secondary-button" disabled={saving} type="button" onClick={() => changeStatus("unmark-paid")}>Скасувати оплату</button>}
+        </div>
+      </header>
+      {error && <p className="error-message">{error}</p>}
+      <InvoiceCalculator invoice={invoice} meteredServiceIds={meteredServiceIds} onSave={save} saving={saving} />
+    </>
+  );
+}

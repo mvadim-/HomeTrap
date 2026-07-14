@@ -6,6 +6,8 @@ import { Layout } from "./components/Layout";
 import { ApartmentDetail } from "./pages/ApartmentDetail";
 import { Apartments } from "./pages/Apartments";
 import { Dashboard } from "./pages/Dashboard";
+import { InvoiceEdit } from "./pages/InvoiceEdit";
+import { Invoices } from "./pages/Invoices";
 import { Login } from "./pages/Login";
 
 export function ProtectedRoute() {
@@ -49,7 +51,8 @@ export function App() {
           <Route index element={<Dashboard />} />
           <Route path="apartments" element={<Apartments />} />
           <Route path="apartments/:apartmentId" element={<ApartmentDetail />} />
-          <Route path="invoices" element={<PlaceholderPage title="Рахунки" />} />
+          <Route path="invoices" element={<Invoices />} />
+          <Route path="invoices/:invoiceId" element={<InvoiceEdit />} />
           <Route path="stats" element={<PlaceholderPage title="Статистика" />} />
           <Route path="settings" element={<PlaceholderPage title="Налаштування" />} />
         </Route>
