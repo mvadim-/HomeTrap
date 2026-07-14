@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-14 21:37] Серіалізація мутацій рахунків
+
+- `backend/app/services/billing.py`, `backend/app/routers/invoices.py` — мутації
+  рахунків серіалізовано SQLite write-reservation на квартирі; статус повторно
+  читається після отримання lock, тому stale-запит не видаляє вже виставлений рахунок.
+- `backend/app/services/importer.py` — XLSX-імпорт бере той самий lock до будь-яких
+  записів і відхиляє від’ємну оренду в USD або гривнях.
+- `backend/tests/test_billing.py`, `backend/tests/test_importer.py` — додано регресії
+  конкурентного виставлення/видалення, одночасного створення чернетки й імпорту та
+  відкату імпорту з від’ємною орендою.
+- Docker-перевірки пройдено: 65 backend-тестів, Ruff, 37 frontend-тестів, frontend
+  build, dev/production Compose config, dev і production image build; production
+  image не містить pytest/Ruff і містить SPA. Для production потрібно перебудувати
+  й перезапустити контейнер за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-14 21:24] Усунення code smells порталу
 
 - `backend/app/auth.py`, `backend/app/routers/auth.py`, `backend/tests/test_auth.py` —

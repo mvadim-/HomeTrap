@@ -12,7 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, InvoiceLine, InvoiceStatus, Service, Tariff
-from app.services.billing import InvoiceChronologyError, validate_invoice_chronology
+from app.services.billing import (
+    InvoiceChronologyError,
+    serialize_invoice_mutations,
+    validate_invoice_chronology,
+)
 
 MONEY = Decimal("0.01")
 ZERO = Decimal("0")
@@ -292,11 +296,15 @@ def _import_month(
     rent_usd = _decimal_or_warning(
         metadata.get("rent_usd"), sheet=sheet.title, field_name="оренда USD", report=report
     )
+    if rent_usd is not None and rent_usd < 0:
+        raise ImportFormatError(f"{sheet.title}: оренда USD не може бути від’ємною")
     if rent_usd is None:
         rent_usd = apartment.rent_amount
     rent_uah = _decimal_or_warning(
         metadata.get("rent_uah"), sheet=sheet.title, field_name="оренда грн", report=report
     )
+    if rent_uah is not None and rent_uah < 0:
+        raise ImportFormatError(f"{sheet.title}: оренда грн не може бути від’ємною")
     if rent_uah is None:
         if rate is None or rate <= 0:
             raise ImportFormatError(
@@ -401,6 +409,7 @@ def import_xlsx(
         raise ImportFormatError("Не вдалося прочитати XLSX-файл") from error
     report = ImportReport()
     information_name = _find_information_sheet(workbook.sheetnames)
+    serialize_invoice_mutations(session, apartment.id)
     services = _import_services(session, apartment, workbook[information_name], report)
     months = sorted(
         (period, workbook[name])

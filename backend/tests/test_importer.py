@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
+from threading import Event
 
 from httpx import ASGITransport, AsyncClient
 from openpyxl import load_workbook
@@ -13,6 +15,10 @@ from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
 from app.models import Apartment, Invoice, InvoiceLine, Service, Tariff
+import app.services.billing as billing_service
+import app.services.importer as importer_service
+from app.services.billing import create_draft
+from app.services.importer import ImportFormatError, import_xlsx
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_import.xlsx"
 
@@ -258,6 +264,106 @@ async def test_import_rejects_non_positive_month_tariff_without_fallback(tmp_pat
             engine.dispose()
     finally:
         await _close(lifespan, client)
+
+
+async def test_import_rejects_negative_rent_without_writing(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        apartment_id = _apartment(application)
+        for cell, field_name in (("B4", "оренда USD"), ("B5", "оренда грн")):
+            workbook = load_workbook(FIXTURE)
+            workbook["Кві 2024"][cell] = -1
+            content = BytesIO()
+            workbook.save(content)
+
+            response = await _upload(client, apartment_id, content.getvalue())
+
+            assert response.status_code == 422
+            assert f"{field_name} не може бути від’ємною" in response.json()["detail"]
+            engine = create_database_engine(application.state.settings.database_path)
+            with create_session_factory(engine)() as session:
+                assert session.scalar(select(func.count(Invoice.id))) == 0
+                assert session.scalar(select(func.count(Service.id))) == 0
+            engine.dispose()
+    finally:
+        await _close(lifespan, client)
+
+
+def test_concurrent_draft_serializes_before_xlsx_import(
+    db_engine,
+    monkeypatch,
+) -> None:
+    session_factory = create_session_factory(db_engine)
+    with session_factory() as session:
+        apartment = Apartment(
+            name="Тестова квартира",
+            address="Анонімізовано",
+            rent_amount=Decimal("325.00"),
+            rent_currency="USD",
+        )
+        session.add(apartment)
+        session.commit()
+        apartment_id = apartment.id
+
+    draft_validated = Event()
+    import_attempted = Event()
+    import_validated = Event()
+    original_validate = billing_service.validate_invoice_chronology
+
+    def coordinated_validate(session, locked_apartment_id, period, **kwargs):
+        original_validate(session, locked_apartment_id, period, **kwargs)
+        if period == date(2024, 3, 1):
+            draft_validated.set()
+            assert import_attempted.wait(timeout=2)
+            import_validated.wait(timeout=0.25)
+        else:
+            import_validated.set()
+
+    monkeypatch.setattr(
+        billing_service,
+        "validate_invoice_chronology",
+        coordinated_validate,
+    )
+    monkeypatch.setattr(
+        importer_service,
+        "validate_invoice_chronology",
+        coordinated_validate,
+    )
+
+    def create_earlier_draft() -> int:
+        with session_factory() as session:
+            apartment = session.get(Apartment, apartment_id)
+            return create_draft(
+                session,
+                apartment,
+                date(2024, 3, 1),
+                Decimal("44.000000"),
+            ).id
+
+    def import_later_history() -> str:
+        assert draft_validated.wait(timeout=2)
+        import_attempted.set()
+        with session_factory() as session:
+            apartment = session.get(Apartment, apartment_id)
+            try:
+                import_xlsx(session, apartment, FIXTURE.read_bytes())
+            except ImportFormatError as error:
+                session.rollback()
+                return str(error)
+        raise AssertionError("Concurrent import unexpectedly succeeded")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        draft_future = executor.submit(create_earlier_draft)
+        assert draft_validated.wait(timeout=2)
+        import_future = executor.submit(import_later_history)
+        assert draft_future.result(timeout=5) > 0
+        import_error = import_future.result(timeout=5)
+
+    assert "після незавершеної ранньої чернетки" in import_error
+    assert not import_validated.is_set()
+    with session_factory() as session:
+        assert session.scalar(select(func.count(Invoice.id))) == 1
+        assert session.scalar(select(func.count(Service.id))) == 0
 
 
 async def test_import_rejects_historical_month_before_existing_invoice(tmp_path) -> None:

@@ -4,12 +4,19 @@ from datetime import date
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
+import pytest
 from sqlalchemy import select
 
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
 from app.models import Apartment, Invoice, InvoiceLine, Service, Tariff
+from app.services.billing import (
+    BillingConflictError,
+    delete_draft,
+    get_invoice,
+    transition_invoice,
+)
 from app.services.nbu import RateResult
 
 
@@ -522,3 +529,38 @@ async def test_only_draft_invoice_can_be_deleted(tmp_path, monkeypatch) -> None:
         assert response.json()["detail"] == "Only draft invoices can be deleted"
     finally:
         await _close(lifespan, client)
+
+
+def test_stale_draft_cannot_delete_concurrently_issued_invoice(db_engine) -> None:
+    session_factory = create_session_factory(db_engine)
+    with session_factory() as seed_session:
+        apartment = Apartment(
+            name="Квартира 1",
+            address="Київ",
+            rent_amount=Decimal("325.00"),
+            rent_currency="USD",
+        )
+        invoice = Invoice(
+            apartment=apartment,
+            period=date(2026, 7, 1),
+            status="draft",
+            exchange_rate=Decimal("44.000000"),
+            rent_amount_usd=Decimal("325.00"),
+            rent_amount_uah=Decimal("14300.00"),
+            utilities_total=Decimal("0.00"),
+            grand_total=Decimal("14300.00"),
+        )
+        seed_session.add(invoice)
+        seed_session.commit()
+        invoice_id = invoice.id
+
+    with session_factory() as stale_session, session_factory() as issuer_session:
+        assert get_invoice(stale_session, invoice_id).status == "draft"
+        assert transition_invoice(issuer_session, invoice_id, "issue").status == "issued"
+
+        with pytest.raises(BillingConflictError, match="Only draft invoices"):
+            delete_draft(stale_session, invoice_id)
+
+    with session_factory() as verify_session:
+        preserved = get_invoice(verify_session, invoice_id)
+        assert preserved.status == "issued"

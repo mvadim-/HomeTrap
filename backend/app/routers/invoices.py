@@ -68,15 +68,9 @@ def update_invoice(
     session: Session = Depends(get_db),
 ) -> dict[str, object]:
     try:
-        invoice = get_invoice(session, invoice_id)
-    except BillingError as error:
-        raise _billing_http_error(error) from error
-    if invoice.status != "draft":
-        raise HTTPException(status_code=409, detail="Only draft invoices can be edited")
-    try:
         invoice = update_draft(
             session,
-            invoice,
+            invoice_id,
             payload.exchange_rate,
             {line.id: line.curr_reading for line in payload.lines},
         )
@@ -91,7 +85,7 @@ def delete_invoice(
     session: Session = Depends(get_db),
 ) -> None:
     try:
-        delete_draft(session, get_invoice(session, invoice_id))
+        delete_draft(session, invoice_id)
     except BillingError as error:
         raise _billing_http_error(error) from error
 
@@ -127,7 +121,7 @@ def change_invoice_status(
     if action not in {"issue", "revert-to-draft", "mark-paid", "unmark-paid"}:
         raise HTTPException(status_code=404, detail="Invoice action not found")
     try:
-        invoice = transition_invoice(session, get_invoice(session, invoice_id), action)
+        invoice = transition_invoice(session, invoice_id, action)
     except BillingError as error:
         raise _billing_http_error(error) from error
     return invoice_response(session, invoice)

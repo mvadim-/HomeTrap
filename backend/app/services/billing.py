@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.db import get_tariff_for_period
@@ -57,6 +57,35 @@ def _tariff_for_period(session: Session, service_id: int, period: date) -> Tarif
     return tariff
 
 
+def serialize_invoice_mutations(session: Session, apartment_id: int) -> None:
+    """Serialize invoice mutations with a SQLite write reservation."""
+    result = session.execute(
+        update(Apartment)
+        .where(Apartment.id == apartment_id)
+        .values(id=Apartment.id)
+    )
+    if result.rowcount == 0:
+        raise BillingNotFoundError("Apartment not found")
+
+
+def _locked_invoice(session: Session, invoice_id: int) -> Invoice:
+    apartment_id = session.scalar(
+        select(Invoice.apartment_id).where(Invoice.id == invoice_id)
+    )
+    if apartment_id is None:
+        raise BillingNotFoundError("Invoice not found")
+    serialize_invoice_mutations(session, apartment_id)
+    invoice = session.scalar(
+        select(Invoice)
+        .options(selectinload(Invoice.lines))
+        .execution_options(populate_existing=True)
+        .where(Invoice.id == invoice_id)
+    )
+    if invoice is None:
+        raise BillingNotFoundError("Invoice not found")
+    return invoice
+
+
 def _previous_readings(
     session: Session,
     apartment_id: int,
@@ -86,6 +115,7 @@ def create_draft(
 ) -> Invoice:
     if period.day != 1:
         raise BillingValidationError("Invoice period must be the first day of a month")
+    serialize_invoice_mutations(session, apartment.id)
     validate_invoice_chronology(session, apartment.id, period)
 
     previous = _previous_readings(session, apartment.id, period)
@@ -142,10 +172,11 @@ def recalculate(invoice: Invoice) -> None:
 
 def update_draft(
     session: Session,
-    invoice: Invoice,
+    invoice_id: int,
     exchange_rate: Decimal | None,
     readings: dict[int, Decimal | None],
 ) -> Invoice:
+    invoice = _locked_invoice(session, invoice_id)
     if invoice.status != "draft":
         raise BillingConflictError("Only draft invoices can be edited")
     validate_invoice_chronology(
@@ -171,10 +202,16 @@ def update_draft(
     return get_invoice(session, invoice.id)
 
 
-def delete_draft(session: Session, invoice: Invoice) -> None:
+def delete_draft(session: Session, invoice_id: int) -> None:
+    invoice = _locked_invoice(session, invoice_id)
     if invoice.status != InvoiceStatus.DRAFT.value:
         raise BillingConflictError("Only draft invoices can be deleted")
-    session.delete(invoice)
+    session.execute(
+        delete(Invoice).where(
+            Invoice.id == invoice.id,
+            Invoice.status == InvoiceStatus.DRAFT.value,
+        )
+    )
     session.commit()
 
 
@@ -205,7 +242,8 @@ def list_invoices(
     return list(session.scalars(query.order_by(Invoice.period.desc(), Invoice.id.desc())))
 
 
-def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoice:
+def transition_invoice(session: Session, invoice_id: int, action: str) -> Invoice:
+    invoice = _locked_invoice(session, invoice_id)
     now = datetime.now(UTC)
     if action == "issue" and invoice.status == InvoiceStatus.DRAFT.value:
         missing_reading = next(
