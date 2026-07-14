@@ -1,5 +1,14 @@
 # ChangeLog
 
+## [2026-07-14 19:50] Фінальна документація порталу
+
+- `README.md` — додано огляд HomeTrap, Docker-команди для розробки, тестів і
+  production-запуску та посилання на Synology deployment guide.
+- `CLAUDE.md` — зафіксовано сталі dev/prod Docker-конвенції та вимогу одного Uvicorn
+  worker для коректної роботи APScheduler.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 18 позначено виконаним;
+  фактичне переміщення плану відкладено до terminal harness після review-фаз.
+
 ## [2026-07-14 19:48] Acceptance-перевірка порталу
 
 - `backend/tests/test_acceptance.py` — додано наскрізний API-сценарій від логіна,

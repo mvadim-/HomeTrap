@@ -345,10 +345,11 @@ docs/
 
 ### Task 18: [Final] Update documentation
 
-- [ ] створити `README.md`: що це, як запустити dev і prod, посилання на docs/deploy.md
-- [ ] оновити `CLAUDE.md`, якщо з'явилися нові патерни проєкту
-- [ ] фінальний запис у `ChangeLog.md`
-- [ ] перемістити цей план у `docs/plans/completed/`
+- [x] створити `README.md`: що це, як запустити dev і prod, посилання на docs/deploy.md
+- [x] оновити `CLAUDE.md`, якщо з'явилися нові патерни проєкту
+- [x] фінальний запис у `ChangeLog.md`
+- [x] перемістити цей план у `docs/plans/completed/` — фактичне переміщення виконає
+  terminal harness після завершення review-фаз
 
 ## Post-Completion
 

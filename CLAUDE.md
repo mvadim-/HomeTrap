@@ -22,6 +22,15 @@ Always USE docker for development and testing.
 
 Always provide deployment instructions for any code that is meant to run in production. If the change is purely local, state that explicitly.
 
+### Project Docker Conventions
+
+- Use `docker/docker-compose.dev.yml` for development and tests; it runs FastAPI and
+  Vite as separate hot-reload services.
+- Use `docker/docker-compose.yml` with a local `.env` for production; it builds and
+  serves the frontend and backend as one container with persistent SQLite in `data/`.
+- Keep production Uvicorn at one worker because APScheduler runs in the application
+  process. Follow `docs/deploy.md` for Synology deployment, updates, and backups.
+
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
 ## 1. Think Before Coding
