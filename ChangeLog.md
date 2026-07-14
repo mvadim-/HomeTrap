@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-14 19:00] Імпорт історії з XLSX
+
+- `backend/app/services/importer.py`, `backend/app/routers/import_.py`, `backend/app/main.py`,
+  `backend/app/schemas.py` — додано захищений XLSX-import послуг, історії тарифів і
+  оплачених рахунків, dry-run, ідемпотентний повторний запуск та звіт із попередженнями.
+- `backend/tests/fixtures/sample_import.xlsx`, `backend/tests/fixtures/generate_sample_import.py`
+  — додано відтворювану анонімізовану compatibility-фікстуру з merged cells, тарифами
+  із суфіксом `грн.`, прочерками й битою клітинкою; реального експорту в репозиторії немає.
+- `backend/tests/test_importer.py` — перевірено повний імпорт, dry-run без запису,
+  повторний імпорт, нечислові клітинки, розрив місяців, merged cells, помилки upload
+  та авторизацію.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 9 позначено виконаним після
+  успішних 37 `pytest` і `ruff check` у Docker.
+
 ## [2026-07-14 18:54] Статистика порталу
 
 - `backend/app/routers/stats.py`, `backend/app/main.py` — додано захищені endpoints

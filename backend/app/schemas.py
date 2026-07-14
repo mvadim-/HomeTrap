@@ -222,3 +222,11 @@ class DashboardStats(ApiSchema):
     paid: Decimal
     outstanding: Decimal
     needs_attention: list[DashboardAttentionItem]
+
+
+class ImportReportResponse(ApiSchema):
+    invoices_created: int
+    invoices_skipped: int
+    services_created: int
+    tariffs_created: int
+    warnings: list[str]
