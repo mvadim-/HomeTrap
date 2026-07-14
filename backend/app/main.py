@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from app.auth import LoginRateLimiter, ensure_admin
 from app.config import Settings, get_settings
 from app.db import create_database_engine, create_session_factory, run_migrations
+from app.routers.apartments import router as apartments_router
 from app.routers.auth import router as auth_router
+from app.routers.services import router as services_router
 
 APP_VERSION = "0.1.0"
 
@@ -33,6 +35,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.settings = resolved_settings
     application.state.login_rate_limiter = LoginRateLimiter()
     application.include_router(auth_router)
+    application.include_router(apartments_router)
+    application.include_router(services_router)
 
     @application.get("/api/health")
     async def health() -> dict[str, str]:

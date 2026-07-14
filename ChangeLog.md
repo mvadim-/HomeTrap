@@ -1,5 +1,17 @@
 # ChangeLog
 
+## [2026-07-14 18:29] CRUD квартир, послуг і тарифів
+
+- `backend/app/schemas.py` — додано спільні Pydantic-схеми API із серіалізацією
+  `Decimal` у JSON-рядки та валідацією квартир, послуг і тарифів.
+- `backend/app/routers/apartments.py`, `backend/app/routers/services.py`,
+  `backend/app/main.py` — додано захищений CRUD квартир і послуг, архівацію,
+  сортування, історію тарифів та заборону видалення використаних послуг.
+- `backend/tests/test_apartments.py` — додано success/error перевірки CRUD,
+  авторизації, 404/409/422, сортування, останнього рахунку й грошових JSON-рядків.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 4 позначено виконаним після
+  успішних `pytest` і `ruff check` у Docker.
+
 ## [2026-07-14 18:22] Автентифікація адміністратора
 
 - `backend/app/auth.py`, `backend/app/routers/auth.py` — додано створення адміністратора
