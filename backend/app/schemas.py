@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
@@ -12,8 +12,13 @@ class ApiSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     @field_serializer("*", check_fields=False, when_used="json")
-    def serialize_decimal(self, value: object) -> object:
-        return str(value) if isinstance(value, Decimal) else value
+    def serialize_api_values(self, value: object) -> object:
+        if isinstance(value, Decimal):
+            return str(value)
+        if isinstance(value, datetime):
+            normalized = value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+            return normalized.isoformat().replace("+00:00", "Z")
+        return value
 
 
 class LatestInvoiceSummary(ApiSchema):
@@ -137,6 +142,8 @@ class InvoiceResponse(ApiSchema):
     apartment_id: int
     period: date
     status: str
+    issued_at: datetime | None
+    paid_at: datetime | None
     exchange_rate: Decimal
     rent_amount_usd: Decimal
     rent_amount_uah: Decimal
@@ -144,3 +151,17 @@ class InvoiceResponse(ApiSchema):
     grand_total: Decimal
     lines: list[InvoiceLineResponse]
     warnings: list[InvoiceWarning]
+
+
+class InvoiceListItem(ApiSchema):
+    id: int
+    apartment_id: int
+    period: date
+    status: str
+    issued_at: datetime | None
+    paid_at: datetime | None
+    exchange_rate: Decimal
+    rent_amount_usd: Decimal
+    rent_amount_uah: Decimal
+    utilities_total: Decimal
+    grand_total: Decimal

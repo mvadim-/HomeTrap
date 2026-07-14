@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Apartment, Invoice, InvoiceLine, Service, ServiceKind, Tariff
+from app.models import (
+    Apartment,
+    Invoice,
+    InvoiceLine,
+    InvoiceStatus,
+    Service,
+    ServiceKind,
+    Tariff,
+)
 
 MONEY_QUANTUM = Decimal("0.01")
 ANOMALY_THRESHOLD = Decimal("0.50")
@@ -146,6 +154,43 @@ def get_invoice(session: Session, invoice_id: int) -> Invoice:
     return invoice
 
 
+def list_invoices(
+    session: Session,
+    apartment_id: int | None = None,
+    invoice_status: InvoiceStatus | None = None,
+    period: date | None = None,
+) -> list[Invoice]:
+    query = select(Invoice)
+    if apartment_id is not None:
+        query = query.where(Invoice.apartment_id == apartment_id)
+    if invoice_status is not None:
+        query = query.where(Invoice.status == invoice_status.value)
+    if period is not None:
+        query = query.where(Invoice.period == period)
+    return list(session.scalars(query.order_by(Invoice.period.desc(), Invoice.id.desc())))
+
+
+def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoice:
+    now = datetime.now(UTC)
+    if action == "issue" and invoice.status == InvoiceStatus.DRAFT.value:
+        recalculate(invoice)
+        invoice.status = InvoiceStatus.ISSUED.value
+        invoice.issued_at = now
+    elif action == "revert-to-draft" and invoice.status == InvoiceStatus.ISSUED.value:
+        invoice.status = InvoiceStatus.DRAFT.value
+        invoice.issued_at = None
+    elif action == "mark-paid" and invoice.status == InvoiceStatus.ISSUED.value:
+        invoice.status = InvoiceStatus.PAID.value
+        invoice.paid_at = now
+    elif action == "unmark-paid" and invoice.status == InvoiceStatus.PAID.value:
+        invoice.status = InvoiceStatus.ISSUED.value
+        invoice.paid_at = None
+    else:
+        raise BillingError(f"Cannot {action} invoice with status {invoice.status}")
+    session.commit()
+    return get_invoice(session, invoice.id)
+
+
 def warnings_for(session: Session, invoice: Invoice) -> list[dict[str, object]]:
     warnings: list[dict[str, object]] = []
     for line in invoice.lines:
@@ -195,6 +240,8 @@ def invoice_response(session: Session, invoice: Invoice) -> dict[str, object]:
         "apartment_id": invoice.apartment_id,
         "period": invoice.period,
         "status": invoice.status,
+        "issued_at": invoice.issued_at,
+        "paid_at": invoice.paid_at,
         "exchange_rate": invoice.exchange_rate,
         "rent_amount_usd": invoice.rent_amount_usd,
         "rent_amount_uah": invoice.rent_amount_uah,

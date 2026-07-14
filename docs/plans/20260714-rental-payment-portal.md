@@ -222,10 +222,10 @@ docs/
 - Modify: `backend/app/services/billing.py`, `backend/app/routers/invoices.py`
 - Create: `backend/tests/test_invoice_status.py`
 
-- [ ] переходи статусів: `issue` (snapshot тарифів/курсу, заборона редагування), `revert-to-draft`, `mark-paid`/`unmark-paid` з датою
-- [ ] `GET /api/invoices` — список з фільтрами по квартирі/статусу/періоду; `GET /api/invoices/{id}` — деталь з рядками
-- [ ] тести: повний життєвий цикл draft→issued→paid, заборонені переходи (PUT issued → 409, mark-paid для draft), фільтри списку
-- [ ] прогнати тести — мають пройти перед таском 8
+- [x] переходи статусів: `issue` (snapshot тарифів/курсу, заборона редагування), `revert-to-draft`, `mark-paid`/`unmark-paid` з датою
+- [x] `GET /api/invoices` — список з фільтрами по квартирі/статусу/періоду; `GET /api/invoices/{id}` — деталь з рядками
+- [x] тести: повний життєвий цикл draft→issued→paid, заборонені переходи (PUT issued → 409, mark-paid для draft), фільтри списку
+- [x] прогнати тести — мають пройти перед таском 8
 
 ### Task 8: Статистика
 

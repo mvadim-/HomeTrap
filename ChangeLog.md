@@ -1,5 +1,17 @@
 # ChangeLog
 
+## [2026-07-14 18:48] Життєвий цикл і список рахунків
+
+- `backend/app/services/billing.py`, `backend/app/routers/invoices.py` — додано переходи
+  `draft → issued → paid`, повернення до чернетки/зняття оплати, часові позначки,
+  захищені detail/list endpoints і фільтри за квартирою, статусом та періодом.
+- `backend/app/schemas.py` — додано схему елемента списку, часові поля у відповіді
+  рахунку та стабільну UTC-серіалізацію дат переходів для SQLite.
+- `backend/tests/test_invoice_status.py` — перевірено повний життєвий цикл, заборонені
+  переходи й редагування, snapshot значень, деталі, фільтри та авторизацію.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 7 позначено виконаним після
+  успішних 29 `pytest` і `ruff check` у Docker.
+
 ## [2026-07-14 18:44] Чернетки рахунків і перерахунок
 
 - `backend/app/services/billing.py`, `backend/app/routers/invoices.py` — додано створення

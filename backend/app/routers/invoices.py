@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_db, require_auth
-from app.models import Apartment
-from app.schemas import InvoiceCreate, InvoiceResponse, InvoiceUpdate
+from app.models import Apartment, InvoiceStatus
+from app.schemas import InvoiceCreate, InvoiceListItem, InvoiceResponse, InvoiceUpdate
 from app.services.billing import (
     BillingError,
     create_draft,
     get_invoice,
     invoice_response,
+    list_invoices,
+    transition_invoice,
     update_draft,
 )
 from app.services.nbu import NbuRateUnavailable, get_rate
@@ -67,4 +71,43 @@ def update_invoice(
         )
     except BillingError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    return invoice_response(session, invoice)
+
+
+@router.get("/api/invoices", response_model=list[InvoiceListItem])
+def invoice_list(
+    apartment_id: int | None = None,
+    invoice_status: InvoiceStatus | None = Query(default=None, alias="status"),
+    period: date | None = None,
+    session: Session = Depends(get_db),
+) -> list[InvoiceListItem]:
+    return list_invoices(session, apartment_id, invoice_status, period)
+
+
+@router.get("/api/invoices/{invoice_id}", response_model=InvoiceResponse)
+def invoice_detail(
+    invoice_id: int,
+    session: Session = Depends(get_db),
+) -> dict[str, object]:
+    try:
+        invoice = get_invoice(session, invoice_id)
+    except BillingError as error:
+        raise HTTPException(status_code=404, detail="Invoice not found") from error
+    return invoice_response(session, invoice)
+
+
+@router.post("/api/invoices/{invoice_id}/{action}", response_model=InvoiceResponse)
+def change_invoice_status(
+    invoice_id: int,
+    action: str,
+    session: Session = Depends(get_db),
+) -> dict[str, object]:
+    if action not in {"issue", "revert-to-draft", "mark-paid", "unmark-paid"}:
+        raise HTTPException(status_code=404, detail="Invoice action not found")
+    try:
+        invoice = transition_invoice(session, get_invoice(session, invoice_id), action)
+    except BillingError as error:
+        if str(error) == "Invoice not found":
+            raise HTTPException(status_code=404, detail="Invoice not found") from error
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return invoice_response(session, invoice)
