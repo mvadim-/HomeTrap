@@ -254,6 +254,18 @@ def _import_month(
     if existing is not None:
         report.invoices_skipped += 1
         return
+    later_invoice = session.scalar(
+        select(Invoice.id)
+        .where(
+            Invoice.apartment_id == apartment.id,
+            Invoice.period > period,
+        )
+        .limit(1)
+    )
+    if later_invoice is not None:
+        raise ImportFormatError(
+            f"{sheet.title}: не можна імпортувати місяць перед наявним пізнішим рахунком"
+        )
 
     header_index, mapping, rows = _find_table(sheet, {"service", "amount"})
     metadata = _metadata(sheet)

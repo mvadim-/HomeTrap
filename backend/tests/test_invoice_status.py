@@ -159,6 +159,8 @@ async def test_invoice_list_filters_by_apartment_status_and_period(
         first_id = _seed_apartment(application, "Квартира 1")
         second_id = _seed_apartment(application, "Квартира 2")
         june = await _create_invoice(client, first_id, "2026-06-01")
+        await client.post(f"/api/invoices/{june['id']}/issue")
+        await client.post(f"/api/invoices/{june['id']}/mark-paid")
         july = await _create_invoice(client, first_id, "2026-07-01")
         august = await _create_invoice(client, second_id, "2026-08-01")
         await client.post(f"/api/invoices/{july['id']}/issue")

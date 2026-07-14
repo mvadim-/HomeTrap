@@ -172,16 +172,26 @@ async def test_login_rate_limit_uses_forwarded_ip_only_from_trusted_proxy(tmp_pa
         await lifespan.__aexit__(None, None, None)
 
 
-def test_production_rejects_default_or_placeholder_session_secret() -> None:
+def test_production_rejects_default_or_placeholder_session_secret(monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="HOMETRAP_SECRET_KEY"):
         validate_production_settings(Settings(debug=False))
     with pytest.raises(RuntimeError, match="HOMETRAP_SECRET_KEY"):
         validate_production_settings(
             Settings(debug=False, secret_key="change-me-to-a-long-random-value")
         )
+    monkeypatch.setenv("ADMIN_PASSWORD", "a-unique-strong-admin-password")
     validate_production_settings(
         Settings(debug=False, secret_key="a-unique-production-secret-with-32-characters")
     )
+    monkeypatch.setenv("ADMIN_PASSWORD", "change-me-to-a-strong-password")
+    with pytest.raises(RuntimeError, match="ADMIN_PASSWORD"):
+        validate_production_settings(
+            Settings(
+                debug=False,
+                secret_key="a-unique-production-secret-with-32-characters",
+                admin_username="admin",
+            )
+        )
     with pytest.raises(RuntimeError, match="HOMETRAP_TRUSTED_PROXY_CIDRS"):
         validate_production_settings(
             Settings(debug=True, trusted_proxy_cidrs="not-a-network")

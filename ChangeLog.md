@@ -1,5 +1,22 @@
 # ChangeLog
 
+## [2026-07-14 20:38] Посилено цілісність рахунків і production-деплой
+
+- `backend/app/services/billing.py`, `backend/tests/test_billing.py`,
+  `backend/tests/test_invoice_status.py` — заборонено створювати наступний рахунок до
+  завершення ранньої чернетки та виставляти metered-рахунок без поточних показників.
+- `backend/app/services/importer.py`, `backend/tests/test_importer.py` — імпорт більше
+  не вставляє історичні місяці перед наявними рахунками й не порушує snapshot показників.
+- `backend/app/routers/stats.py`, `backend/tests/test_stats.py` — статистика споживання
+  виключає чернетки, а поточний місяць визначається в таймзоні `Europe/Kyiv`.
+- `backend/app/config.py`, `backend/tests/test_auth.py` — production-запуск відхиляє
+  короткий або шаблонний `ADMIN_PASSWORD` до створення адміністратора.
+- `docker/docker-compose.yml`, `.env.example`, `docs/deploy.md` — production HTTP-порт
+  за замовчуванням прив'язано до `127.0.0.1` зі збереженням сумісності з Synology
+  reverse proxy; уточнено перевірку health endpoint і параметр bind address.
+- Повний Docker-цикл пройдено: 54 backend-тести, Ruff, 35 frontend-тестів,
+  frontend build, production Compose config та multi-stage image build.
+
 ## [2026-07-14 20:28] Захист історичних рахунків і proxy-aware login
 
 - `backend/app/services/importer.py`, `backend/app/services/billing.py` — повторний

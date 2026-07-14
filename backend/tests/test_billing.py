@@ -95,6 +95,7 @@ def _seed_billing_data(
             previous = Invoice(
                 apartment=apartment,
                 period=previous_period,
+                status="paid",
                 exchange_rate=Decimal("44.000000"),
                 rent_amount_usd=Decimal("325.00"),
                 rent_amount_uah=Decimal("14300.00"),
@@ -200,6 +201,11 @@ async def test_reading_is_carried_and_tariff_uses_invoice_period(
         )
         assert march.status_code == 201
         assert march.json()["lines"][0]["tariff_value"] == "7.50000"
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            session.get(Invoice, march.json()["id"]).status = "paid"
+            session.commit()
+        engine.dispose()
 
         july = await client.post(
             f"/api/apartments/{apartment_id}/invoices",
@@ -255,6 +261,7 @@ async def test_decreased_and_anomalous_readings_return_soft_warnings(
                 invoice = Invoice(
                     apartment=apartment,
                     period=date(2026, month, 1),
+                    status="paid",
                     exchange_rate=Decimal("44"),
                     rent_amount_usd=Decimal("325"),
                     rent_amount_uah=Decimal("14300"),
@@ -327,6 +334,7 @@ async def test_reading_snapshot_survives_omitted_month_and_later_invoice_guard(
             july = Invoice(
                 apartment=apartment,
                 period=date(2026, 7, 1),
+                status="paid",
                 exchange_rate=Decimal("44"),
                 rent_amount_usd=Decimal("325"),
                 rent_amount_uah=Decimal("14300"),
@@ -375,17 +383,14 @@ async def test_reading_snapshot_survives_omitted_month_and_later_invoice_guard(
             f"/api/apartments/{apartment_id}/invoices",
             json={"period": "2026-09-01"},
         )
-        assert september.status_code == 201
+        assert september.status_code == 409
+        assert "earlier draft" in september.json()["detail"]
         assert (
-            await client.put(
-                f"/api/invoices/{august['id']}",
-                json={"lines": [{"id": gas_line["id"], "curr_reading": "111"}]},
-            )
-        ).status_code == 409
-        assert (await client.post(f"/api/invoices/{august['id']}/issue")).status_code == 200
+            await client.post(f"/api/invoices/{august['id']}/issue")
+        ).status_code == 200
         assert (
             await client.post(f"/api/invoices/{august['id']}/revert-to-draft")
-        ).status_code == 409
+        ).status_code == 200
     finally:
         await _close(lifespan, client)
 
@@ -436,5 +441,29 @@ async def test_invoice_validation_conflicts_and_auth(tmp_path, monkeypatch) -> N
                 json={"period": "2026-08-01"},
             )
         ).status_code == 401
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_metered_invoice_requires_current_reading_before_issue(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    application, lifespan, client = await _client(tmp_path, monkeypatch)
+    try:
+        apartment_id, _ = _seed_billing_data(application)
+        draft = (
+            await client.post(
+                f"/api/apartments/{apartment_id}/invoices",
+                json={"period": "2026-07-01"},
+            )
+        ).json()
+
+        response = await client.post(f"/api/invoices/{draft['id']}/issue")
+
+        assert response.status_code == 409
+        assert "Current reading is required for Газ" in response.json()["detail"]
+        detail = await client.get(f"/api/invoices/{draft['id']}")
+        assert detail.json()["status"] == "draft"
     finally:
         await _close(lifespan, client)

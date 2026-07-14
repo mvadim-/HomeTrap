@@ -9,7 +9,7 @@ services:
       HOMETRAP_DATABASE_PATH: /data/hometrap.db
       HOMETRAP_DEBUG: "false"
     ports:
-      - "${HOMETRAP_PORT:-8000}:8000"
+      - "${HOMETRAP_BIND_ADDRESS:-127.0.0.1}:${HOMETRAP_PORT:-8000}:8000"
     volumes:
       - ../data:/data
     healthcheck:

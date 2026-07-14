@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 
@@ -201,5 +203,40 @@ async def test_import_rejects_unknown_service_kind_and_missing_required_rate(tmp
         response = await _upload(client, apartment_id, content.getvalue())
         assert response.status_code == 422
         assert "потрібен додатний курс" in response.json()["detail"]
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_import_rejects_historical_month_before_existing_invoice(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        apartment_id = _apartment(application)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            apartment = session.get(Apartment, apartment_id)
+            session.add(
+                Invoice(
+                    apartment=apartment,
+                    period=date(2024, 6, 1),
+                    status="paid",
+                    exchange_rate=Decimal("44.000000"),
+                    rent_amount_usd=Decimal("325.00"),
+                    rent_amount_uah=Decimal("14300.00"),
+                    utilities_total=Decimal("0.00"),
+                    grand_total=Decimal("14300.00"),
+                )
+            )
+            session.commit()
+        engine.dispose()
+
+        response = await _upload(client, apartment_id, FIXTURE.read_bytes())
+
+        assert response.status_code == 422
+        assert "перед наявним пізнішим рахунком" in response.json()["detail"]
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            assert session.scalar(select(func.count(Invoice.id))) == 1
+            assert session.scalar(select(func.count(Service.id))) == 0
+        engine.dispose()
     finally:
         await _close(lifespan, client)

@@ -59,3 +59,9 @@ def validate_production_settings(settings: Settings) -> None:
         raise RuntimeError(
             "HOMETRAP_SECRET_KEY must be a unique random value of at least 32 characters in production"
         )
+    if settings.admin_password is not None:
+        normalized_password = settings.admin_password.casefold()
+        if len(settings.admin_password) < 12 or "change-me" in normalized_password:
+            raise RuntimeError(
+                "ADMIN_PASSWORD must be a unique strong value of at least 12 characters in production"
+            )

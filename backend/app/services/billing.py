@@ -67,6 +67,7 @@ def create_draft(
     if period.day != 1:
         raise BillingError("Invoice period must be the first day of a month")
     _reject_if_later_invoice_exists(session, apartment.id, period)
+    _reject_if_earlier_draft_exists(session, apartment.id, period)
 
     previous = _previous_readings(session, apartment.id, period)
     services = session.scalars(
@@ -176,6 +177,19 @@ def list_invoices(
 def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoice:
     now = datetime.now(UTC)
     if action == "issue" and invoice.status == InvoiceStatus.DRAFT.value:
+        missing_reading = next(
+            (
+                line
+                for line in invoice.lines
+                if line.service_kind == ServiceKind.METERED.value
+                and line.curr_reading is None
+            ),
+            None,
+        )
+        if missing_reading is not None:
+            raise BillingError(
+                f"Current reading is required for {missing_reading.service_name} before issue"
+            )
         recalculate(invoice)
         invoice.status = InvoiceStatus.ISSUED.value
         invoice.issued_at = now
@@ -210,6 +224,24 @@ def _reject_if_later_invoice_exists(
     )
     if later_id is not None:
         raise BillingError("An older invoice cannot be changed after a later invoice exists")
+
+
+def _reject_if_earlier_draft_exists(
+    session: Session,
+    apartment_id: int,
+    period: date,
+) -> None:
+    earlier_draft_id = session.scalar(
+        select(Invoice.id)
+        .where(
+            Invoice.apartment_id == apartment_id,
+            Invoice.period < period,
+            Invoice.status == InvoiceStatus.DRAFT.value,
+        )
+        .limit(1)
+    )
+    if earlier_draft_id is not None:
+        raise BillingError("An earlier draft invoice must be completed before creating a later invoice")
 
 
 def warnings_for(session: Session, invoice: Invoice) -> list[dict[str, object]]:

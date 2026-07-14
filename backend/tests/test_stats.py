@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
@@ -215,8 +215,43 @@ async def test_consumption_groups_metered_services_by_month(tmp_path) -> None:
             point["consumed"]
             for point in after_kind_change.json()["series"][0]["values"]
         ] == ["10.000", "12.000"]
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            current_invoice = (
+                session.query(Invoice)
+                .filter_by(apartment_id=first_id)
+                .order_by(Invoice.period.desc())
+                .first()
+            )
+            current_invoice.status = "draft"
+            session.commit()
+        engine.dispose()
+
+        without_draft = await client.get(
+            "/api/stats/consumption",
+            params={"apartment_id": first_id, "months": 2},
+        )
+        assert [
+            point["consumed"]
+            for point in without_draft.json()["series"][0]["values"]
+        ] == ["10.000"]
     finally:
         await _close(lifespan, client)
+
+
+def test_stats_today_uses_kyiv_timezone(monkeypatch) -> None:
+    class FrozenDateTime:
+        @classmethod
+        def now(cls, timezone):
+            assert timezone.key == "Europe/Kyiv"
+            return datetime(2026, 7, 1, 0, 30, tzinfo=timezone)
+
+    monkeypatch.setattr("app.routers.stats.datetime", FrozenDateTime)
+
+    from app.routers.stats import _today
+
+    assert _today() == date(2026, 7, 1)
 
 
 async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:

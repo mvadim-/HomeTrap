@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -18,6 +19,11 @@ router = APIRouter(
 )
 
 ZERO = Decimal("0.00")
+KYIV_TIMEZONE = ZoneInfo("Europe/Kyiv")
+
+
+def _today() -> date:
+    return datetime.now(KYIV_TIMEZONE).date()
 
 
 def _month_start(value: date) -> date:
@@ -30,7 +36,7 @@ def _shift_month(value: date, offset: int) -> date:
 
 
 def _period_start(months: int) -> date:
-    return _shift_month(_month_start(date.today()), 1 - months)
+    return _shift_month(_month_start(_today()), 1 - months)
 
 
 def _require_apartment(session: Session, apartment_id: int) -> None:
@@ -58,8 +64,9 @@ def consumption_stats(
         .where(
             Service.apartment_id == apartment_id,
             InvoiceLine.service_kind == ServiceKind.METERED.value,
+            Invoice.status.in_([InvoiceStatus.ISSUED.value, InvoiceStatus.PAID.value]),
             Invoice.period >= _period_start(months),
-            Invoice.period <= _month_start(date.today()),
+            Invoice.period <= _month_start(_today()),
             InvoiceLine.consumed.is_not(None),
         )
         .order_by(Service.sort_order, Service.id, Invoice.period)
@@ -91,7 +98,7 @@ def income_stats(
 
     query = select(Invoice).where(
         Invoice.period >= _period_start(months),
-        Invoice.period <= _month_start(date.today()),
+        Invoice.period <= _month_start(_today()),
         Invoice.status.in_([InvoiceStatus.ISSUED.value, InvoiceStatus.PAID.value]),
     )
     if apartment_id is not None:
@@ -123,7 +130,7 @@ def income_stats(
 
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard_stats(session: Session = Depends(get_db)) -> dict[str, object]:
-    current_period = _month_start(date.today())
+    current_period = _month_start(_today())
     invoices = session.scalars(
         select(Invoice).order_by(Invoice.period, Invoice.id)
     ).all()
