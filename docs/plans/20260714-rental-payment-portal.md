@@ -195,12 +195,12 @@ docs/
 - Create: `backend/tests/test_nbu.py`
 - Modify: `backend/app/main.py`
 
-- [ ] клієнт API НБУ (httpx): курс USD на дату; збереження в `ExchangeRate`
-- [ ] `get_rate(date)`: кеш → API → fallback на останній відомий курс із позначкою дати
-- [ ] APScheduler: старт разом із застосунком, таймзона `Europe/Kyiv`, щоденна задача оновлення курсу
-- [ ] `GET /api/rates/current` для чипа в шапці UI
-- [ ] тести з mock HTTP: свіжий курс, недоступний НБУ → fallback, кешування
-- [ ] прогнати тести — мають пройти перед таском 6
+- [x] клієнт API НБУ (httpx): курс USD на дату; збереження в `ExchangeRate`
+- [x] `get_rate(date)`: кеш → API → fallback на останній відомий курс із позначкою дати
+- [x] APScheduler: старт разом із застосунком, таймзона `Europe/Kyiv`, щоденна задача оновлення курсу
+- [x] `GET /api/rates/current` для чипа в шапці UI
+- [x] тести з mock HTTP: свіжий курс, недоступний НБУ → fallback, кешування
+- [x] прогнати тести — мають пройти перед таском 6
 
 ### Task 6: Рахунки — чернетка, перерахунок, попередження
 

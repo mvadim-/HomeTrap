@@ -75,3 +75,11 @@ class TariffCreate(ApiSchema):
 class TariffResponse(TariffCreate):
     id: int
     service_id: int
+
+
+class ExchangeRateResponse(ApiSchema):
+    requested_date: date
+    rate_date: date
+    currency: str
+    rate: Decimal
+    is_fallback: bool

@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-14 18:35] Курс НБУ та щоденне оновлення
+
+- `backend/app/services/nbu.py`, `backend/app/routers/rates.py` — додано HTTP-клієнт
+  НБУ, кешування курсу USD, fallback на останній відомий курс і захищений endpoint
+  `/api/rates/current` із датою фактичного курсу.
+- `backend/app/services/scheduler.py`, `backend/app/main.py` — додано запуск і коректну
+  зупинку APScheduler у життєвому циклі застосунку та щоденне оновлення о 06:00 у
+  таймзоні `Europe/Kyiv`.
+- `backend/app/schemas.py`, `backend/tests/test_nbu.py` — додано серіалізацію курсу
+  рядком і тести свіжого курсу, кешу, fallback, помилки НБУ, scheduler та API.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 5 позначено виконаним після
+  успішних `pytest` і `ruff check` у Docker.
+
 ## [2026-07-14 18:29] CRUD квартир, послуг і тарифів
 
 - `backend/app/schemas.py` — додано спільні Pydantic-схеми API із серіалізацією
