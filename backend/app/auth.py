@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import time
@@ -118,7 +119,7 @@ def _decode_session(cookie_value: str, secret_key: str) -> int | None:
         if int(raw_expires_at) < int(time.time()):
             return None
         return int(raw_user_id)
-    except (ValueError, UnicodeDecodeError):
+    except (binascii.Error, ValueError, UnicodeDecodeError):
         return None
 
 

@@ -10,10 +10,13 @@ from app.db import create_database_engine, create_session_factory
 from app.main import create_app
 from app.models import Apartment, Invoice, InvoiceStatus, Setting
 from app.services.notify import (
+    EmailSender,
     NOTIFICATION_HISTORY_KEY,
     NOTIFICATION_SETTINGS_KEY,
+    TelegramSender,
     run_daily_notifications,
     save_notification_settings,
+    send_notification,
 )
 
 
@@ -99,7 +102,7 @@ def test_daily_rules_repeat_and_deduplicate_same_day(db_session) -> None:
     assert sender.messages[1][0] == "Неоплачений рахунок"
     history = db_session.get(Setting, NOTIFICATION_HISTORY_KEY)
     assert history is not None
-    assert len(history.value) == 3
+    assert history.value == {"readings": "2026-07-20", "overdue:1": "2026-07-23"}
 
 
 def test_disabled_channels_do_not_send_or_consume_daily_reminder(db_session) -> None:
@@ -129,6 +132,7 @@ async def test_settings_api_persists_and_tests_enabled_sender(
         database_path=tmp_path / "notify.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )
@@ -189,6 +193,7 @@ async def test_settings_api_rejects_incomplete_enabled_channel(
         database_path=tmp_path / "notify-validation.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )
@@ -214,3 +219,66 @@ async def test_settings_api_rejects_incomplete_enabled_channel(
     finally:
         await client.aclose()
         await lifespan.__aexit__(None, None, None)
+
+
+def test_real_sender_adapters_use_timeout_tls_login_and_continue(monkeypatch) -> None:
+    telegram_requests = []
+
+    class TelegramResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+    def fake_post(url, *, json, timeout):
+        telegram_requests.append((url, json, timeout))
+        return TelegramResponse()
+
+    smtp_calls = []
+
+    class FakeSmtp:
+        def __init__(self, host, port, timeout):
+            smtp_calls.append(("connect", host, port, timeout))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def starttls(self):
+            smtp_calls.append(("starttls",))
+
+        def login(self, username, password):
+            smtp_calls.append(("login", username, password))
+
+        def send_message(self, message):
+            smtp_calls.append(("send", message["To"]))
+
+    monkeypatch.setattr("app.services.notify.httpx.post", fake_post)
+    monkeypatch.setattr("app.services.notify.smtplib.SMTP", FakeSmtp)
+    TelegramSender("token", "chat").send("Subject", "Message")
+    EmailSender(
+        smtp_host="smtp.test",
+        smtp_port=587,
+        smtp_username="user",
+        smtp_password="password",
+        from_address="from@test",
+        to_address="to@test",
+        use_tls=True,
+    ).send("Subject", "Message")
+    assert telegram_requests[0][2] == 10
+    assert smtp_calls == [
+        ("connect", "smtp.test", 587, 10),
+        ("starttls",),
+        ("login", "user", "password"),
+        ("send", "to@test"),
+    ]
+
+    class FailingSender:
+        def send(self, _subject, _message):
+            raise RuntimeError("boom")
+
+    recording = RecordingSender()
+    result = send_notification([FailingSender(), recording], "Subject", "Message")
+    assert result.deliveries == 1
+    assert len(result.errors) == 1
+    assert recording.messages == [("Subject", "Message")]

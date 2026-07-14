@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from app.db import get_tariff_for_period
 from app.models import (
     Apartment,
     Invoice,
@@ -30,12 +31,7 @@ def money(value: Decimal) -> Decimal:
 
 
 def _tariff_for_period(session: Session, service_id: int, period: date) -> Tariff:
-    tariff = session.scalar(
-        select(Tariff)
-        .where(Tariff.service_id == service_id, Tariff.valid_from <= period)
-        .order_by(Tariff.valid_from.desc())
-        .limit(1)
-    )
+    tariff = get_tariff_for_period(session, service_id, period)
     if tariff is None:
         raise BillingError(f"Service {service_id} has no tariff for {period.isoformat()}")
     return tariff
@@ -46,16 +42,20 @@ def _previous_readings(
     apartment_id: int,
     period: date,
 ) -> dict[int, Decimal | None]:
-    previous_invoice = session.scalar(
-        select(Invoice)
-        .options(selectinload(Invoice.lines))
-        .where(Invoice.apartment_id == apartment_id, Invoice.period < period)
-        .order_by(Invoice.period.desc())
-        .limit(1)
-    )
-    if previous_invoice is None:
-        return {}
-    return {line.service_id: line.curr_reading for line in previous_invoice.lines}
+    rows = session.execute(
+        select(InvoiceLine.service_id, InvoiceLine.curr_reading)
+        .join(Invoice)
+        .where(
+            Invoice.apartment_id == apartment_id,
+            Invoice.period < period,
+            InvoiceLine.curr_reading.is_not(None),
+        )
+        .order_by(Invoice.period.desc(), InvoiceLine.id.desc())
+    ).all()
+    previous: dict[int, Decimal | None] = {}
+    for service_id, current_reading in rows:
+        previous.setdefault(service_id, current_reading)
+    return previous
 
 
 def create_draft(
@@ -90,6 +90,7 @@ def create_draft(
             InvoiceLine(
                 service=service,
                 service_name=service.name,
+                service_kind=service.kind,
                 prev_reading=previous.get(service.id) if is_metered else None,
                 curr_reading=None,
                 consumed=None,
@@ -105,7 +106,7 @@ def create_draft(
 def recalculate(invoice: Invoice) -> None:
     utilities = Decimal("0.00")
     for line in invoice.lines:
-        if line.service.kind == ServiceKind.METERED.value:
+        if line.service_kind == ServiceKind.METERED.value:
             if line.prev_reading is not None and line.curr_reading is not None:
                 line.consumed = line.curr_reading - line.prev_reading
                 line.amount = money(line.consumed * line.tariff_value)
@@ -126,6 +127,7 @@ def update_draft(
 ) -> Invoice:
     if invoice.status != "draft":
         raise BillingError("Only draft invoices can be edited")
+    _reject_if_later_invoice_exists(session, invoice)
     lines_by_id = {line.id: line for line in invoice.lines}
     unknown_ids = readings.keys() - lines_by_id.keys()
     if unknown_ids:
@@ -135,7 +137,7 @@ def update_draft(
         invoice.exchange_rate = exchange_rate
     for line_id, current in readings.items():
         line = lines_by_id[line_id]
-        if line.service.kind != ServiceKind.METERED.value:
+        if line.service_kind != ServiceKind.METERED.value:
             raise BillingError(f"Invoice line {line_id} is not metered")
         line.curr_reading = current
     recalculate(invoice)
@@ -177,6 +179,7 @@ def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoi
         invoice.status = InvoiceStatus.ISSUED.value
         invoice.issued_at = now
     elif action == "revert-to-draft" and invoice.status == InvoiceStatus.ISSUED.value:
+        _reject_if_later_invoice_exists(session, invoice)
         invoice.status = InvoiceStatus.DRAFT.value
         invoice.issued_at = None
     elif action == "mark-paid" and invoice.status == InvoiceStatus.ISSUED.value:
@@ -189,6 +192,19 @@ def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoi
         raise BillingError(f"Cannot {action} invoice with status {invoice.status}")
     session.commit()
     return get_invoice(session, invoice.id)
+
+
+def _reject_if_later_invoice_exists(session: Session, invoice: Invoice) -> None:
+    later_id = session.scalar(
+        select(Invoice.id)
+        .where(
+            Invoice.apartment_id == invoice.apartment_id,
+            Invoice.period > invoice.period,
+        )
+        .limit(1)
+    )
+    if later_id is not None:
+        raise BillingError("An older invoice cannot be changed after a later invoice exists")
 
 
 def warnings_for(session: Session, invoice: Invoice) -> list[dict[str, object]]:

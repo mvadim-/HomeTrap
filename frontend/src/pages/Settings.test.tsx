@@ -73,4 +73,45 @@ describe("Settings", () => {
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(importHistory).toHaveBeenCalledWith(7, file, true);
   });
+
+  it("saves settings, reports partial delivery and performs an import", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const update = vi.spyOn(apiClient, "updateNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "testNotification").mockResolvedValue({ deliveries: 1, errors: ["Email failed"] });
+    const importHistory = vi.spyOn(apiClient, "importApartmentHistory").mockResolvedValue({
+      invoices_created: 1, invoices_skipped: 0, services_created: 0, tariffs_created: 0, warnings: [],
+    });
+    render(<Settings />);
+    await user.click(await screen.findByRole("button", { name: "Зберегти" }));
+    expect(update).toHaveBeenCalledWith(settings);
+    expect(await screen.findByRole("status")).toHaveTextContent("Налаштування збережено");
+    await user.click(screen.getByRole("button", { name: "Надіслати тестове повідомлення" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Email failed");
+    const file = new File(["xlsx"], "history.xlsx");
+    await user.upload(screen.getByLabelText("Файл XLSX"), file);
+    await user.click(screen.getByRole("button", { name: "Імпортувати" }));
+    expect(await screen.findByRole("heading", { name: "Результат імпорту" })).toBeInTheDocument();
+    expect(importHistory).toHaveBeenCalledWith(7, file, false);
+  });
+
+  it("shows rejected action errors", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "updateNotificationSettings").mockRejectedValue(new Error("save"));
+    vi.spyOn(apiClient, "testNotification").mockRejectedValue(new Error("test"));
+    vi.spyOn(apiClient, "importApartmentHistory").mockRejectedValue(new Error("import"));
+    render(<Settings />);
+    await user.click(await screen.findByRole("button", { name: "Зберегти" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не вдалося зберегти");
+    await user.click(screen.getByRole("button", { name: "Надіслати тестове повідомлення" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не вдалося надіслати");
+    await user.upload(screen.getByLabelText("Файл XLSX"), new File(["xlsx"], "history.xlsx"));
+    await user.click(screen.getByRole("button", { name: "Попередній перегляд" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не вдалося перевірити файл");
+    await user.click(screen.getByRole("button", { name: "Імпортувати" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Не вдалося імпортувати файл");
+  });
 });

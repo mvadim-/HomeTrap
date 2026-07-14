@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.auth import LoginRateLimiter, ensure_admin
-from app.config import Settings, get_settings
+from app.config import Settings, get_settings, validate_production_settings
 from app.db import create_database_engine, create_session_factory, run_migrations
 from app.routers.apartments import router as apartments_router
 from app.routers.auth import router as auth_router
@@ -46,16 +46,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
+        validate_production_settings(resolved_settings)
         run_migrations(resolved_settings)
         engine = create_database_engine(resolved_settings.database_path)
         application.state.session_factory = create_session_factory(engine)
         ensure_admin(application.state.session_factory, resolved_settings)
-        scheduler = start_scheduler(application.state.session_factory)
+        scheduler = (
+            start_scheduler(application.state.session_factory)
+            if resolved_settings.scheduler_enabled
+            else None
+        )
         application.state.scheduler = scheduler
         try:
             yield
         finally:
-            scheduler.shutdown(wait=False)
+            if scheduler is not None:
+                scheduler.shutdown(wait=False)
             engine.dispose()
 
     application = FastAPI(

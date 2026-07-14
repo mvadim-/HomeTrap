@@ -46,9 +46,9 @@
 
 - **unit-тести (backend)**: pytest + pytest-asyncio (`asyncio_mode = "auto"`) + httpx
   AsyncClient, тимчасова SQLite на кожен тест;
-  запуск: `docker compose run --rm backend pytest`
+  запуск: `docker compose -f docker/docker-compose.dev.yml run --rm backend pytest`
 - **unit-тести (frontend)**: Vitest + React Testing Library для компонентів із логікою
-  (живий перерахунок рахунку); запуск: `docker compose run --rm frontend npm test`
+  (живий перерахунок рахунку); запуск: `docker compose -f docker/docker-compose.dev.yml run --rm frontend npm test`
 - **e2e**: у MVP відсутні (нема наявної інфраструктури; додамо Playwright окремим циклом
   після MVP, якщо буде потреба)
 
@@ -333,14 +333,14 @@ docs/
 - [x] SPA-fallback: невідомі не-`/api` шляхи → `index.html` (перевірити прямий перехід на /invoices у проді)
 - [x] прод compose: один сервіс, **один uvicorn-воркер** (вимога APScheduler), volume для SQLite, порт, env із `.env`, healthcheck, restart unless-stopped
 - [x] `docs/deploy.md`: перший запуск на Synology (Container Manager), оновлення, бекап БД (копія файлу з volume), reverse proxy + Let's Encrypt для hometrap.pp.ua, примітка про один воркер
-- [x] перевірити повну збірку: `docker compose build` і смоук локально (логін, створення квартири, рахунок, refresh на /invoices)
+- [x] перевірити повну збірку: `docker compose -f docker/docker-compose.dev.yml build` і смоук локально (логін, створення квартири, рахунок, refresh на /invoices)
 - [x] прогнати всі тести в Docker — мають пройти перед таском 17
 
 ### Task 17: Verify acceptance criteria
 
 - [x] пройти повний сценарій: логін → квартира → послуги/тарифи → імпорт XLSX → чернетка з перенесеними показниками → виставлення → оплата → статистика → нагадування (test-notification)
 - [x] перевірити крайні випадки: перший рахунок без історії, зміна тарифу посеред періоду історії, недоступний НБУ
-- [x] прогнати повний тест-сьют: `docker compose run --rm backend pytest && docker compose run --rm frontend npm test`
+- [x] прогнати повний тест-сьют: `docker compose -f docker/docker-compose.dev.yml run --rm backend pytest && docker compose -f docker/docker-compose.dev.yml run --rm frontend npm test`
 - [x] звірити реалізоване з Overview і макетом
 
 ### Task 18: [Final] Update documentation

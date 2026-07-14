@@ -1,9 +1,10 @@
 import bcrypt
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.auth import LOGIN_ATTEMPT_LIMIT, SESSION_COOKIE_NAME
-from app.config import Settings
+from app.auth import LOGIN_ATTEMPT_LIMIT, SESSION_COOKIE_NAME, _decode_session
+from app.config import Settings, validate_production_settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
 from app.models import User
@@ -14,6 +15,7 @@ async def _create_client(tmp_path):
         database_path=tmp_path / "auth.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="correct-password",
     )
@@ -113,3 +115,19 @@ async def test_login_is_rate_limited_after_five_failures(tmp_path) -> None:
     finally:
         await client.aclose()
         await lifespan.__aexit__(None, None, None)
+
+
+def test_production_rejects_default_or_placeholder_session_secret() -> None:
+    with pytest.raises(RuntimeError, match="HOMETRAP_SECRET_KEY"):
+        validate_production_settings(Settings(debug=False))
+    with pytest.raises(RuntimeError, match="HOMETRAP_SECRET_KEY"):
+        validate_production_settings(
+            Settings(debug=False, secret_key="change-me-to-a-long-random-value")
+        )
+    validate_production_settings(
+        Settings(debug=False, secret_key="a-unique-production-secret-with-32-characters")
+    )
+
+
+def test_malformed_base64_session_is_invalid() -> None:
+    assert _decode_session("%%%%.signature", "test-secret") is None

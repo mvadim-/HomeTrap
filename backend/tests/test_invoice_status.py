@@ -17,6 +17,7 @@ async def _client(tmp_path, monkeypatch):
         database_path=tmp_path / "invoice-status.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )

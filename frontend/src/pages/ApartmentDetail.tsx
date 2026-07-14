@@ -24,6 +24,8 @@ const emptyService: ServicePayload = {
   sort_order: 0,
 };
 
+const today = new Date().toISOString().slice(0, 10);
+
 export function ApartmentDetail() {
   const { apartmentId } = useParams();
   const id = Number(apartmentId);
@@ -141,6 +143,7 @@ export function ApartmentDetail() {
               <label>Одиниця<input value={serviceForm.unit ?? ""} onChange={(event) => setServiceForm({ ...serviceForm, unit: event.target.value })} /></label>
               <label>Особовий рахунок<input value={serviceForm.provider_account ?? ""} onChange={(event) => setServiceForm({ ...serviceForm, provider_account: event.target.value })} /></label>
               <label>Порядок<input type="number" value={serviceForm.sort_order} onChange={(event) => setServiceForm({ ...serviceForm, sort_order: Number(event.target.value) })} /></label>
+              {editingServiceId && <label className="checkbox-label"><input type="checkbox" checked={serviceForm.is_active ?? true} onChange={(event) => setServiceForm({ ...serviceForm, is_active: event.target.checked })} /> Активна послуга</label>}
               <div className="form-actions"><button className="button" type="submit">{editingServiceId ? "Зберегти" : "Додати"}</button><button className="secondary-button" type="button" onClick={() => setShowServiceForm(false)}>Скасувати</button></div>
             </form>
           )}
@@ -151,16 +154,23 @@ export function ApartmentDetail() {
               <tbody>
                 {services.map((service) => {
                   const serviceTariffs = tariffs[service.id] ?? [];
-                  const currentTariff = serviceTariffs.at(-1);
+                  const effectiveTariffs = serviceTariffs.filter((tariff) => tariff.valid_from <= today);
+                  const currentTariff = effectiveTariffs.at(-1);
                   return (
                     <tr key={service.id}>
-                      <td><strong>{service.name}</strong><div className="muted-text">{service.kind === "metered" ? `Лічильник${service.unit ? ` · ${service.unit}` : ""}` : "Фіксована"}</div></td>
+                      <td><strong>{service.name}</strong><div className="muted-text">{service.kind === "metered" ? `Лічильник${service.unit ? ` · ${service.unit}` : ""}` : "Фіксована"} · {service.is_active ? "активна" : "неактивна"}</div></td>
                       <td>{service.provider_account || "—"}</td>
                       <td>{currentTariff ? `${currentTariff.value} ₴` : "—"}</td>
                       <td>{currentTariff?.valid_from ?? "—"}</td>
                       <td>
                         <button className="table-action" type="button" onClick={() => beginServiceEdit(service)}>Редагувати</button><br />
                         <button className="table-action" type="button" onClick={() => setTariffServiceId(tariffServiceId === service.id ? null : service.id)}>Новий тариф</button>
+                        {serviceTariffs.length > 0 && (
+                          <details className="tariff-history">
+                            <summary>Історія ({serviceTariffs.length})</summary>
+                            <ul>{[...serviceTariffs].reverse().map((tariff) => <li key={tariff.id}>{tariff.valid_from}: {tariff.value} ₴{tariff.valid_from > today ? " (заплановано)" : ""}</li>)}</ul>
+                          </details>
+                        )}
                         {tariffServiceId === service.id && (
                           <form className="tariff-form" onSubmit={(event) => submitTariff(event, service.id)}>
                             <label>Сума<input aria-label={`Тариф ${service.name}`} required min="0.00001" step="0.00001" type="number" value={tariffValue} onChange={(event) => setTariffValue(event.target.value)} /></label>

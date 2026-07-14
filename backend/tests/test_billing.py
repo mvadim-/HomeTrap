@@ -18,6 +18,7 @@ async def _client(tmp_path, monkeypatch):
         database_path=tmp_path / "billing.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )
@@ -99,6 +100,7 @@ def _seed_billing_data(application, *, with_previous: bool = True) -> tuple[int,
                 InvoiceLine(
                     service=gas,
                     service_name="Газ",
+                    service_kind="metered",
                     prev_reading=Decimal("90.000"),
                     curr_reading=Decimal("100.000"),
                     consumed=Decimal("10.000"),
@@ -230,6 +232,7 @@ async def test_decreased_and_anomalous_readings_return_soft_warnings(
                     InvoiceLine(
                         service=gas,
                         service_name="Газ",
+                        service_kind="metered",
                         prev_reading=Decimal(current - 10),
                         curr_reading=Decimal(current),
                         consumed=Decimal("10"),
@@ -268,6 +271,88 @@ async def test_decreased_and_anomalous_readings_return_soft_warnings(
         assert [warning["code"] for warning in anomalous["warnings"]] == [
             "consumption_anomaly"
         ]
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_reading_snapshot_survives_omitted_month_and_later_invoice_guard(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    application, lifespan, client = await _client(tmp_path, monkeypatch)
+    try:
+        apartment_id, gas_id = _seed_billing_data(application)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            apartment = session.get(Apartment, apartment_id)
+            fixed = session.scalar(
+                select(Service).where(
+                    Service.apartment_id == apartment_id,
+                    Service.kind == "fixed",
+                )
+            )
+            july = Invoice(
+                apartment=apartment,
+                period=date(2026, 7, 1),
+                exchange_rate=Decimal("44"),
+                rent_amount_usd=Decimal("325"),
+                rent_amount_uah=Decimal("14300"),
+                utilities_total=Decimal("2035.46"),
+                grand_total=Decimal("16335.46"),
+            )
+            july.lines.append(
+                InvoiceLine(
+                    service=fixed,
+                    service_name=fixed.name,
+                    service_kind="fixed",
+                    prev_reading=None,
+                    curr_reading=None,
+                    consumed=None,
+                    tariff_value=Decimal("2035.46"),
+                    amount=Decimal("2035.46"),
+                )
+            )
+            session.add(july)
+            session.commit()
+        engine.dispose()
+
+        august = (
+            await client.post(
+                f"/api/apartments/{apartment_id}/invoices",
+                json={"period": "2026-08-01"},
+            )
+        ).json()
+        gas_line = next(line for line in august["lines"] if line["service_id"] == gas_id)
+        assert gas_line["prev_reading"] == "100.000"
+        assert gas_line["service_kind"] == "metered"
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            session.get(Service, gas_id).kind = "fixed"
+            session.commit()
+        engine.dispose()
+        updated = await client.put(
+            f"/api/invoices/{august['id']}",
+            json={"lines": [{"id": gas_line["id"], "curr_reading": "110"}]},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["lines"][0]["service_kind"] == "metered"
+
+        september = await client.post(
+            f"/api/apartments/{apartment_id}/invoices",
+            json={"period": "2026-09-01"},
+        )
+        assert september.status_code == 201
+        assert (
+            await client.put(
+                f"/api/invoices/{august['id']}",
+                json={"lines": [{"id": gas_line["id"], "curr_reading": "111"}]},
+            )
+        ).status_code == 409
+        assert (await client.post(f"/api/invoices/{august['id']}/issue")).status_code == 200
+        assert (
+            await client.post(f"/api/invoices/{august['id']}/revert-to-draft")
+        ).status_code == 409
     finally:
         await _close(lifespan, client)
 

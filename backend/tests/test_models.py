@@ -63,6 +63,7 @@ def test_can_create_all_entities(db_session: Session) -> None:
         invoice=invoice,
         service=service,
         service_name="Газ",
+        service_kind="metered",
         prev_reading=Decimal("100.000"),
         curr_reading=Decimal("122.000"),
         consumed=Decimal("22.000"),
@@ -162,7 +163,13 @@ def test_get_tariff_for_period_returns_latest_effective_tariff(
 
 async def test_application_startup_applies_migrations(tmp_path) -> None:
     database_path = tmp_path / "runtime" / "hometrap.db"
-    application = create_app(Settings(database_path=database_path))
+    application = create_app(
+        Settings(
+            database_path=database_path,
+            secret_key="test-production-secret-that-is-at-least-32-chars",
+            scheduler_enabled=False,
+        )
+    )
 
     async with application.router.lifespan_context(application):
         pass
@@ -170,6 +177,13 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
     engine = create_database_engine(database_path)
     try:
         table_names = set(inspect(engine).get_table_names())
+        invoice_line_columns = {
+            column["name"]: column for column in inspect(engine).get_columns("invoice_lines")
+        }
+        invoice_line_checks = {
+            constraint["name"]
+            for constraint in inspect(engine).get_check_constraints("invoice_lines")
+        }
     finally:
         engine.dispose()
 
@@ -184,3 +198,5 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         "users",
         "settings",
     } <= table_names
+    assert invoice_line_columns["service_kind"]["nullable"] is False
+    assert "ck_invoice_lines_service_kind" in invoice_line_checks

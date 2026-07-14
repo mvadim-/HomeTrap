@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import (
     BaseModel,
@@ -39,7 +40,7 @@ class ApartmentBase(ApiSchema):
     name: str = Field(min_length=1, max_length=200)
     address: str = Field(min_length=1, max_length=500)
     rent_amount: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
-    rent_currency: str = Field(default="USD", min_length=3, max_length=3)
+    rent_currency: Literal["USD"] = "USD"
     notes: str | None = None
 
 
@@ -131,6 +132,7 @@ class InvoiceLineResponse(ApiSchema):
     id: int
     service_id: int
     service_name: str
+    service_kind: ServiceKind
     prev_reading: Decimal | None
     curr_reading: Decimal | None
     consumed: Decimal | None

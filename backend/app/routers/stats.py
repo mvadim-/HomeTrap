@@ -92,6 +92,7 @@ def income_stats(
     query = select(Invoice).where(
         Invoice.period >= _period_start(months),
         Invoice.period <= _month_start(date.today()),
+        Invoice.status.in_([InvoiceStatus.ISSUED.value, InvoiceStatus.PAID.value]),
     )
     if apartment_id is not None:
         query = query.where(Invoice.apartment_id == apartment_id)

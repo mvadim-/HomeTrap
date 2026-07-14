@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import ExchangeRate
@@ -117,7 +118,18 @@ def get_rate(
 
     stored = ExchangeRate(date=target_date, currency=currency, rate=rate)
     session.add(stored)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        stored = session.scalar(
+            select(ExchangeRate).where(
+                ExchangeRate.date == target_date,
+                ExchangeRate.currency == currency,
+            )
+        )
+        if stored is None:
+            raise
     return RateResult(
         requested_date=target_date,
         rate_date=target_date,

@@ -65,6 +65,7 @@ async def test_complete_landlord_acceptance_scenario(tmp_path, monkeypatch) -> N
         database_path=tmp_path / "acceptance.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )

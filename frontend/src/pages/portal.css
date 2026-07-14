@@ -106,6 +106,10 @@
   font-size: 1.05rem;
 }
 
+.apartment-card h2 a {
+  color: inherit;
+}
+
 .apartment-address {
   min-height: 2.6em;
   margin: 10px 0 18px;
@@ -376,6 +380,16 @@
   font-weight: 700;
 }
 
+.inline-form .checkbox-label {
+  display: flex;
+  align-items: center;
+  align-self: end;
+}
+
+.inline-form .checkbox-label input {
+  width: auto;
+}
+
 .inline-form input,
 .inline-form select {
   min-width: 0;
@@ -401,6 +415,17 @@
   display: grid;
   gap: 4px;
   font-size: 0.78rem;
+}
+
+.tariff-history {
+  margin-top: 8px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.tariff-history ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
 }
 
 .tariff-form input {

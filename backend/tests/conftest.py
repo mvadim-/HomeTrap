@@ -4,14 +4,15 @@ import pytest
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
-from app import models  # noqa: F401
-from app.db import Base, create_database_engine, create_session_factory
+from app.config import Settings
+from app.db import create_database_engine, create_session_factory, run_migrations
 
 
 @pytest.fixture
 def db_engine(tmp_path) -> Iterator[Engine]:
-    engine = create_database_engine(tmp_path / "test.db")
-    Base.metadata.create_all(engine)
+    database_path = tmp_path / "test.db"
+    run_migrations(Settings(database_path=database_path, debug=True))
+    engine = create_database_engine(database_path)
     yield engine
     engine.dispose()
 

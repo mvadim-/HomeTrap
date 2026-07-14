@@ -151,8 +151,8 @@ def run_daily_notifications(
     history = dict(history_setting.value) if history_setting is not None else {}
 
     if today.day == settings["readings_day"]:
-        key = f"readings:{today.isoformat()}"
-        if key not in history:
+        key = "readings"
+        if history.get(key) != today.isoformat():
             apartments = session.scalars(
                 select(Apartment).where(Apartment.is_active.is_(True)).order_by(Apartment.name)
             ).all()
@@ -183,8 +183,8 @@ def run_daily_notifications(
         repeat_every = settings["repeat_every_days"]
         if age < overdue_after or (age - overdue_after) % repeat_every != 0:
             continue
-        key = f"overdue:{invoice.id}:{today.isoformat()}"
-        if key in history:
+        key = f"overdue:{invoice.id}"
+        if history.get(key) == today.isoformat():
             continue
         deliveries_before = result.deliveries
         _merge_result(

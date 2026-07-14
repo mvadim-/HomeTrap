@@ -170,7 +170,19 @@ def _import_services(
         service = known.get(_normalized(name))
         if service is None:
             kind_value = _normalized(_value(row, mapping, "kind"))
-            kind = "metered" if kind_value in {"metered", "лічильник", "за лічильником"} else "fixed"
+            kind_aliases = {
+                "metered": "metered",
+                "лічильник": "metered",
+                "за лічильником": "metered",
+                "fixed": "fixed",
+                "фіксована": "fixed",
+                "фіксований": "fixed",
+            }
+            kind = kind_aliases.get(kind_value)
+            if kind is None:
+                raise ImportFormatError(
+                    f"{sheet.title}: невідомий тип послуги «{_value(row, mapping, 'kind')}» для «{name}»"
+                )
             service = Service(
                 apartment=apartment,
                 name=name,
@@ -234,20 +246,17 @@ def _import_month(
     report: ImportReport,
 ) -> None:
     existing = session.scalar(
-        select(Invoice.id).where(
+        select(Invoice).where(
             Invoice.apartment_id == apartment.id,
             Invoice.period == period,
         ),
     )
-    if existing is not None:
-        report.invoices_skipped += 1
-        return
 
     header_index, mapping, rows = _find_table(sheet, {"service", "amount"})
     metadata = _metadata(sheet)
     rate = _decimal_or_warning(
         metadata.get("rate"), sheet=sheet.title, field_name="курс", report=report
-    ) or ZERO
+    )
     rent_usd = _decimal_or_warning(
         metadata.get("rent_usd"), sheet=sheet.title, field_name="оренда USD", report=report
     )
@@ -257,20 +266,34 @@ def _import_month(
         metadata.get("rent_uah"), sheet=sheet.title, field_name="оренда грн", report=report
     )
     if rent_uah is None:
+        if rate is None or rate <= 0:
+            raise ImportFormatError(
+                f"{sheet.title}: потрібен додатний курс, якщо сума оренди у гривнях відсутня"
+            )
         rent_uah = (rent_usd * rate).quantize(MONEY, rounding=ROUND_HALF_UP)
+    resolved_rate = rate if rate is not None and rate > 0 else ZERO
 
-    invoice = Invoice(
-        apartment=apartment,
-        period=period,
-        status=InvoiceStatus.PAID.value,
-        issued_at=datetime.now(UTC),
-        paid_at=datetime.now(UTC),
-        exchange_rate=rate,
-        rent_amount_usd=rent_usd.quantize(MONEY, rounding=ROUND_HALF_UP),
-        rent_amount_uah=rent_uah.quantize(MONEY, rounding=ROUND_HALF_UP),
-        utilities_total=ZERO,
-        grand_total=ZERO,
-    )
+    if existing is None:
+        invoice = Invoice(
+            apartment=apartment,
+            period=period,
+            status=InvoiceStatus.PAID.value,
+            issued_at=datetime.now(UTC),
+            paid_at=datetime.now(UTC),
+            exchange_rate=resolved_rate,
+            rent_amount_usd=rent_usd.quantize(MONEY, rounding=ROUND_HALF_UP),
+            rent_amount_uah=rent_uah.quantize(MONEY, rounding=ROUND_HALF_UP),
+            utilities_total=ZERO,
+            grand_total=ZERO,
+        )
+        report.invoices_created += 1
+    else:
+        invoice = existing
+        invoice.lines.clear()
+        invoice.exchange_rate = resolved_rate
+        invoice.rent_amount_usd = rent_usd.quantize(MONEY, rounding=ROUND_HALF_UP)
+        invoice.rent_amount_uah = rent_uah.quantize(MONEY, rounding=ROUND_HALF_UP)
+        report.invoices_skipped += 1
     utilities_total = ZERO
     for row in rows[header_index + 1 :]:
         name_value = _value(row, mapping, "service")
@@ -279,8 +302,7 @@ def _import_month(
             continue
         service = services.get(_normalized(name))
         if service is None:
-            report.warnings.append(f"{sheet.title}: невідома послуга «{name}», рядок пропущено")
-            continue
+            raise ImportFormatError(f"{sheet.title}: невідома послуга «{name}»")
         previous = _decimal_or_warning(
             _value(row, mapping, "previous"),
             sheet=sheet.title,
@@ -314,6 +336,7 @@ def _import_month(
             InvoiceLine(
                 service=service,
                 service_name=service.name,
+                service_kind=service.kind,
                 prev_reading=previous,
                 curr_reading=current,
                 consumed=consumed,
@@ -327,7 +350,6 @@ def _import_month(
     )
     session.add(invoice)
     session.flush()
-    report.invoices_created += 1
 
 
 def _warn_month_gaps(periods: list[date], report: ImportReport) -> None:

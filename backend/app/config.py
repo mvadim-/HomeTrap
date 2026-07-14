@@ -18,6 +18,7 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("ADMIN_PASSWORD", "HOMETRAP_ADMIN_PASSWORD"),
     )
+    scheduler_enabled: bool = True
 
     model_config = SettingsConfigDict(
         env_prefix="HOMETRAP_",
@@ -30,3 +31,23 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def validate_production_settings(settings: Settings) -> None:
+    if settings.debug:
+        return
+    weak_secrets = {
+        "",
+        "local-development-secret",
+        "change-me",
+        "change-me-to-a-long-random-secret",
+    }
+    normalized_secret = settings.secret_key.casefold()
+    if (
+        len(settings.secret_key) < 32
+        or normalized_secret in weak_secrets
+        or "change-me" in normalized_secret
+    ):
+        raise RuntimeError(
+            "HOMETRAP_SECRET_KEY must be a unique random value of at least 32 characters in production"
+        )

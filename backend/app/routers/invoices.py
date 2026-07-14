@@ -70,7 +70,8 @@ def update_invoice(
             {line.id: line.curr_reading for line in payload.lines},
         )
     except BillingError as error:
-        raise HTTPException(status_code=422, detail=str(error)) from error
+        error_status = 409 if "later invoice" in str(error) else 422
+        raise HTTPException(status_code=error_status, detail=str(error)) from error
     return invoice_response(session, invoice)
 
 

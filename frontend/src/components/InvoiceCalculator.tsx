@@ -5,9 +5,9 @@ import "../pages/portal.css";
 
 interface InvoiceCalculatorProps {
   invoice: Invoice;
-  meteredServiceIds: Set<number>;
   onSave: (payload: InvoiceUpdatePayload) => Promise<void>;
   saving?: boolean;
+  onDraftChange?: (payload: InvoiceUpdatePayload, dirty: boolean) => void;
 }
 
 function numberValue(value: string | null): number | null {
@@ -16,19 +16,55 @@ function numberValue(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function money(value: number): string {
-  return value.toLocaleString("uk-UA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function decimalParts(value: string): { sign: bigint; digits: bigint; scale: number } {
+  const normalized = value.trim().replace(",", ".");
+  const match = normalized.match(/^([+-]?)(\d*)(?:\.(\d*))?$/);
+  if (!match || (!match[2] && !match[3])) return { sign: 1n, digits: 0n, scale: 0 };
+  const fraction = match[3] ?? "";
+  return {
+    sign: match[1] === "-" ? -1n : 1n,
+    digits: BigInt(`${match[2] || "0"}${fraction}`),
+    scale: fraction.length,
+  };
 }
 
-function roundMoney(value: number): number {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+function productCents(first: string, second: string): bigint {
+  const left = decimalParts(first);
+  const right = decimalParts(second);
+  const sign = left.sign * right.sign;
+  const product = left.digits * right.digits;
+  const scale = left.scale + right.scale;
+  if (scale <= 2) return sign * product * (10n ** BigInt(2 - scale));
+  const divisor = 10n ** BigInt(scale - 2);
+  const rounded = product / divisor + (product % divisor * 2n >= divisor ? 1n : 0n);
+  return sign * rounded;
+}
+
+function amountCents(value: string): bigint {
+  return productCents(value, "1");
+}
+
+function subtractDecimals(first: string, second: string): string {
+  const left = decimalParts(first);
+  const right = decimalParts(second);
+  const scale = Math.max(left.scale, right.scale);
+  const leftValue = left.sign * left.digits * (10n ** BigInt(scale - left.scale));
+  const rightValue = right.sign * right.digits * (10n ** BigInt(scale - right.scale));
+  const result = leftValue - rightValue;
+  const sign = result < 0n ? "-" : "";
+  const digits = (result < 0n ? -result : result).toString().padStart(scale + 1, "0");
+  return scale ? `${sign}${digits.slice(0, -scale)}.${digits.slice(-scale)}` : `${sign}${digits}`;
+}
+
+function money(value: bigint): string {
+  return (Number(value) / 100).toLocaleString("uk-UA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function InvoiceCalculator({
   invoice,
-  meteredServiceIds,
   onSave,
   saving = false,
+  onDraftChange,
 }: InvoiceCalculatorProps) {
   const [exchangeRate, setExchangeRate] = useState(invoice.exchange_rate);
   const [readings, setReadings] = useState<Record<number, string>>(
@@ -42,20 +78,37 @@ export function InvoiceCalculator({
 
   const calculated = useMemo(() => {
     const lines = invoice.lines.map((line) => {
-      if (!meteredServiceIds.has(line.service_id)) return { ...line, calculatedAmount: Number(line.amount), calculatedConsumed: null };
+      if (line.service_kind !== "metered") return { ...line, calculatedAmount: amountCents(line.amount), calculatedConsumed: null };
       const previous = numberValue(line.prev_reading);
       const current = numberValue(readings[line.id] ?? "");
       const consumed = previous === null || current === null ? null : current - previous;
+      const consumedExact = previous === null || current === null
+        ? null
+        : subtractDecimals(readings[line.id] ?? "", line.prev_reading ?? "0");
       return {
         ...line,
-        calculatedAmount: consumed === null ? 0 : roundMoney(consumed * Number(line.tariff_value)),
+        calculatedAmount: consumedExact === null ? 0n : productCents(consumedExact, line.tariff_value),
         calculatedConsumed: consumed,
       };
     });
-    const rent = roundMoney(Number(invoice.rent_amount_usd) * (numberValue(exchangeRate) ?? 0));
-    const utilities = roundMoney(lines.reduce((sum, line) => sum + line.calculatedAmount, 0));
-    return { lines, rent, utilities, total: roundMoney(rent + utilities) };
-  }, [exchangeRate, invoice, meteredServiceIds, readings]);
+    const rent = productCents(invoice.rent_amount_usd, exchangeRate);
+    const utilities = lines.reduce((sum, line) => sum + line.calculatedAmount, 0n);
+    return { lines, rent, utilities, total: rent + utilities };
+  }, [exchangeRate, invoice, readings]);
+
+  const payload: InvoiceUpdatePayload = useMemo(() => ({
+    exchange_rate: exchangeRate,
+    lines: invoice.lines
+      .filter((line) => line.service_kind === "metered")
+      .map((line) => ({ id: line.id, curr_reading: readings[line.id] || null })),
+  }), [exchangeRate, invoice.lines, readings]);
+  const dirty = exchangeRate !== invoice.exchange_rate || invoice.lines.some(
+    (line) => line.service_kind === "metered" && (readings[line.id] || null) !== line.curr_reading,
+  );
+
+  useEffect(() => {
+    onDraftChange?.(payload, dirty);
+  }, [dirty, onDraftChange, payload]);
 
   const localWarnings = calculated.lines.flatMap((line) => {
     if (line.calculatedConsumed === null || line.calculatedConsumed >= 0) return [];
@@ -77,12 +130,7 @@ export function InvoiceCalculator({
   });
 
   async function save() {
-    await onSave({
-      exchange_rate: exchangeRate,
-      lines: invoice.lines
-        .filter((line) => meteredServiceIds.has(line.service_id))
-        .map((line) => ({ id: line.id, curr_reading: readings[line.id] || null })),
-    });
+    await onSave(payload);
   }
 
   return (
@@ -108,7 +156,7 @@ export function InvoiceCalculator({
           <thead><tr><th>Послуга</th><th>Попередній</th><th>Поточний</th><th>Спожито</th><th>Тариф</th><th>Сума</th></tr></thead>
           <tbody>
             {calculated.lines.map((line) => {
-              const metered = meteredServiceIds.has(line.service_id);
+              const metered = line.service_kind === "metered";
               const consumed = line.calculatedConsumed;
               return (
                 <tr key={line.id}>

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -29,7 +28,6 @@ def create_database_engine(database_path: Path) -> Engine:
         database_url(database_path),
         connect_args={"check_same_thread": False},
     )
-
     @event.listens_for(engine, "connect")
     def enable_sqlite_foreign_keys(dbapi_connection: object, _: object) -> None:
         cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
@@ -65,11 +63,3 @@ def get_tariff_for_period(
         .order_by(Tariff.valid_from.desc())
         .limit(1)
     )
-
-
-def session_scope(engine: Engine) -> Iterator[Session]:
-    session = create_session_factory(engine)()
-    try:
-        yield session
-    finally:
-        session.close()

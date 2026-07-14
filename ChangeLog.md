@@ -1,5 +1,35 @@
 # ChangeLog
 
+## [2026-07-14 20:14] Виправлення за результатами комплексного рев'ю
+
+- `backend/app/config.py`, `backend/app/auth.py`, `backend/app/main.py` — production
+  відхиляє слабкий session secret, пошкоджені cookie не спричиняють 500, а scheduler
+  можна вимкнути в герметичних тестах.
+- `backend/app/models.py`, `backend/alembic/versions/20260714_02_invoice_line_kind.py`,
+  `backend/app/services/billing.py`, `backend/app/routers/invoices.py` — тип послуги
+  зберігається у snapshot рядка, попередній показник шукається по останньому наявному
+  рядку, а старі рахунки не можна змінити після появи новішого.
+- `backend/app/services/nbu.py`, `backend/app/services/importer.py`,
+  `backend/app/routers/stats.py`, `backend/app/services/notify.py`, `backend/app/db.py`,
+  `backend/app/schemas.py` — оброблено конкурентне кешування курсу, безпечний повторний
+  XLSX-імпорт і строгі типи/курс, виключено чернетки з доходу, обмежено історію
+  дедуплікації та звужено валюту MVP до USD.
+- `frontend/src/pages/Apartments.tsx`, `frontend/src/pages/ApartmentDetail.tsx`,
+  `frontend/src/api/client.ts`, `frontend/src/pages/portal.css` — додано створення,
+  редагування й архівацію квартир, деактивацію послуг та повну тарифну історію з
+  коректним визначенням чинного й майбутнього тарифу.
+- `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/pages/InvoiceEdit.tsx` —
+  живий розрахунок використовує точну десяткову арифметику й snapshot типу рядка;
+  актуальні показники та курс зберігаються перед виставленням рахунку.
+- `backend/tests/*`, `frontend/src/**/*.test.tsx` — тестова БД тепер створюється
+  Alembic-міграціями; розширено покриття billing/import/notification adapters,
+  API transport, login, protected routes, apartment CRUD, invoice transitions і settings.
+- `docker/docker-compose.dev.yml`, `README.md`, `docs/deploy.md`,
+  `docs/plans/20260714-rental-payment-portal.md` — dev-вхід працює одразу, команди
+  Compose виправлено, описано HTTPS-only login, ротацію bootstrap-пароля та захист
+  бекапів із секретами. Production-деплой: перебудувати образ за `docs/deploy.md`;
+  автоматичне розгортання в межах цього циклу не виконувалося.
+
 ## [2026-07-14 19:50] Фінальна документація порталу
 
 - `README.md` — додано огляд HomeTrap, Docker-команди для розробки, тестів і

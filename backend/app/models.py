@@ -131,6 +131,12 @@ class Invoice(Base):
 
 class InvoiceLine(Base):
     __tablename__ = "invoice_lines"
+    __table_args__ = (
+        CheckConstraint(
+            "service_kind IN ('metered', 'fixed')",
+            name="ck_invoice_lines_service_kind",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     invoice_id: Mapped[int] = mapped_column(
@@ -142,6 +148,7 @@ class InvoiceLine(Base):
         index=True,
     )
     service_name: Mapped[str] = mapped_column(String(200))
+    service_kind: Mapped[str] = mapped_column(String(20))
     prev_reading: Mapped[Decimal | None] = mapped_column(Numeric(14, 3))
     curr_reading: Mapped[Decimal | None] = mapped_column(Numeric(14, 3))
     consumed: Mapped[Decimal | None] = mapped_column(Numeric(14, 3))

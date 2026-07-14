@@ -19,15 +19,15 @@ const invoice: Invoice = {
   grand_total: "14796.05",
   warnings: [],
   lines: [
-    { id: 10, service_id: 5, service_name: "Газ", prev_reading: "100.000", curr_reading: "122.000", consumed: "22.000", tariff_value: "7.95689", amount: "175.05" },
-    { id: 11, service_id: 6, service_name: "Інтернет", prev_reading: null, curr_reading: null, consumed: null, tariff_value: "100.00", amount: "100.00" },
+    { id: 10, service_id: 5, service_name: "Газ", service_kind: "metered", prev_reading: "100.000", curr_reading: "122.000", consumed: "22.000", tariff_value: "7.95689", amount: "175.05" },
+    { id: 11, service_id: 6, service_name: "Інтернет", service_kind: "fixed", prev_reading: null, curr_reading: null, consumed: null, tariff_value: "100.00", amount: "100.00" },
   ],
 };
 
 describe("InvoiceCalculator", () => {
   it("recalculates totals when a reading and exchange rate change", async () => {
     const user = userEvent.setup();
-    render(<InvoiceCalculator invoice={invoice} meteredServiceIds={new Set([5])} onSave={vi.fn()} />);
+    render(<InvoiceCalculator invoice={invoice} onSave={vi.fn()} />);
 
     expect(screen.getByText("14 796,05 ₴")).toBeInTheDocument();
 
@@ -45,12 +45,24 @@ describe("InvoiceCalculator", () => {
 
   it("shows a warning when the current reading is below the previous one", async () => {
     const user = userEvent.setup();
-    render(<InvoiceCalculator invoice={invoice} meteredServiceIds={new Set([5])} onSave={vi.fn()} />);
+    render(<InvoiceCalculator invoice={invoice} onSave={vi.fn()} />);
 
     const reading = screen.getByLabelText("Поточний показник Газ");
     await user.clear(reading);
     await user.type(reading, "99");
 
     expect(screen.getByRole("alert")).toHaveTextContent("Газ: поточний показник менший за попередній.");
+  });
+
+  it("rounds decimal halves like backend ROUND_HALF_UP", async () => {
+    const user = userEvent.setup();
+    const preciseInvoice: Invoice = {
+      ...invoice,
+      rent_amount_usd: "0.00",
+      lines: [{ ...invoice.lines[0], prev_reading: "0.000", curr_reading: null, tariff_value: "1.00000", amount: "0.00" }],
+    };
+    render(<InvoiceCalculator invoice={preciseInvoice} onSave={vi.fn()} />);
+    await user.type(screen.getByLabelText("Поточний показник Газ"), "10.075");
+    expect(screen.getAllByText("10,08 ₴").length).toBeGreaterThan(0);
   });
 });

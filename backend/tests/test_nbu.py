@@ -113,6 +113,7 @@ async def test_current_rate_endpoint_requires_auth_and_serializes_decimal(
         database_path=tmp_path / "rates.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )
@@ -131,21 +132,24 @@ async def test_current_rate_endpoint_requires_auth_and_serializes_decimal(
         )
         assert login.status_code == 200
 
-        monkeypatch.setattr(
-            "app.routers.rates.get_rate",
-            lambda _session, target_date: RateResult(
+        requested_dates = []
+
+        def fake_get_rate(_session, target_date):
+            requested_dates.append(target_date)
+            return RateResult(
                 requested_date=target_date,
                 rate_date=date(2026, 7, 13),
                 currency="USD",
                 rate=Decimal("41.234500"),
                 is_fallback=True,
-            ),
-        )
+            )
+
+        monkeypatch.setattr("app.routers.rates.get_rate", fake_get_rate)
         response = await client.get("/api/rates/current")
 
         assert response.status_code == 200
         assert response.json() == {
-            "requested_date": response.json()["requested_date"],
+            "requested_date": requested_dates[0].isoformat(),
             "rate_date": "2026-07-13",
             "currency": "USD",
             "rate": "41.234500",

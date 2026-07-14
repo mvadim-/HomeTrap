@@ -7,6 +7,10 @@ services:
     environment:
       HOMETRAP_DATABASE_PATH: /data/hometrap.db
       HOMETRAP_DEBUG: "true"
+      HOMETRAP_SECRET_KEY: "local-development-secret"
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "admin"
+      HOMETRAP_SCHEDULER_ENABLED: "false"
     ports:
       - "8000:8000"
     volumes:

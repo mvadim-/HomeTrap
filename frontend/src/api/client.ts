@@ -38,6 +38,7 @@ export interface InvoiceLine {
   id: number;
   service_id: number;
   service_name: string;
+  service_kind: "metered" | "fixed";
   prev_reading: string | null;
   curr_reading: string | null;
   consumed: string | null;
@@ -70,6 +71,15 @@ export interface Apartment {
   notes: string | null;
   is_active: boolean;
   latest_invoice: InvoiceSummary | null;
+}
+
+export interface ApartmentPayload {
+  name: string;
+  address: string;
+  rent_amount: string;
+  rent_currency: "USD";
+  notes: string | null;
+  is_active?: boolean;
 }
 
 export interface DashboardAttentionItem {
@@ -198,6 +208,10 @@ export class ApiError extends Error {
   }
 }
 
+export const browserNavigation = {
+  toLogin: () => window.location.assign("/login"),
+};
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
@@ -211,7 +225,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (response.status === 401) {
     if (window.location.pathname !== "/login") {
-      window.location.assign("/login");
+      browserNavigation.toLogin();
     }
     throw new ApiError(401, "Потрібна авторизація");
   }
@@ -267,6 +281,24 @@ export function getApartments(): Promise<Apartment[]> {
 
 export function getApartment(id: number): Promise<Apartment> {
   return request<Apartment>(`/api/apartments/${id}`);
+}
+
+export function createApartment(payload: ApartmentPayload): Promise<Apartment> {
+  return request<Apartment>("/api/apartments", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateApartment(id: number, payload: ApartmentPayload): Promise<Apartment> {
+  return request<Apartment>(`/api/apartments/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function archiveApartment(id: number): Promise<void> {
+  return request<void>(`/api/apartments/${id}`, { method: "DELETE" });
 }
 
 export function getServices(apartmentId: number): Promise<Service[]> {

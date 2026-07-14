@@ -16,6 +16,7 @@ async def _create_client(tmp_path):
         database_path=tmp_path / "apartments.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )
@@ -220,6 +221,7 @@ async def test_service_with_invoice_lines_must_be_deactivated(tmp_path) -> None:
                     invoice_id=invoice.id,
                     service_id=service["id"],
                     service_name="Газ",
+                    service_kind="metered",
                     prev_reading=Decimal("100.000"),
                     curr_reading=Decimal("122.000"),
                     consumed=Decimal("22.000"),

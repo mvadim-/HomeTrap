@@ -14,7 +14,9 @@ docker compose -f docker/docker-compose.dev.yml up --build
 ```
 
 Frontend буде доступний на <http://localhost:5173>, backend health endpoint — на
-<http://localhost:8000/api/health>. Зупинка середовища:
+<http://localhost:8000/api/health>. Для локального dev-середовища створюється
+користувач `admin` із паролем `admin`; ці значення задані лише у dev Compose і не
+призначені для production. Зупинка середовища:
 
 ```sh
 docker compose -f docker/docker-compose.dev.yml down
@@ -26,6 +28,7 @@ docker compose -f docker/docker-compose.dev.yml down
 docker compose -f docker/docker-compose.dev.yml run --rm backend pytest
 docker compose -f docker/docker-compose.dev.yml run --rm backend ruff check .
 docker compose -f docker/docker-compose.dev.yml run --rm frontend npm test
+docker compose -f docker/docker-compose.dev.yml run --rm frontend npm run build
 ```
 
 ## Production

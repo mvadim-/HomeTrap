@@ -21,6 +21,7 @@ async def _client(tmp_path):
         database_path=tmp_path / "stats.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )
@@ -70,6 +71,7 @@ def _add_invoice(
         InvoiceLine(
             service=service,
             service_name=service.name,
+            service_kind="metered",
             prev_reading=Decimal("100.000"),
             curr_reading=Decimal("100.000") + Decimal(consumed),
             consumed=Decimal(consumed),
@@ -149,6 +151,7 @@ def _seed_stats(application) -> tuple[int, int, int]:
             InvoiceLine(
                 service=first_fixed,
                 service_name=first_fixed.name,
+                service_kind="fixed",
                 prev_reading=None,
                 curr_reading=None,
                 consumed=None,

@@ -6,7 +6,6 @@ import {
   Invoice,
   InvoiceUpdatePayload,
   getInvoice,
-  getServices,
   transitionInvoice,
   updateInvoice,
 } from "../api/client";
@@ -23,15 +22,18 @@ export function InvoiceEdit() {
   const { invoiceId } = useParams();
   const id = Number(invoiceId);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [meteredServiceIds, setMeteredServiceIds] = useState<Set<number>>(new Set());
+  const [draftPayload, setDraftPayload] = useState<InvoiceUpdatePayload | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  const handleDraftChange = useCallback((payload: InvoiceUpdatePayload, dirty: boolean) => {
+    setDraftPayload(payload);
+    setDraftDirty(dirty);
+  }, []);
+
   const load = useCallback(async () => {
-    const item = await getInvoice(id);
-    const services = await getServices(item.apartment_id);
-    setInvoice(item);
-    setMeteredServiceIds(new Set(services.filter((service) => service.kind === "metered").map((service) => service.id)));
+    setInvoice(await getInvoice(id));
   }, [id]);
 
   useEffect(() => {
@@ -58,6 +60,9 @@ export function InvoiceEdit() {
     setSaving(true);
     setError("");
     try {
+      if (action === "issue" && draftPayload) {
+        await updateInvoice(id, draftPayload);
+      }
       setInvoice(await transitionInvoice(id, action));
     } catch (requestError) {
       setError(requestError instanceof ApiError ? requestError.message : "Не вдалося змінити статус рахунку.");
@@ -74,13 +79,18 @@ export function InvoiceEdit() {
       <header className="page-header invoice-header">
         <div><Link className="muted-text" to="/invoices">← Рахунки</Link><h1>Рахунок за {new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${invoice.period}T00:00:00Z`))}</h1><p><span className={`status-badge ${invoice.status}`}>{statusLabels[invoice.status]}</span>{invoice.paid_at && <> · Оплачено {dateLabel(invoice.paid_at)}</>}</p></div>
         <div className="invoice-actions">
-          {invoice.status === "draft" && <button className="button" disabled={saving} type="button" onClick={() => changeStatus("issue")}>Виставити</button>}
+          {invoice.status === "draft" && <button className="button" disabled={saving || !draftPayload} type="button" onClick={() => changeStatus("issue")}>{draftDirty ? "Зберегти й виставити" : "Виставити"}</button>}
           {invoice.status === "issued" && <><button className="secondary-button" disabled={saving} type="button" onClick={() => changeStatus("revert-to-draft")}>Повернути в чернетку</button><button className="button" disabled={saving} type="button" onClick={() => changeStatus("mark-paid")}>Позначити оплаченим</button></>}
           {invoice.status === "paid" && <button className="secondary-button" disabled={saving} type="button" onClick={() => changeStatus("unmark-paid")}>Скасувати оплату</button>}
         </div>
       </header>
       {error && <p className="error-message">{error}</p>}
-      <InvoiceCalculator invoice={invoice} meteredServiceIds={meteredServiceIds} onSave={save} saving={saving} />
+      <InvoiceCalculator
+        invoice={invoice}
+        onSave={save}
+        saving={saving}
+        onDraftChange={handleDraftChange}
+      />
     </>
   );
 }

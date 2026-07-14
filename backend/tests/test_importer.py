@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
-from app.models import Apartment, Invoice, Service, Tariff
+from app.models import Apartment, Invoice, InvoiceLine, Service, Tariff
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_import.xlsx"
 
@@ -20,6 +20,7 @@ async def _client(tmp_path):
         database_path=tmp_path / "import.db",
         secret_key="test-session-secret",
         debug=True,
+        scheduler_enabled=False,
         admin_username="admin",
         admin_password="password",
     )
@@ -115,12 +116,22 @@ async def test_dry_run_previews_without_writing_and_import_is_idempotent(tmp_pat
         engine.dispose()
 
         imported = await _upload(client, apartment_id, content)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            first_line = session.scalar(select(InvoiceLine).order_by(InvoiceLine.id))
+            session.delete(first_line)
+            session.commit()
+        engine.dispose()
         repeated = await _upload(client, apartment_id, content)
         assert imported.json()["invoices_created"] == 2
         assert repeated.json()["invoices_created"] == 0
         assert repeated.json()["invoices_skipped"] == 2
         assert repeated.json()["services_created"] == 0
         assert repeated.json()["tariffs_created"] == 0
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            assert session.scalar(select(func.count(InvoiceLine.id))) == 4
+        engine.dispose()
     finally:
         await _close(lifespan, client)
 
@@ -159,5 +170,30 @@ async def test_import_requires_authentication(tmp_path) -> None:
         await client.post("/api/auth/logout")
         response = await _upload(client, apartment_id, FIXTURE.read_bytes())
         assert response.status_code == 401
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_import_rejects_unknown_service_kind_and_missing_required_rate(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        apartment_id = _apartment(application)
+        workbook = load_workbook(FIXTURE)
+        workbook["Загальна інформація"]["B4"] = "невідомий"
+        content = BytesIO()
+        workbook.save(content)
+        response = await _upload(client, apartment_id, content.getvalue())
+        assert response.status_code == 422
+        assert "невідомий тип послуги" in response.json()["detail"]
+
+        workbook = load_workbook(FIXTURE)
+        month = workbook["Кві 2024"]
+        month["B3"] = None
+        month["B5"] = None
+        content = BytesIO()
+        workbook.save(content)
+        response = await _upload(client, apartment_id, content.getvalue())
+        assert response.status_code == 422
+        assert "потрібен додатний курс" in response.json()["detail"]
     finally:
         await _close(lifespan, client)
