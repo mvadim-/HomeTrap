@@ -1,5 +1,21 @@
 # ChangeLog
 
+## [2026-07-14 19:04] Нагадування та налаштування каналів
+
+- `backend/app/services/notify.py` — додано окремо керовані Telegram Bot API та SMTP
+  відправники, правила нагадувань про показники й прострочені рахунки та захист від
+  повторної відправки в той самий день.
+- `backend/app/routers/settings.py`, `backend/app/schemas.py`, `backend/app/main.py` —
+  додано захищені `GET/PUT /api/settings`, тестове сповіщення й валідацію конфігурації
+  каналів зі збереженням у `Setting`.
+- `backend/app/services/scheduler.py` — додано щоденний запуск нагадувань о 08:00 у
+  таймзоні `Europe/Kyiv`.
+- `backend/tests/test_notify.py`, `backend/tests/test_nbu.py` — додано тести правил,
+  повторів, вимкнених каналів, API налаштувань і scheduler; у Docker пройшли 41 тест
+  та `ruff check`.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 10 позначено виконаним після
+  успішної повної перевірки backend у Docker.
+
 ## [2026-07-14 19:00] Імпорт історії з XLSX
 
 - `backend/app/services/importer.py`, `backend/app/routers/import_.py`, `backend/app/main.py`,

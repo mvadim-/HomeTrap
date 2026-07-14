@@ -1,0 +1,216 @@
+from __future__ import annotations
+
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+
+from httpx import ASGITransport, AsyncClient
+
+from app.config import Settings
+from app.db import create_database_engine, create_session_factory
+from app.main import create_app
+from app.models import Apartment, Invoice, InvoiceStatus, Setting
+from app.services.notify import (
+    NOTIFICATION_HISTORY_KEY,
+    NOTIFICATION_SETTINGS_KEY,
+    run_daily_notifications,
+    save_notification_settings,
+)
+
+
+class RecordingSender:
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, str]] = []
+
+    def send(self, subject: str, message: str) -> None:
+        self.messages.append((subject, message))
+
+
+def _settings(**overrides) -> dict:
+    value = {
+        "telegram": {"enabled": False, "token": "", "chat_id": ""},
+        "email": {
+            "enabled": False,
+            "smtp_host": "",
+            "smtp_port": 587,
+            "smtp_username": "",
+            "smtp_password": "",
+            "from_address": "",
+            "to_address": "",
+            "use_tls": True,
+        },
+        "readings_day": 20,
+        "overdue_after_days": 3,
+        "repeat_every_days": 3,
+    }
+    value.update(overrides)
+    return value
+
+
+def _invoice(apartment: Apartment, *, issued_at: datetime) -> Invoice:
+    return Invoice(
+        apartment=apartment,
+        period=date(2026, 7, 1),
+        status=InvoiceStatus.ISSUED.value,
+        issued_at=issued_at,
+        exchange_rate=Decimal("44.680000"),
+        rent_amount_usd=Decimal("325.00"),
+        rent_amount_uah=Decimal("14521.00"),
+        utilities_total=Decimal("500.00"),
+        grand_total=Decimal("15021.00"),
+    )
+
+
+def test_daily_rules_repeat_and_deduplicate_same_day(db_session) -> None:
+    today = date(2026, 7, 20)
+    active = Apartment(
+        name="Лісова",
+        address="Київ",
+        rent_amount=Decimal("325.00"),
+        rent_currency="USD",
+    )
+    inactive = Apartment(
+        name="Архівна",
+        address="Київ",
+        rent_amount=Decimal("300.00"),
+        rent_currency="USD",
+        is_active=False,
+    )
+    active.invoices.append(
+        _invoice(
+            active,
+            issued_at=datetime(2026, 7, 17, 10, tzinfo=UTC),
+        )
+    )
+    db_session.add_all([active, inactive])
+    save_notification_settings(db_session, _settings())
+    sender = RecordingSender()
+
+    first = run_daily_notifications(db_session, today, [sender])
+    second = run_daily_notifications(db_session, today, [sender])
+    repeated = run_daily_notifications(db_session, today + timedelta(days=3), [sender])
+
+    assert first.notifications == 2
+    assert first.deliveries == 2
+    assert second.notifications == 0
+    assert repeated.notifications == 1
+    assert len(sender.messages) == 3
+    assert "Лісова" in sender.messages[0][1]
+    assert "Архівна" not in sender.messages[0][1]
+    assert sender.messages[1][0] == "Неоплачений рахунок"
+    history = db_session.get(Setting, NOTIFICATION_HISTORY_KEY)
+    assert history is not None
+    assert len(history.value) == 3
+
+
+def test_disabled_channels_do_not_send_or_consume_daily_reminder(db_session) -> None:
+    today = date(2026, 7, 20)
+    db_session.add(
+        Apartment(
+            name="Лісова",
+            address="Київ",
+            rent_amount=Decimal("325.00"),
+            rent_currency="USD",
+        )
+    )
+    save_notification_settings(db_session, _settings())
+
+    result = run_daily_notifications(db_session, today)
+
+    assert result.notifications == 0
+    assert result.deliveries == 0
+    assert db_session.get(Setting, NOTIFICATION_HISTORY_KEY) is None
+
+
+async def test_settings_api_persists_and_tests_enabled_sender(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    settings = Settings(
+        database_path=tmp_path / "notify.db",
+        secret_key="test-session-secret",
+        debug=True,
+        admin_username="admin",
+        admin_password="password",
+    )
+    application = create_app(settings)
+    lifespan = application.router.lifespan_context(application)
+    await lifespan.__aenter__()
+    client = AsyncClient(
+        transport=ASGITransport(app=application),
+        base_url="http://test",
+    )
+    sender = RecordingSender()
+    try:
+        assert (await client.get("/api/settings")).status_code == 401
+        login = await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        assert login.status_code == 200
+        payload = _settings(
+            telegram={"enabled": True, "token": "test-token", "chat_id": "42"},
+            readings_day=18,
+        )
+
+        updated = await client.put("/api/settings", json=payload)
+        loaded = await client.get("/api/settings")
+        assert updated.status_code == 200
+        assert loaded.json() == payload
+
+        monkeypatch.setattr(
+            "app.routers.settings.build_senders",
+            lambda _settings: [sender],
+        )
+        test_response = await client.post("/api/settings/test-notification")
+        assert test_response.status_code == 200
+        assert test_response.json() == {"deliveries": 1, "errors": []}
+        assert sender.messages == [
+            (
+                "Тестове сповіщення HomeTrap",
+                "Канали сповіщень налаштовано правильно.",
+            )
+        ]
+
+        engine = create_database_engine(settings.database_path)
+        with create_session_factory(engine)() as session:
+            stored = session.get(Setting, NOTIFICATION_SETTINGS_KEY)
+            assert stored is not None
+            assert stored.value["readings_day"] == 18
+        engine.dispose()
+    finally:
+        await client.aclose()
+        await lifespan.__aexit__(None, None, None)
+
+
+async def test_settings_api_rejects_incomplete_enabled_channel(
+    tmp_path,
+) -> None:
+    settings = Settings(
+        database_path=tmp_path / "notify-validation.db",
+        secret_key="test-session-secret",
+        debug=True,
+        admin_username="admin",
+        admin_password="password",
+    )
+    application = create_app(settings)
+    lifespan = application.router.lifespan_context(application)
+    await lifespan.__aenter__()
+    client = AsyncClient(
+        transport=ASGITransport(app=application),
+        base_url="http://test",
+    )
+    try:
+        await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        response = await client.put(
+            "/api/settings",
+            json=_settings(
+                telegram={"enabled": True, "token": "", "chat_id": ""}
+            ),
+        )
+        assert response.status_code == 422
+    finally:
+        await client.aclose()
+        await lifespan.__aexit__(None, None, None)

@@ -13,7 +13,11 @@ from app.db import create_session_factory
 from app.main import create_app
 from app.models import ExchangeRate
 from app.services.nbu import NbuClient, NbuRateUnavailable, RateResult, get_rate
-from app.services.scheduler import DAILY_RATE_JOB_ID, start_scheduler
+from app.services.scheduler import (
+    DAILY_NOTIFICATION_JOB_ID,
+    DAILY_RATE_JOB_ID,
+    start_scheduler,
+)
 
 
 def test_fetches_fresh_rate_and_caches_it(db_session) -> None:
@@ -90,10 +94,13 @@ def test_scheduler_uses_kyiv_timezone_and_daily_job(db_engine) -> None:
     scheduler = start_scheduler(create_session_factory(db_engine))
     try:
         job = scheduler.get_job(DAILY_RATE_JOB_ID)
+        notification_job = scheduler.get_job(DAILY_NOTIFICATION_JOB_ID)
         assert job is not None
+        assert notification_job is not None
         assert str(scheduler.timezone) == "Europe/Kyiv"
         assert str(job.trigger).startswith("cron[")
         assert "hour='6'" in str(job.trigger)
+        assert "hour='8'" in str(notification_job.trigger)
     finally:
         scheduler.shutdown(wait=False)
 

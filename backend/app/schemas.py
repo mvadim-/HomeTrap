@@ -3,7 +3,14 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.models import ServiceKind
 
@@ -230,3 +237,56 @@ class ImportReportResponse(ApiSchema):
     services_created: int
     tariffs_created: int
     warnings: list[str]
+
+
+class TelegramNotificationSettings(ApiSchema):
+    enabled: bool = False
+    token: str = ""
+    chat_id: str = ""
+
+    @field_validator("token", "chat_id")
+    @classmethod
+    def strip_fields(cls, value: str) -> str:
+        return value.strip()
+
+    @model_validator(mode="after")
+    def require_enabled_fields(self):
+        if self.enabled and (not self.token or not self.chat_id):
+            raise ValueError("enabled Telegram requires token and chat_id")
+        return self
+
+
+class EmailNotificationSettings(ApiSchema):
+    enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str = ""
+    smtp_password: str = ""
+    from_address: str = ""
+    to_address: str = ""
+    use_tls: bool = True
+
+    @model_validator(mode="after")
+    def require_enabled_fields(self):
+        if self.enabled and not all(
+            (self.smtp_host, self.from_address, self.to_address)
+        ):
+            raise ValueError(
+                "enabled email requires smtp_host, from_address and to_address"
+            )
+        return self
+
+
+class NotificationSettings(ApiSchema):
+    telegram: TelegramNotificationSettings = Field(
+        default_factory=TelegramNotificationSettings
+    )
+    email: EmailNotificationSettings = Field(default_factory=EmailNotificationSettings)
+    readings_day: int = Field(default=20, ge=1, le=28)
+    overdue_after_days: int = Field(default=3, ge=1, le=365)
+    repeat_every_days: int = Field(default=3, ge=1, le=365)
+
+
+class NotificationTestResponse(ApiSchema):
+    deliveries: int
+    errors: list[str]
