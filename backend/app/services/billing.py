@@ -147,6 +147,13 @@ def update_draft(
     return get_invoice(session, invoice.id)
 
 
+def delete_draft(session: Session, invoice: Invoice) -> None:
+    if invoice.status != InvoiceStatus.DRAFT.value:
+        raise BillingError("Only draft invoices can be deleted")
+    session.delete(invoice)
+    session.commit()
+
+
 def get_invoice(session: Session, invoice_id: int) -> Invoice:
     invoice = session.scalar(
         select(Invoice)

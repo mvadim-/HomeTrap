@@ -1,5 +1,21 @@
 # ChangeLog
 
+## [2026-07-14 20:50] Відновлення коректної хронології чернеток
+
+- `backend/app/services/importer.py`, `backend/tests/test_importer.py` — XLSX-імпорт
+  відхиляє наступні місяці, доки існує незавершена рання чернетка, і не створює
+  рахунок, який заблокує її редагування.
+- `backend/app/services/billing.py`, `backend/app/routers/invoices.py`,
+  `backend/tests/test_billing.py` — додано видалення лише чернеток через API, щоб
+  помилковий майбутній період можна було прибрати й створити правильний рахунок.
+- `frontend/src/api/client.ts`, `frontend/src/pages/InvoiceEdit.tsx`,
+  `frontend/src/pages/portal.css` та відповідні тести — у редакторі чернетки додано
+  підтверджене видалення з поверненням до списку рахунків.
+- Docker-перевірки пройдено: 57 backend-тестів, Ruff, 37 frontend-тестів,
+  frontend build, production Compose config і multi-stage image build.
+- Для production після оновлення потрібно перебудувати й перезапустити контейнер за
+  `docs/deploy.md`; автоматичне розгортання в межах цього циклу не виконується.
+
 ## [2026-07-14 20:38] Посилено цілісність рахунків і production-деплой
 
 - `backend/app/services/billing.py`, `backend/tests/test_billing.py`,

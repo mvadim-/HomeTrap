@@ -240,3 +240,38 @@ async def test_import_rejects_historical_month_before_existing_invoice(tmp_path)
         engine.dispose()
     finally:
         await _close(lifespan, client)
+
+
+async def test_import_rejects_month_after_existing_draft(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        apartment_id = _apartment(application)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            apartment = session.get(Apartment, apartment_id)
+            session.add(
+                Invoice(
+                    apartment=apartment,
+                    period=date(2024, 3, 1),
+                    status="draft",
+                    exchange_rate=Decimal("44.000000"),
+                    rent_amount_usd=Decimal("325.00"),
+                    rent_amount_uah=Decimal("14300.00"),
+                    utilities_total=Decimal("0.00"),
+                    grand_total=Decimal("14300.00"),
+                )
+            )
+            session.commit()
+        engine.dispose()
+
+        response = await _upload(client, apartment_id, FIXTURE.read_bytes())
+
+        assert response.status_code == 422
+        assert "після незавершеної ранньої чернетки" in response.json()["detail"]
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            assert session.scalar(select(func.count(Invoice.id))) == 1
+            assert session.scalar(select(func.count(Service.id))) == 0
+        engine.dispose()
+    finally:
+        await _close(lifespan, client)

@@ -366,6 +366,10 @@ export function updateInvoice(id: number, payload: InvoiceUpdatePayload): Promis
   });
 }
 
+export function deleteInvoice(id: number): Promise<void> {
+  return request<void>(`/api/invoices/${id}`, { method: "DELETE" });
+}
+
 export function transitionInvoice(
   id: number,
   action: "issue" | "revert-to-draft" | "mark-paid" | "unmark-paid",

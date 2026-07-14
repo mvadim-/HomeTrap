@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
   ApiError,
+  deleteInvoice,
   Invoice,
   InvoiceUpdatePayload,
   getInvoice,
@@ -21,6 +22,7 @@ function dateLabel(value: string): string {
 export function InvoiceEdit() {
   const { invoiceId } = useParams();
   const id = Number(invoiceId);
+  const navigate = useNavigate();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [draftPayload, setDraftPayload] = useState<InvoiceUpdatePayload | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
@@ -71,6 +73,19 @@ export function InvoiceEdit() {
     }
   }
 
+  async function removeDraft() {
+    if (!window.confirm("Видалити цю чернетку рахунку? Цю дію неможливо скасувати.")) return;
+    setSaving(true);
+    setError("");
+    try {
+      await deleteInvoice(id);
+      navigate("/invoices");
+    } catch (requestError) {
+      setError(requestError instanceof ApiError ? requestError.message : "Не вдалося видалити чернетку.");
+      setSaving(false);
+    }
+  }
+
   if (error && !invoice) return <p className="error-message">{error}</p>;
   if (!invoice) return <p className="muted-text">Завантажуємо рахунок…</p>;
 
@@ -79,7 +94,7 @@ export function InvoiceEdit() {
       <header className="page-header invoice-header">
         <div><Link className="muted-text" to="/invoices">← Рахунки</Link><h1>Рахунок за {new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${invoice.period}T00:00:00Z`))}</h1><p><span className={`status-badge ${invoice.status}`}>{statusLabels[invoice.status]}</span>{invoice.paid_at && <> · Оплачено {dateLabel(invoice.paid_at)}</>}</p></div>
         <div className="invoice-actions">
-          {invoice.status === "draft" && <button className="button" disabled={saving || !draftPayload} type="button" onClick={() => changeStatus("issue")}>{draftDirty ? "Зберегти й виставити" : "Виставити"}</button>}
+          {invoice.status === "draft" && <><button className="danger-button" disabled={saving} type="button" onClick={removeDraft}>Видалити чернетку</button><button className="button" disabled={saving || !draftPayload} type="button" onClick={() => changeStatus("issue")}>{draftDirty ? "Зберегти й виставити" : "Виставити"}</button></>}
           {invoice.status === "issued" && <><button className="secondary-button" disabled={saving} type="button" onClick={() => changeStatus("revert-to-draft")}>Повернути в чернетку</button><button className="button" disabled={saving} type="button" onClick={() => changeStatus("mark-paid")}>Позначити оплаченим</button></>}
           {invoice.status === "paid" && <button className="secondary-button" disabled={saving} type="button" onClick={() => changeStatus("unmark-paid")}>Скасувати оплату</button>}
         </div>

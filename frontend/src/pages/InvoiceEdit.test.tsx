@@ -75,4 +75,24 @@ describe("InvoiceEdit", () => {
     expect(await screen.findByText("Later invoice exists")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Повернути в чернетку" })).toBeInTheDocument();
   });
+
+  it("deletes a confirmed draft", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getInvoice").mockResolvedValue(draft);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const remove = vi.spyOn(apiClient, "deleteInvoice").mockResolvedValue();
+    render(
+      <MemoryRouter initialEntries={["/invoices/7"]}>
+        <Routes>
+          <Route path="/invoices/:invoiceId" element={<InvoiceEdit />} />
+          <Route path="/invoices" element={<p>Invoice list</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Видалити чернетку" }));
+
+    expect(window.confirm).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith(7);
+  });
 });

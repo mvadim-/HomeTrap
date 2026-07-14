@@ -177,7 +177,8 @@
 }
 
 .button,
-.secondary-button {
+.secondary-button,
+.danger-button {
   padding: 9px 14px;
   border: 1px solid var(--color-primary);
   border-radius: var(--radius-sm);
@@ -195,8 +196,15 @@
   background: transparent;
 }
 
+.danger-button {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: transparent;
+}
+
 .button:disabled,
-.secondary-button:disabled {
+.secondary-button:disabled,
+.danger-button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

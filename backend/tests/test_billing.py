@@ -467,3 +467,58 @@ async def test_metered_invoice_requires_current_reading_before_issue(
         assert detail.json()["status"] == "draft"
     finally:
         await _close(lifespan, client)
+
+
+async def test_deleting_mistaken_draft_unblocks_earlier_invoice(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    application, lifespan, client = await _client(tmp_path, monkeypatch)
+    try:
+        apartment_id, _ = _seed_billing_data(
+            application,
+            previous_period=date(2026, 5, 1),
+        )
+        july = await client.post(
+            f"/api/apartments/{apartment_id}/invoices",
+            json={"period": "2026-07-01"},
+        )
+        assert july.status_code == 201
+        blocked = await client.post(
+            f"/api/apartments/{apartment_id}/invoices",
+            json={"period": "2026-06-01"},
+        )
+        assert blocked.status_code == 409
+
+        assert (await client.delete(f"/api/invoices/{july.json()['id']}")).status_code == 204
+        recovered = await client.post(
+            f"/api/apartments/{apartment_id}/invoices",
+            json={"period": "2026-06-01"},
+        )
+        assert recovered.status_code == 201
+        assert recovered.json()["period"] == "2026-06-01"
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_only_draft_invoice_can_be_deleted(tmp_path, monkeypatch) -> None:
+    application, lifespan, client = await _client(tmp_path, monkeypatch)
+    try:
+        apartment_id, _ = _seed_billing_data(application)
+        assert (await client.delete("/api/invoices/999")).status_code == 404
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            issued = session.scalar(
+                select(Invoice).where(Invoice.apartment_id == apartment_id)
+            )
+            issued.status = "issued"
+            issued_id = issued.id
+            session.commit()
+        engine.dispose()
+
+        response = await client.delete(f"/api/invoices/{issued_id}")
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Only draft invoices can be deleted"
+    finally:
+        await _close(lifespan, client)

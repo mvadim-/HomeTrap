@@ -10,6 +10,7 @@ from app.schemas import InvoiceCreate, InvoiceListItem, InvoiceResponse, Invoice
 from app.services.billing import (
     BillingError,
     create_draft,
+    delete_draft,
     get_invoice,
     invoice_response,
     list_invoices,
@@ -73,6 +74,19 @@ def update_invoice(
         error_status = 409 if "later invoice" in str(error) else 422
         raise HTTPException(status_code=error_status, detail=str(error)) from error
     return invoice_response(session, invoice)
+
+
+@router.delete("/api/invoices/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_invoice(
+    invoice_id: int,
+    session: Session = Depends(get_db),
+) -> None:
+    try:
+        delete_draft(session, get_invoice(session, invoice_id))
+    except BillingError as error:
+        if str(error) == "Invoice not found":
+            raise HTTPException(status_code=404, detail="Invoice not found") from error
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @router.get("/api/invoices", response_model=list[InvoiceListItem])

@@ -266,6 +266,19 @@ def _import_month(
         raise ImportFormatError(
             f"{sheet.title}: не можна імпортувати місяць перед наявним пізнішим рахунком"
         )
+    earlier_draft = session.scalar(
+        select(Invoice.id)
+        .where(
+            Invoice.apartment_id == apartment.id,
+            Invoice.period < period,
+            Invoice.status == InvoiceStatus.DRAFT.value,
+        )
+        .limit(1)
+    )
+    if earlier_draft is not None:
+        raise ImportFormatError(
+            f"{sheet.title}: не можна імпортувати місяць після незавершеної ранньої чернетки"
+        )
 
     header_index, mapping, rows = _find_table(sheet, {"service", "amount"})
     metadata = _metadata(sheet)

@@ -1,6 +1,6 @@
 import { afterEach, vi } from "vitest";
 
-import { ApiError, browserNavigation, getCurrentUser, importApartmentHistory, login, logout } from "./client";
+import { ApiError, browserNavigation, deleteInvoice, getCurrentUser, importApartmentHistory, login, logout } from "./client";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -36,6 +36,16 @@ describe("API transport", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(logout()).resolves.toBeUndefined();
     await expect(getCurrentUser()).rejects.toEqual(new ApiError(502, "Помилка запиту"));
+  });
+
+  it("deletes a draft invoice", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(deleteInvoice(7)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/invoices/7", expect.objectContaining({
+      method: "DELETE",
+      credentials: "include",
+    }));
   });
 
   it("redirects a 401 response to login", async () => {
