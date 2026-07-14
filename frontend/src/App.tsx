@@ -9,6 +9,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { InvoiceEdit } from "./pages/InvoiceEdit";
 import { Invoices } from "./pages/Invoices";
 import { Login } from "./pages/Login";
+import { Settings } from "./pages/Settings";
 import { Stats } from "./pages/Stats";
 
 export function ProtectedRoute() {
@@ -34,15 +35,6 @@ export function ProtectedRoute() {
   return <Outlet />;
 }
 
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <section className="placeholder-page">
-      <h1>{title}</h1>
-      <p>Розділ буде наповнено в наступних етапах плану.</p>
-    </section>
-  );
-}
-
 export function App() {
   return (
     <Routes>
@@ -55,7 +47,7 @@ export function App() {
           <Route path="invoices" element={<Invoices />} />
           <Route path="invoices/:invoiceId" element={<InvoiceEdit />} />
           <Route path="stats" element={<Stats />} />
-          <Route path="settings" element={<PlaceholderPage title="Налаштування" />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -127,6 +127,40 @@ export interface IncomeStats {
   };
 }
 
+export interface NotificationSettings {
+  telegram: {
+    enabled: boolean;
+    token: string;
+    chat_id: string;
+  };
+  email: {
+    enabled: boolean;
+    smtp_host: string;
+    smtp_port: number;
+    smtp_username: string;
+    smtp_password: string;
+    from_address: string;
+    to_address: string;
+    use_tls: boolean;
+  };
+  readings_day: number;
+  overdue_after_days: number;
+  repeat_every_days: number;
+}
+
+export interface NotificationTestResult {
+  deliveries: number;
+  errors: string[];
+}
+
+export interface ImportReport {
+  invoices_created: number;
+  invoices_skipped: number;
+  services_created: number;
+  tariffs_created: number;
+  warnings: string[];
+}
+
 export interface Service {
   id: number;
   apartment_id: number;
@@ -165,11 +199,12 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
     credentials: "include",
     headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(options.body && !isFormData ? { "Content-Type": "application/json" } : {}),
       ...options.headers,
     },
   });
@@ -304,4 +339,36 @@ export function transitionInvoice(
   action: "issue" | "revert-to-draft" | "mark-paid" | "unmark-paid",
 ): Promise<Invoice> {
   return request<Invoice>(`/api/invoices/${id}/${action}`, { method: "POST" });
+}
+
+export function getNotificationSettings(): Promise<NotificationSettings> {
+  return request<NotificationSettings>("/api/settings");
+}
+
+export function updateNotificationSettings(
+  payload: NotificationSettings,
+): Promise<NotificationSettings> {
+  return request<NotificationSettings>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function testNotification(): Promise<NotificationTestResult> {
+  return request<NotificationTestResult>("/api/settings/test-notification", {
+    method: "POST",
+  });
+}
+
+export function importApartmentHistory(
+  apartmentId: number,
+  file: File,
+  dryRun: boolean,
+): Promise<ImportReport> {
+  const body = new FormData();
+  body.append("file", file);
+  return request<ImportReport>(
+    `/api/apartments/${apartmentId}/import?dry_run=${dryRun}`,
+    { method: "POST", body },
+  );
 }

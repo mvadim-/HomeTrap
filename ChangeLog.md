@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-14 19:37] Налаштування та імпорт у frontend
+
+- `frontend/src/pages/Settings.tsx`, `frontend/src/pages/portal.css` — додано форму
+  Telegram/SMTP і розкладу нагадувань, тестове повідомлення та секцію XLSX-імпорту
+  з вибором квартири, dry-run переглядом, фактичним запуском і звітом попереджень.
+- `frontend/src/api/client.ts`, `frontend/src/App.tsx` — типізовано settings/import API,
+  додано коректне завантаження `FormData` та підключено захищений маршрут налаштувань;
+  жодні реальні облікові дані у frontend не вбудовано.
+- `frontend/src/pages/Settings.test.tsx` — перевірено порожні секретні поля й показ
+  dry-run звіту; у Docker пройшли 13 frontend і 41 backend тест, Vite build та Ruff.
+  Зміни є production UI; розгортання виконується після Task 16 за майбутнім
+  `docs/deploy.md`.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 15 позначено виконаним.
+
 ## [2026-07-14 19:32] Статистика у frontend
 
 - `frontend/src/pages/Stats.tsx`, `frontend/src/pages/portal.css` — додано адаптивні

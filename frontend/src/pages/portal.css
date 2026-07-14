@@ -197,6 +197,113 @@
   cursor: not-allowed;
 }
 
+.success-message {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  color: #397053;
+  background: #dcecdf;
+}
+
+.settings-section + .settings-section {
+  margin-top: 20px;
+}
+
+.settings-form,
+.settings-form fieldset,
+.settings-form label,
+.import-form,
+.import-form label {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-form {
+  gap: 18px;
+}
+
+.settings-form fieldset {
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.settings-form legend {
+  padding: 0 7px;
+  font-weight: 750;
+}
+
+.settings-form label,
+.import-form label {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.settings-form input:not([type="checkbox"]),
+.import-form input,
+.import-form select {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.settings-form .checkbox-field {
+  display: flex;
+  align-items: center;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.schedule-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.import-form {
+  grid-template-columns: minmax(180px, 0.6fr) minmax(260px, 1.4fr);
+  align-items: end;
+}
+
+.import-form .form-actions {
+  grid-column: 1 / -1;
+}
+
+.import-report {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.import-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.import-summary div {
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.import-summary dt {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.import-summary dd {
+  margin: 6px 0 0;
+  font-size: 1.35rem;
+  font-weight: 750;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: minmax(240px, 0.55fr) minmax(0, 1.45fr);
@@ -557,7 +664,9 @@
 
   .content-grid,
   .detail-grid,
-  .consumption-grid {
+  .consumption-grid,
+  .schedule-grid,
+  .import-summary {
     grid-template-columns: 1fr;
   }
 
@@ -576,7 +685,9 @@
   }
 
   .dashboard-grid,
-  .inline-form {
+  .inline-form,
+  .settings-grid,
+  .import-form {
     grid-template-columns: 1fr;
   }
 
