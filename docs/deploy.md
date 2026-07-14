@@ -2,6 +2,8 @@
 
 Production-конфігурація запускає frontend і FastAPI в одному контейнері. Uvicorn
 працює рівно з одним worker, тому вбудований APScheduler не дублює фонові задачі.
+Python runtime-залежності образу зафіксовані точними версіями у
+`backend/requirements.txt`; dev/test інструменти у production-образ не входять.
 
 ## Перший запуск
 

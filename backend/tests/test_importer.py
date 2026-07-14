@@ -234,6 +234,32 @@ async def test_import_rejects_non_positive_tariffs_without_writing(tmp_path) -> 
         await _close(lifespan, client)
 
 
+async def test_import_rejects_non_positive_month_tariff_without_fallback(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        apartment_id = _apartment(application)
+        for invalid_tariff in (0, -7.5):
+            workbook = load_workbook(FIXTURE)
+            workbook["Кві 2024"]["D8"] = invalid_tariff
+            content = BytesIO()
+            workbook.save(content)
+
+            response = await _upload(client, apartment_id, content.getvalue())
+
+            assert response.status_code == 422
+            assert "Газ: тариф має бути додатним" in response.json()["detail"]
+
+            engine = create_database_engine(
+                application.state.settings.database_path
+            )
+            with create_session_factory(engine)() as session:
+                assert session.scalar(select(func.count(Service.id))) == 0
+                assert session.scalar(select(func.count(Invoice.id))) == 0
+            engine.dispose()
+    finally:
+        await _close(lifespan, client)
+
+
 async def test_import_rejects_historical_month_before_existing_invoice(tmp_path) -> None:
     application, lifespan, client = await _client(tmp_path)
     try:

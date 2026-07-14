@@ -51,6 +51,9 @@ class LoginRateLimiter:
             self._pending[client_ip] += 1
             return True
 
+    def reserve(self, client_ip: str) -> LoginAttemptReservation:
+        return LoginAttemptReservation(self, client_ip)
+
     def record_failure(self, client_ip: str, now: float | None = None) -> None:
         with self._lock:
             self._complete_pending(client_ip)
@@ -69,6 +72,32 @@ class LoginRateLimiter:
             self._pending[client_ip] = pending
         else:
             self._pending.pop(client_ip, None)
+
+
+class LoginAttemptReservation:
+    def __init__(self, limiter: LoginRateLimiter, client_ip: str) -> None:
+        self._limiter = limiter
+        self._client_ip = client_ip
+        self.acquired = limiter.try_acquire(client_ip)
+        self._completed = False
+
+    def __enter__(self) -> LoginAttemptReservation:
+        return self
+
+    def record_failure(self) -> None:
+        if self.acquired and not self._completed:
+            self._limiter.record_failure(self._client_ip)
+            self._completed = True
+
+    def clear(self) -> None:
+        if self.acquired and not self._completed:
+            self._limiter.clear(self._client_ip)
+            self._completed = True
+
+    def __exit__(self, *args: object) -> None:
+        if self.acquired and not self._completed:
+            with self._limiter._lock:
+                self._limiter._complete_pending(self._client_ip)
 
 
 def hash_password(password: str) -> str:

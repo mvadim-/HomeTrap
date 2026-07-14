@@ -9,6 +9,8 @@ from app.models import Apartment, InvoiceStatus
 from app.schemas import InvoiceCreate, InvoiceListItem, InvoiceResponse, InvoiceUpdate
 from app.services.billing import (
     BillingError,
+    BillingNotFoundError,
+    BillingValidationError,
     create_draft,
     delete_draft,
     get_invoice,
@@ -20,6 +22,14 @@ from app.services.billing import (
 from app.services.nbu import NbuRateUnavailable, get_rate
 
 router = APIRouter(tags=["invoices"], dependencies=[Depends(require_auth)])
+
+
+def _billing_http_error(error: BillingError) -> HTTPException:
+    if isinstance(error, BillingNotFoundError):
+        return HTTPException(status_code=404, detail=str(error))
+    if isinstance(error, BillingValidationError):
+        return HTTPException(status_code=422, detail=str(error))
+    return HTTPException(status_code=409, detail=str(error))
 
 
 @router.post(
@@ -41,7 +51,7 @@ def create_invoice(
     except NbuRateUnavailable as error:
         raise HTTPException(status_code=503, detail="NBU exchange rate is unavailable") from error
     except BillingError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
+        raise _billing_http_error(error) from error
     except IntegrityError as error:
         session.rollback()
         raise HTTPException(
@@ -60,7 +70,7 @@ def update_invoice(
     try:
         invoice = get_invoice(session, invoice_id)
     except BillingError as error:
-        raise HTTPException(status_code=404, detail="Invoice not found") from error
+        raise _billing_http_error(error) from error
     if invoice.status != "draft":
         raise HTTPException(status_code=409, detail="Only draft invoices can be edited")
     try:
@@ -71,8 +81,7 @@ def update_invoice(
             {line.id: line.curr_reading for line in payload.lines},
         )
     except BillingError as error:
-        error_status = 409 if "later invoice" in str(error) else 422
-        raise HTTPException(status_code=error_status, detail=str(error)) from error
+        raise _billing_http_error(error) from error
     return invoice_response(session, invoice)
 
 
@@ -84,9 +93,7 @@ def delete_invoice(
     try:
         delete_draft(session, get_invoice(session, invoice_id))
     except BillingError as error:
-        if str(error) == "Invoice not found":
-            raise HTTPException(status_code=404, detail="Invoice not found") from error
-        raise HTTPException(status_code=409, detail=str(error)) from error
+        raise _billing_http_error(error) from error
 
 
 @router.get("/api/invoices", response_model=list[InvoiceListItem])
@@ -107,7 +114,7 @@ def invoice_detail(
     try:
         invoice = get_invoice(session, invoice_id)
     except BillingError as error:
-        raise HTTPException(status_code=404, detail="Invoice not found") from error
+        raise _billing_http_error(error) from error
     return invoice_response(session, invoice)
 
 
@@ -122,7 +129,5 @@ def change_invoice_status(
     try:
         invoice = transition_invoice(session, get_invoice(session, invoice_id), action)
     except BillingError as error:
-        if str(error) == "Invoice not found":
-            raise HTTPException(status_code=404, detail="Invoice not found") from error
-        raise HTTPException(status_code=409, detail=str(error)) from error
+        raise _billing_http_error(error) from error
     return invoice_response(session, invoice)

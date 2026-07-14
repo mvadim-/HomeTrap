@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      target: backend-dev
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       HOMETRAP_DATABASE_PATH: /data/hometrap.db

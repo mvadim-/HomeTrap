@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, InvoiceLine, InvoiceStatus, Service, Tariff
+from app.services.billing import InvoiceChronologyError, validate_invoice_chronology
 
 MONEY = Decimal("0.01")
 ZERO = Decimal("0")
@@ -141,6 +142,26 @@ def _decimal_or_warning(
         return None
 
 
+def _tariff_or_warning(
+    value: object,
+    *,
+    sheet: str,
+    field_name: str,
+    report: ImportReport,
+    fallback: Decimal | None = None,
+) -> Decimal | None:
+    tariff = _decimal_or_warning(
+        value,
+        sheet=sheet,
+        field_name=field_name,
+        report=report,
+    )
+    tariff = fallback if tariff is None else tariff
+    if tariff is not None and tariff <= 0:
+        raise ImportFormatError(f"{sheet}: {field_name} має бути додатним")
+    return tariff
+
+
 def _find_information_sheet(sheet_names: list[str]) -> str:
     for name in sheet_names:
         if _normalized(name) in {"загальна інформація", "загальна iнформацiя"}:
@@ -202,19 +223,14 @@ def _import_services(
         existing_dates = {tariff.valid_from for tariff in service.tariffs}
         for column, valid_from in tariff_columns:
             raw = row[column] if column < len(row) else None
-            tariff_value = _decimal_or_warning(
+            tariff_value = _tariff_or_warning(
                 raw,
                 sheet=sheet.title,
-                field_name=f"тариф {valid_from:%Y-%m}",
+                field_name=f"тариф для «{name}» за {valid_from:%Y-%m}",
                 report=report,
             )
             if tariff_value is None or valid_from in existing_dates:
                 continue
-            if tariff_value <= 0:
-                raise ImportFormatError(
-                    f"{sheet.title}: тариф для «{name}» за {valid_from:%Y-%m} "
-                    "має бути додатним"
-                )
             session.add(Tariff(service=service, value=tariff_value, valid_from=valid_from))
             existing_dates.add(valid_from)
             report.tariffs_created += 1
@@ -259,31 +275,14 @@ def _import_month(
     if existing is not None:
         report.invoices_skipped += 1
         return
-    later_invoice = session.scalar(
-        select(Invoice.id)
-        .where(
-            Invoice.apartment_id == apartment.id,
-            Invoice.period > period,
-        )
-        .limit(1)
-    )
-    if later_invoice is not None:
-        raise ImportFormatError(
-            f"{sheet.title}: не можна імпортувати місяць перед наявним пізнішим рахунком"
-        )
-    earlier_draft = session.scalar(
-        select(Invoice.id)
-        .where(
-            Invoice.apartment_id == apartment.id,
-            Invoice.period < period,
-            Invoice.status == InvoiceStatus.DRAFT.value,
-        )
-        .limit(1)
-    )
-    if earlier_draft is not None:
-        raise ImportFormatError(
-            f"{sheet.title}: не можна імпортувати місяць після незавершеної ранньої чернетки"
-        )
+    try:
+        validate_invoice_chronology(session, apartment.id, period)
+    except InvoiceChronologyError as error:
+        messages = {
+            "later_invoice": "не можна імпортувати місяць перед наявним пізнішим рахунком",
+            "earlier_draft": "не можна імпортувати місяць після незавершеної ранньої чернетки",
+        }
+        raise ImportFormatError(f"{sheet.title}: {messages[error.code]}") from error
 
     header_index, mapping, rows = _find_table(sheet, {"service", "amount"})
     metadata = _metadata(sheet)
@@ -340,12 +339,15 @@ def _import_month(
             field_name=f"{name}: поточний показник",
             report=report,
         )
-        tariff = _decimal_or_warning(
+        tariff = _tariff_or_warning(
             _value(row, mapping, "tariff"),
             sheet=sheet.title,
             field_name=f"{name}: тариф",
             report=report,
-        ) or _active_tariff(service, period) or ZERO
+            fallback=_active_tariff(service, period),
+        )
+        if tariff is None:
+            raise ImportFormatError(f"{sheet.title}: {name}: потрібен додатний тариф")
         amount = _decimal_or_warning(
             _value(row, mapping, "amount"),
             sheet=sheet.title,

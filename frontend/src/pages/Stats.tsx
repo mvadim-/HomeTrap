@@ -8,6 +8,7 @@ import {
   getConsumptionStats,
   getIncomeStats,
 } from "../api/client";
+import { formatUah } from "../utils/format";
 import "./portal.css";
 
 const CHART_WIDTH = 360;
@@ -22,10 +23,6 @@ function monthLabel(period: string): string {
 
 function numberLabel(value: number, maximumFractionDigits = 2): string {
   return new Intl.NumberFormat("uk-UA", { maximumFractionDigits }).format(value);
-}
-
-function money(value: string): string {
-  return `${numberLabel(Number(value))} ₴`;
 }
 
 function seriesColor(name: string): string {
@@ -93,11 +90,11 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
         const baseline = padding.top + plotHeight;
         return (
           <g key={point.period}>
-            <rect className="income-rent" x={x} y={baseline - rentHeight} width={barWidth} height={rentHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, оренда: ${money(point.rent)}`}>
-              <title>{monthLabel(point.period)} · Оренда: {money(point.rent)}</title>
+            <rect className="income-rent" x={x} y={baseline - rentHeight} width={barWidth} height={rentHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, оренда: ${formatUah(point.rent)}`}>
+              <title>{monthLabel(point.period)} · Оренда: {formatUah(point.rent)}</title>
             </rect>
-            <rect className="income-utilities" x={x} y={baseline - rentHeight - utilitiesHeight} width={barWidth} height={utilitiesHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, комунальні: ${money(point.utilities)}`}>
-              <title>{monthLabel(point.period)} · Комунальні: {money(point.utilities)} · Разом: {money(point.total)}</title>
+            <rect className="income-utilities" x={x} y={baseline - rentHeight - utilitiesHeight} width={barWidth} height={utilitiesHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, комунальні: ${formatUah(point.utilities)}`}>
+              <title>{monthLabel(point.period)} · Комунальні: {formatUah(point.utilities)} · Разом: {formatUah(point.total)}</title>
             </rect>
             <text className="chart-label month-label" textAnchor="middle" x={x + barWidth / 2} y={height - 11}>{monthLabel(point.period)}</text>
           </g>
@@ -184,7 +181,7 @@ export function Stats() {
           <p className="muted-text">Завантажуємо дохід…</p>
         ) : income.values.length > 0 ? (
           <>
-            <div className="chart-legend"><span><i className="rent-swatch" />Оренда</span><span><i className="utilities-swatch" />Комунальні</span><strong>Разом: {money(income.totals.total)}</strong></div>
+            <div className="chart-legend"><span><i className="rent-swatch" />Оренда</span><span><i className="utilities-swatch" />Комунальні</span><strong>Разом: {formatUah(income.totals.total)}</strong></div>
             <IncomeChart stats={income} />
           </>
         ) : (

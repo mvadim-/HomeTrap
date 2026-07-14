@@ -9,17 +9,9 @@ import {
   getCurrentRate,
   getDashboard,
 } from "../api/client";
+import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
+import { formatUah } from "../utils/format";
 import "./portal.css";
-
-const statusLabels = {
-  draft: "Чернетка",
-  issued: "Виставлений",
-  paid: "Оплачений",
-};
-
-function money(value: string): string {
-  return `${new Intl.NumberFormat("uk-UA", { maximumFractionDigits: 2 }).format(Number(value))} ₴`;
-}
 
 export function Dashboard() {
   const [dashboard, setDashboard] = useState<DashboardStats | null>(null);
@@ -56,9 +48,9 @@ export function Dashboard() {
       </header>
 
       <section className="dashboard-grid" aria-label="Показники портфеля">
-        <article className="metric-card"><span className="metric-label">Нараховано</span><strong>{money(dashboard.charged)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Оплачено</span><strong>{money(dashboard.paid)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Заборгованість</span><strong>{money(dashboard.outstanding)}</strong></article>
+        <article className="metric-card"><span className="metric-label">Нараховано</span><strong>{formatUah(dashboard.charged)}</strong></article>
+        <article className="metric-card"><span className="metric-label">Оплачено</span><strong>{formatUah(dashboard.paid)}</strong></article>
+        <article className="metric-card"><span className="metric-label">Заборгованість</span><strong>{formatUah(dashboard.outstanding)}</strong></article>
         <article className="metric-card"><span className="metric-label">Курс НБУ · {rate.currency}</span><strong>{Number(rate.rate).toFixed(2)} ₴</strong></article>
       </section>
 
@@ -73,13 +65,11 @@ export function Dashboard() {
               <Link className="apartment-card" to={`/apartments/${apartment.id}`} key={apartment.id}>
                 <header>
                   <h3>{apartment.name}</h3>
-                  <span className={`status-badge ${apartment.latest_invoice?.status ?? "draft"}`}>
-                    {apartment.latest_invoice ? statusLabels[apartment.latest_invoice.status] : "Без рахунків"}
-                  </span>
+                  <InvoiceStatusBadge status={apartment.latest_invoice?.status ?? null} />
                 </header>
                 <p className="apartment-address">{apartment.address}</p>
                 <div className="card-row"><span>Оренда</span><strong>{apartment.rent_amount} {apartment.rent_currency}</strong></div>
-                {apartment.latest_invoice && <div className="card-row"><span>Останній рахунок</span><strong>{money(apartment.latest_invoice.grand_total)}</strong></div>}
+                {apartment.latest_invoice && <div className="card-row"><span>Останній рахунок</span><strong>{formatUah(apartment.latest_invoice.grand_total)}</strong></div>}
               </Link>
             ))}
           </div>
@@ -94,7 +84,7 @@ export function Dashboard() {
               {dashboard.needs_attention.map((item) => (
                 <li className="attention-item" key={item.invoice_id}>
                   <div><Link to={`/apartments/${item.apartment_id}`}>{item.apartment_name}</Link><div className="muted-text">{item.reason === "unpaid" ? "Очікує оплати" : "Завершіть чернетку"}</div></div>
-                  <strong>{money(item.grand_total)}</strong>
+                  <strong>{formatUah(item.grand_total)}</strong>
                 </li>
               ))}
             </ul>

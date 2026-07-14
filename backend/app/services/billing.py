@@ -26,6 +26,24 @@ class BillingError(RuntimeError):
     """Raised when invoice data cannot produce a valid draft."""
 
 
+class BillingNotFoundError(BillingError):
+    pass
+
+
+class BillingValidationError(BillingError):
+    pass
+
+
+class BillingConflictError(BillingError):
+    pass
+
+
+class InvoiceChronologyError(BillingConflictError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def money(value: Decimal) -> Decimal:
     return value.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
 
@@ -33,7 +51,9 @@ def money(value: Decimal) -> Decimal:
 def _tariff_for_period(session: Session, service_id: int, period: date) -> Tariff:
     tariff = get_tariff_for_period(session, service_id, period)
     if tariff is None:
-        raise BillingError(f"Service {service_id} has no tariff for {period.isoformat()}")
+        raise BillingValidationError(
+            f"Service {service_id} has no tariff for {period.isoformat()}"
+        )
     return tariff
 
 
@@ -65,9 +85,8 @@ def create_draft(
     exchange_rate: Decimal,
 ) -> Invoice:
     if period.day != 1:
-        raise BillingError("Invoice period must be the first day of a month")
-    _reject_if_later_invoice_exists(session, apartment.id, period)
-    _reject_if_earlier_draft_exists(session, apartment.id, period)
+        raise BillingValidationError("Invoice period must be the first day of a month")
+    validate_invoice_chronology(session, apartment.id, period)
 
     previous = _previous_readings(session, apartment.id, period)
     services = session.scalars(
@@ -128,19 +147,24 @@ def update_draft(
     readings: dict[int, Decimal | None],
 ) -> Invoice:
     if invoice.status != "draft":
-        raise BillingError("Only draft invoices can be edited")
-    _reject_if_later_invoice_exists(session, invoice.apartment_id, invoice.period)
+        raise BillingConflictError("Only draft invoices can be edited")
+    validate_invoice_chronology(
+        session,
+        invoice.apartment_id,
+        invoice.period,
+        reject_earlier_draft=False,
+    )
     lines_by_id = {line.id: line for line in invoice.lines}
     unknown_ids = readings.keys() - lines_by_id.keys()
     if unknown_ids:
-        raise BillingError(f"Invoice line {min(unknown_ids)} was not found")
+        raise BillingValidationError(f"Invoice line {min(unknown_ids)} was not found")
 
     if exchange_rate is not None:
         invoice.exchange_rate = exchange_rate
     for line_id, current in readings.items():
         line = lines_by_id[line_id]
         if line.service_kind != ServiceKind.METERED.value:
-            raise BillingError(f"Invoice line {line_id} is not metered")
+            raise BillingValidationError(f"Invoice line {line_id} is not metered")
         line.curr_reading = current
     recalculate(invoice)
     session.commit()
@@ -149,7 +173,7 @@ def update_draft(
 
 def delete_draft(session: Session, invoice: Invoice) -> None:
     if invoice.status != InvoiceStatus.DRAFT.value:
-        raise BillingError("Only draft invoices can be deleted")
+        raise BillingConflictError("Only draft invoices can be deleted")
     session.delete(invoice)
     session.commit()
 
@@ -161,7 +185,7 @@ def get_invoice(session: Session, invoice_id: int) -> Invoice:
         .where(Invoice.id == invoice_id)
     )
     if invoice is None:
-        raise BillingError("Invoice not found")
+        raise BillingNotFoundError("Invoice not found")
     return invoice
 
 
@@ -194,14 +218,19 @@ def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoi
             None,
         )
         if missing_reading is not None:
-            raise BillingError(
+            raise BillingConflictError(
                 f"Current reading is required for {missing_reading.service_name} before issue"
             )
         recalculate(invoice)
         invoice.status = InvoiceStatus.ISSUED.value
         invoice.issued_at = now
     elif action == "revert-to-draft" and invoice.status == InvoiceStatus.ISSUED.value:
-        _reject_if_later_invoice_exists(session, invoice.apartment_id, invoice.period)
+        validate_invoice_chronology(
+            session,
+            invoice.apartment_id,
+            invoice.period,
+            reject_earlier_draft=False,
+        )
         invoice.status = InvoiceStatus.DRAFT.value
         invoice.issued_at = None
     elif action == "mark-paid" and invoice.status == InvoiceStatus.ISSUED.value:
@@ -211,44 +240,50 @@ def transition_invoice(session: Session, invoice: Invoice, action: str) -> Invoi
         invoice.status = InvoiceStatus.ISSUED.value
         invoice.paid_at = None
     else:
-        raise BillingError(f"Cannot {action} invoice with status {invoice.status}")
+        raise BillingConflictError(
+            f"Cannot {action} invoice with status {invoice.status}"
+        )
     session.commit()
     return get_invoice(session, invoice.id)
 
 
-def _reject_if_later_invoice_exists(
+def validate_invoice_chronology(
     session: Session,
     apartment_id: int,
     period: date,
+    *,
+    reject_later: bool = True,
+    reject_earlier_draft: bool = True,
 ) -> None:
-    later_id = session.scalar(
-        select(Invoice.id)
-        .where(
-            Invoice.apartment_id == apartment_id,
-            Invoice.period > period,
+    if reject_later:
+        later_id = session.scalar(
+            select(Invoice.id)
+            .where(
+                Invoice.apartment_id == apartment_id,
+                Invoice.period > period,
+            )
+            .limit(1)
         )
-        .limit(1)
-    )
-    if later_id is not None:
-        raise BillingError("An older invoice cannot be changed after a later invoice exists")
-
-
-def _reject_if_earlier_draft_exists(
-    session: Session,
-    apartment_id: int,
-    period: date,
-) -> None:
-    earlier_draft_id = session.scalar(
-        select(Invoice.id)
-        .where(
-            Invoice.apartment_id == apartment_id,
-            Invoice.period < period,
-            Invoice.status == InvoiceStatus.DRAFT.value,
+        if later_id is not None:
+            raise InvoiceChronologyError(
+                "later_invoice",
+                "An older invoice cannot be changed after a later invoice exists",
+            )
+    if reject_earlier_draft:
+        earlier_draft_id = session.scalar(
+            select(Invoice.id)
+            .where(
+                Invoice.apartment_id == apartment_id,
+                Invoice.period < period,
+                Invoice.status == InvoiceStatus.DRAFT.value,
+            )
+            .limit(1)
         )
-        .limit(1)
-    )
-    if earlier_draft_id is not None:
-        raise BillingError("An earlier draft invoice must be completed before creating a later invoice")
+        if earlier_draft_id is not None:
+            raise InvoiceChronologyError(
+                "earlier_draft",
+                "An earlier draft invoice must be completed before creating a later invoice",
+            )
 
 
 def warnings_for(session: Session, invoice: Invoice) -> list[dict[str, object]]:

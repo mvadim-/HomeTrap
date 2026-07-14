@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Invoice, InvoiceUpdatePayload } from "../api/client";
+import { formatUah } from "../utils/format";
 import "../pages/portal.css";
 
 interface InvoiceCalculatorProps {
@@ -54,10 +55,6 @@ function subtractDecimals(first: string, second: string): string {
   const sign = result < 0n ? "-" : "";
   const digits = (result < 0n ? -result : result).toString().padStart(scale + 1, "0");
   return scale ? `${sign}${digits.slice(0, -scale)}.${digits.slice(-scale)}` : `${sign}${digits}`;
-}
-
-function money(value: bigint): string {
-  return (Number(value) / 100).toLocaleString("uk-UA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function InvoiceCalculator({
@@ -176,7 +173,7 @@ export function InvoiceCalculator({
                   </td>
                   <td>{consumed === null ? "—" : consumed.toLocaleString("uk-UA", { maximumFractionDigits: 3 })}</td>
                   <td>{line.tariff_value} ₴</td>
-                  <td>{money(line.calculatedAmount)} ₴</td>
+                  <td>{formatUah(Number(line.calculatedAmount) / 100)}</td>
                 </tr>
               );
             })}
@@ -192,9 +189,9 @@ export function InvoiceCalculator({
       )}
 
       <div className="invoice-totals">
-        <span>Оренда <strong>{money(calculated.rent)} ₴</strong></span>
-        <span>Комунальні <strong>{money(calculated.utilities)} ₴</strong></span>
-        <span className="grand-total">Разом <strong>{money(calculated.total)} ₴</strong></span>
+        <span>Оренда <strong>{formatUah(Number(calculated.rent) / 100)}</strong></span>
+        <span>Комунальні <strong>{formatUah(Number(calculated.utilities) / 100)}</strong></span>
+        <span className="grand-total">Разом <strong>{formatUah(Number(calculated.total) / 100)}</strong></span>
       </div>
       {invoice.status === "draft" && <button className="button" type="button" disabled={saving || !numberValue(exchangeRate)} onClick={save}>{saving ? "Зберігаємо…" : "Зберегти чернетку"}</button>}
     </section>

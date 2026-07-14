@@ -6,7 +6,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
-from app.auth import LOGIN_ATTEMPT_LIMIT, SESSION_COOKIE_NAME, _decode_session
+from app.auth import (
+    LOGIN_ATTEMPT_LIMIT,
+    SESSION_COOKIE_NAME,
+    LoginRateLimiter,
+    _decode_session,
+)
 from app.config import Settings, validate_production_settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
@@ -124,6 +129,18 @@ async def test_login_is_rate_limited_after_five_failures(tmp_path) -> None:
     finally:
         await client.aclose()
         await lifespan.__aexit__(None, None, None)
+
+
+def test_login_reservation_is_released_after_unexpected_error() -> None:
+    limiter = LoginRateLimiter(limit=1)
+
+    with pytest.raises(RuntimeError):
+        with limiter.reserve("192.0.2.1") as attempt:
+            assert attempt.acquired is True
+            raise RuntimeError("database failed")
+
+    with limiter.reserve("192.0.2.1") as next_attempt:
+        assert next_attempt.acquired is True
 
 
 async def test_concurrent_logins_cannot_bypass_rate_limit(tmp_path, monkeypatch) -> None:

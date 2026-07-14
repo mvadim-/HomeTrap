@@ -10,9 +10,9 @@ import {
   getApartments,
   updateApartment,
 } from "../api/client";
+import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
 import "./portal.css";
 
-const statusLabels = { draft: "Чернетка", issued: "Виставлений", paid: "Оплачений" };
 const emptyApartment: ApartmentPayload = {
   name: "",
   address: "",
@@ -96,9 +96,7 @@ export function Apartments() {
             <article className="apartment-card" key={apartment.id}>
               <header>
                 <h2><Link to={`/apartments/${apartment.id}`}>{apartment.name}</Link></h2>
-                <span className={`status-badge ${apartment.latest_invoice?.status ?? "draft"}`}>
-                  {apartment.latest_invoice ? statusLabels[apartment.latest_invoice.status] : "Без рахунків"}
-                </span>
+                <InvoiceStatusBadge status={apartment.latest_invoice?.status ?? null} />
               </header>
               <p className="apartment-address">{apartment.address}</p>
               <div className="card-row"><span>Оренда</span><strong>{apartment.rent_amount} {apartment.rent_currency}</strong></div>

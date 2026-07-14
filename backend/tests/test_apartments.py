@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
 
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
@@ -111,6 +112,38 @@ async def test_apartment_crud_archive_and_latest_invoice_summary(tmp_path) -> No
         detail_response = await client.get(f"/api/apartments/{apartment['id']}")
         assert detail_response.json()["is_active"] is False
     finally:
+        await _close_client(lifespan, client)
+
+
+async def test_apartment_list_loads_latest_invoices_in_one_query(tmp_path) -> None:
+    application, lifespan, client = await _create_client(tmp_path)
+    engine = application.state.session_factory.kw["bind"]
+    invoice_queries = 0
+
+    def count_invoice_queries(*args) -> None:
+        nonlocal invoice_queries
+        if "FROM invoices" in args[2]:
+            invoice_queries += 1
+
+    try:
+        for index in range(3):
+            response = await client.post(
+                "/api/apartments",
+                json=_apartment_payload(
+                    name=f"Квартира {index + 1}",
+                    address=f"Київ, {index + 1}",
+                ),
+            )
+            assert response.status_code == 201
+
+        event.listen(engine, "before_cursor_execute", count_invoice_queries)
+        response = await client.get("/api/apartments")
+
+        assert response.status_code == 200
+        assert len(response.json()) == 3
+        assert invoice_queries == 1
+    finally:
+        event.remove(engine, "before_cursor_execute", count_invoice_queries)
         await _close_client(lifespan, client)
 
 

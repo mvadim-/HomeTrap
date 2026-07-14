@@ -68,23 +68,24 @@ def login(
     settings: Settings = request.app.state.settings
     client_ip = _client_ip(request, settings)
     limiter: LoginRateLimiter = request.app.state.login_rate_limiter
-    if not limiter.try_acquire(client_ip):
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many login attempts",
-        )
+    with limiter.reserve(client_ip) as attempt:
+        if not attempt.acquired:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many login attempts",
+            )
 
-    user = session.scalar(select(User).where(User.username == credentials.username))
-    if user is None or not verify_password(credentials.password, user.password_hash):
-        limiter.record_failure(client_ip)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
-        )
+        user = session.scalar(select(User).where(User.username == credentials.username))
+        if user is None or not verify_password(credentials.password, user.password_hash):
+            attempt.record_failure()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password",
+            )
 
-    limiter.clear(client_ip)
-    set_session_cookie(response, user.id, settings)
-    return user
+        attempt.clear()
+        set_session_cookie(response, user.id, settings)
+        return user
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

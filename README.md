@@ -31,6 +31,11 @@ docker compose -f docker/docker-compose.dev.yml run --rm frontend npm test
 docker compose -f docker/docker-compose.dev.yml run --rm frontend npm run build
 ```
 
+Production Python-залежності зафіксовані точними версіями у
+`backend/requirements.txt`, а test/lint-залежності відокремлені у
+`backend/requirements-dev.txt`. Dev Compose збирає лише backend-dev target без
+production-збірки frontend; Vite працює окремим сервісом.
+
 ## Production
 
 Створіть локальну конфігурацію та замініть усі значення `change-me` на надійні

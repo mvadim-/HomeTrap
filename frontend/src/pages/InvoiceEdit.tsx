@@ -11,9 +11,8 @@ import {
   updateInvoice,
 } from "../api/client";
 import { InvoiceCalculator } from "../components/InvoiceCalculator";
+import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
 import "./portal.css";
-
-const statusLabels = { draft: "Чернетка", issued: "Виставлений", paid: "Оплачений" } as const;
 
 function dateLabel(value: string): string {
   return new Intl.DateTimeFormat("uk-UA", { dateStyle: "medium" }).format(new Date(value));
@@ -92,7 +91,7 @@ export function InvoiceEdit() {
   return (
     <>
       <header className="page-header invoice-header">
-        <div><Link className="muted-text" to="/invoices">← Рахунки</Link><h1>Рахунок за {new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${invoice.period}T00:00:00Z`))}</h1><p><span className={`status-badge ${invoice.status}`}>{statusLabels[invoice.status]}</span>{invoice.paid_at && <> · Оплачено {dateLabel(invoice.paid_at)}</>}</p></div>
+        <div><Link className="muted-text" to="/invoices">← Рахунки</Link><h1>Рахунок за {new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${invoice.period}T00:00:00Z`))}</h1><p><InvoiceStatusBadge status={invoice.status} />{invoice.paid_at && <> · Оплачено {dateLabel(invoice.paid_at)}</>}</p></div>
         <div className="invoice-actions">
           {invoice.status === "draft" && <><button className="danger-button" disabled={saving} type="button" onClick={removeDraft}>Видалити чернетку</button><button className="button" disabled={saving || !draftPayload} type="button" onClick={() => changeStatus("issue")}>{draftDirty ? "Зберегти й виставити" : "Виставити"}</button></>}
           {invoice.status === "issued" && <><button className="secondary-button" disabled={saving} type="button" onClick={() => changeStatus("revert-to-draft")}>Повернути в чернетку</button><button className="button" disabled={saving} type="button" onClick={() => changeStatus("mark-paid")}>Позначити оплаченим</button></>}

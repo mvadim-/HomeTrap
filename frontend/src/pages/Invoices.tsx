@@ -10,13 +10,12 @@ import {
   getApartments,
   getInvoices,
 } from "../api/client";
+import {
+  INVOICE_STATUS_OPTIONS,
+  InvoiceStatusBadge,
+} from "../components/InvoiceStatusBadge";
+import { formatUah } from "../utils/format";
 import "./portal.css";
-
-const statusLabels: Record<InvoiceStatus, string> = {
-  draft: "Чернетка",
-  issued: "Виставлений",
-  paid: "Оплачений",
-};
 
 function periodLabel(period: string): string {
   return new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" })
@@ -97,7 +96,7 @@ export function Invoices() {
       <section className="section-card">
         <div className="invoice-filters" aria-label="Фільтри рахунків">
           <label>Квартира<select aria-label="Фільтр за квартирою" value={apartmentFilter} onChange={(event) => setApartmentFilter(event.target.value)}><option value="">Усі квартири</option>{apartments.map((apartment) => <option key={apartment.id} value={apartment.id}>{apartment.name}</option>)}</select></label>
-          <label>Статус<select aria-label="Фільтр за статусом" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Усі статуси</option><option value="draft">Чернетка</option><option value="issued">Виставлений</option><option value="paid">Оплачений</option></select></label>
+          <label>Статус<select aria-label="Фільтр за статусом" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">Усі статуси</option>{INVOICE_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
         </div>
         <div className="table-wrap">
           <table className="services-table">
@@ -109,10 +108,10 @@ export function Invoices() {
                   <tr key={invoice.id}>
                     <td><strong>{periodLabel(invoice.period)}</strong></td>
                     <td>{apartmentNames[invoice.apartment_id] ?? `Квартира #${invoice.apartment_id}`}</td>
-                    <td><span className={`status-badge ${overdue ? "overdue" : invoice.status}`}>{overdue ? "Прострочений" : statusLabels[invoice.status]}</span></td>
-                    <td>{Number(invoice.rent_amount_uah).toLocaleString("uk-UA", { minimumFractionDigits: 2 })} ₴</td>
-                    <td>{Number(invoice.utilities_total).toLocaleString("uk-UA", { minimumFractionDigits: 2 })} ₴</td>
-                    <td><strong>{Number(invoice.grand_total).toLocaleString("uk-UA", { minimumFractionDigits: 2 })} ₴</strong></td>
+                    <td><InvoiceStatusBadge status={invoice.status} overdue={overdue} /></td>
+                    <td>{formatUah(invoice.rent_amount_uah)}</td>
+                    <td>{formatUah(invoice.utilities_total)}</td>
+                    <td><strong>{formatUah(invoice.grand_total)}</strong></td>
                     <td><Link className="table-action" to={`/invoices/${invoice.id}`}>{invoice.status === "draft" ? "Редагувати" : "Переглянути"}</Link></td>
                   </tr>
                 );

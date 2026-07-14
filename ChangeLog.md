@@ -1,5 +1,26 @@
 # ChangeLog
 
+## [2026-07-14 21:24] Усунення code smells порталу
+
+- `backend/app/auth.py`, `backend/app/routers/auth.py`, `backend/tests/test_auth.py` —
+  lifecycle login-reservation оформлено як lease, що гарантовано звільняє pending
+  слот після неочікуваної помилки.
+- `backend/app/services/billing.py`, `backend/app/routers/invoices.py`,
+  `backend/app/services/importer.py` та тести — HTTP-мапінг переведено на типізовані
+  billing errors, спільний validator хронології використовується API й імпортом, а
+  нульові та від’ємні місячні тарифи більше не підміняються fallback-значенням.
+- `backend/app/routers/apartments.py`, `backend/tests/test_apartments.py` — останні
+  рахунки для списку квартир завантажуються одним batch-запитом без N+1.
+- `backend/requirements.txt`, `backend/requirements-dev.txt`, `docker/Dockerfile`,
+  `docker/docker-compose.dev.yml`, `README.md`, `docs/deploy.md` — exact runtime/dev
+  Python-залежності розділено, а dev backend збирається без production frontend stage.
+- `frontend/src/components/InvoiceStatusBadge.tsx`, `frontend/src/utils/format.ts` і
+  сторінки порталу — централізовано статуси рахунків, filter options та формат UAH.
+- Docker-перевірки пройдено: 62 backend-тести, Ruff, 37 frontend-тестів, frontend
+  build, dev/production Compose config, backend-dev і production runtime images;
+  production image не містить pytest/Ruff. Для production потрібно перебудувати й
+  перезапустити контейнер за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-14 21:01] Закриття фінальних зауважень безпеки
 
 - `backend/app/auth.py`, `backend/app/routers/auth.py`, `backend/tests/test_auth.py` —
