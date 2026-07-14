@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-14 18:44] Чернетки рахунків і перерахунок
+
+- `backend/app/services/billing.py`, `backend/app/routers/invoices.py` — додано створення
+  чернетки за період із чинними тарифами, курсом НБУ та перенесеними показниками, а
+  також редагування показників і курсу лише для чернетки.
+- `backend/app/schemas.py`, `backend/app/models.py`, `backend/app/main.py` — додано API-
+  схеми рахунків із Decimal-серіалізацією, стабільний порядок рядків і реєстрацію
+  захищених invoice-маршрутів.
+- `backend/tests/test_billing.py` — перевірено точний розрахунок реального прикладу,
+  перший рахунок, перенесення показників, історію тарифів, м'які попередження та
+  помилки авторизації/валідації.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 6 позначено виконаним після
+  успішних `pytest` і `ruff check` у Docker.
+
 ## [2026-07-14 18:35] Курс НБУ та щоденне оновлення
 
 - `backend/app/services/nbu.py`, `backend/app/routers/rates.py` — додано HTTP-клієнт

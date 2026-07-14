@@ -125,6 +125,7 @@ class Invoice(Base):
     lines: Mapped[list[InvoiceLine]] = relationship(
         back_populates="invoice",
         cascade="all, delete-orphan",
+        order_by="InvoiceLine.id",
     )
 
 

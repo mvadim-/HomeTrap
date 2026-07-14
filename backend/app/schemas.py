@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 from app.models import ServiceKind
 
@@ -83,3 +83,64 @@ class ExchangeRateResponse(ApiSchema):
     currency: str
     rate: Decimal
     is_fallback: bool
+
+
+class InvoiceCreate(ApiSchema):
+    period: date
+
+    @field_validator("period")
+    @classmethod
+    def period_must_start_month(cls, value: date) -> date:
+        if value.day != 1:
+            raise ValueError("period must be the first day of a month")
+        return value
+
+
+class InvoiceLineUpdate(ApiSchema):
+    id: int
+    curr_reading: Decimal | None = Field(
+        default=None,
+        max_digits=14,
+        decimal_places=3,
+    )
+
+
+class InvoiceUpdate(ApiSchema):
+    exchange_rate: Decimal | None = Field(
+        default=None,
+        gt=0,
+        max_digits=12,
+        decimal_places=6,
+    )
+    lines: list[InvoiceLineUpdate] = Field(default_factory=list)
+
+
+class InvoiceLineResponse(ApiSchema):
+    id: int
+    service_id: int
+    service_name: str
+    prev_reading: Decimal | None
+    curr_reading: Decimal | None
+    consumed: Decimal | None
+    tariff_value: Decimal
+    amount: Decimal
+
+
+class InvoiceWarning(ApiSchema):
+    code: str
+    service_id: int
+    message: str
+
+
+class InvoiceResponse(ApiSchema):
+    id: int
+    apartment_id: int
+    period: date
+    status: str
+    exchange_rate: Decimal
+    rent_amount_usd: Decimal
+    rent_amount_uah: Decimal
+    utilities_total: Decimal
+    grand_total: Decimal
+    lines: list[InvoiceLineResponse]
+    warnings: list[InvoiceWarning]
