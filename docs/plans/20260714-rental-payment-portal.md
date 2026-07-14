@@ -154,12 +154,12 @@ docs/
 - Create: `backend/app/db.py`, `backend/app/models.py`, `backend/alembic/*`
 - Create: `backend/tests/test_models.py`
 
-- [ ] SQLAlchemy-моделі всіх сутностей з Technical Details (включно з unique-обмеженнями)
-- [ ] ініціалізувати Alembic, перша міграція, автозастосування міграцій на старті застосунку
-- [ ] фікстура pytest: тимчасова SQLite + сесія на кожен тест
-- [ ] тести: створення сутностей, каскад apartment→services→tariffs, unique (apartment, period)
-- [ ] тест вибору тарифу за датою: valid_from ≤ періоду, найпізніший
-- [ ] прогнати тести — мають пройти перед таском 3
+- [x] SQLAlchemy-моделі всіх сутностей з Technical Details (включно з unique-обмеженнями)
+- [x] ініціалізувати Alembic, перша міграція, автозастосування міграцій на старті застосунку
+- [x] фікстура pytest: тимчасова SQLite + сесія на кожен тест
+- [x] тести: створення сутностей, каскад apartment→services→tariffs, unique (apartment, period)
+- [x] тест вибору тарифу за датою: valid_from ≤ періоду, найпізніший
+- [x] прогнати тести — мають пройти перед таском 3
 
 ### Task 3: Автентифікація адміна
 

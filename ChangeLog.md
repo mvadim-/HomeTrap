@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-14 18:18] Моделі БД та початкова міграція
+
+- `backend/app/db.py`, `backend/app/models.py` — додано SQLAlchemy 2.0 моделі всіх
+  сутностей порталу, зв'язки, каскади, унікальні обмеження та вибір чинного тарифу.
+- `backend/alembic.ini`, `backend/alembic/*`, `backend/app/main.py` — додано початкову
+  міграцію та її автоматичне застосування під час старту FastAPI.
+- `backend/tests/conftest.py`, `backend/tests/test_models.py` — додано тимчасову SQLite
+  на кожен тест і перевірки сутностей, каскадів, унікальності, тарифів та startup-міграції.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 2 позначено виконаним після
+  успішних `pytest`, `ruff check` і `alembic check` у Docker.
+
 ## [2026-07-14 18:12] Каркас backend і Docker dev-середовище
 
 - `backend/app/*` — додано FastAPI app factory, `/api/health` і env-конфігурацію БД,
