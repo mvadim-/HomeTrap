@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-14 19:13] Frontend-каркас, тема та вхід
+
+- `frontend/src/*` — додано React Router, API-клієнт із cookie-сесією та переходом на
+  login після `401`, захищені маршрути, сторінку входу й базовий Layout із навігацією
+  та чипом актуального курсу НБУ.
+- `frontend/src/theme.css`, CSS компонентів — додано пастельні дизайн-токени,
+  шавлієвий акцент, адаптивний інтерфейс і світлу/темну тему.
+- `frontend/package.json`, `frontend/vite.config.ts`, TypeScript-конфігурація —
+  налаштовано Vite, Vitest і React Testing Library; додано тести форми входу та
+  редіректу неавтентифікованого користувача.
+- `docker/Dockerfile.frontend`, `docker/docker-compose.dev.yml`, `.gitignore` — додано
+  відтворюваний frontend dev-образ із hot reload, проксі `/api` до backend та
+  виключення залежностей і Vite-збірки. Цей цикл є локальним; production-образ і
+  інструкції деплою передбачені окремими наступними задачами плану.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 11 позначено виконаним після
+  успішних 2 frontend і 41 backend тестів, Vite build, Ruff та live-перевірки proxy
+  в Docker.
+
 ## [2026-07-14 19:04] Нагадування та налаштування каналів
 
 - `backend/app/services/notify.py` — додано окремо керовані Telegram Bot API та SMTP

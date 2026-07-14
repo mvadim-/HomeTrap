@@ -273,12 +273,12 @@ docs/
 - Create: `frontend/src/pages/Login.tsx`, `frontend/src/components/Layout.tsx`
 - Modify: `docker/docker-compose.dev.yml`
 
-- [ ] Vite + React + TypeScript + react-router; API-клієнт (fetch, обробка 401 → редірект на логін)
-- [ ] дизайн-токени з макета (CSS custom properties, світла/темна тема), Layout: шапка, навігація, чип курсу НБУ
-- [ ] сторінка логіна; захищені маршрути
-- [ ] dev-контейнер frontend (vite dev server, proxy /api → backend); Vitest + RTL налаштовані
-- [ ] тести: рендер Login, редірект неавтентифікованого користувача
-- [ ] прогнати тести — мають пройти перед таском 12
+- [x] Vite + React + TypeScript + react-router; API-клієнт (fetch, обробка 401 → редірект на логін)
+- [x] дизайн-токени з макета (CSS custom properties, світла/темна тема), Layout: шапка, навігація, чип курсу НБУ
+- [x] сторінка логіна; захищені маршрути
+- [x] dev-контейнер frontend (vite dev server, proxy /api → backend); Vitest + RTL налаштовані
+- [x] тести: рендер Login, редірект неавтентифікованого користувача
+- [x] прогнати тести — мають пройти перед таском 12
 
 ### Task 12: Frontend — Дашборд і Квартири
 

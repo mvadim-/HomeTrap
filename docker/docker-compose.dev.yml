@@ -13,5 +13,20 @@ services:
       - ../backend:/app
       - hometrap-data:/data
 
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    working_dir: /app
+    command: npm run dev
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../frontend:/app
+      - frontend-node-modules:/app/node_modules
+
 volumes:
   hometrap-data:
+  frontend-node-modules:
