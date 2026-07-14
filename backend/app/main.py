@@ -1,6 +1,9 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.auth import LoginRateLimiter, ensure_admin
 from app.config import Settings, get_settings
@@ -16,6 +19,26 @@ from app.routers.settings import router as settings_router
 from app.services.scheduler import start_scheduler
 
 APP_VERSION = "0.1.0"
+
+
+def add_frontend(application: FastAPI, static_dir: Path) -> None:
+    index_file = static_dir / "index.html"
+    if not index_file.is_file():
+        return
+
+    assets_dir = static_dir / "assets"
+    if assets_dir.is_dir():
+        application.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @application.get("/{path:path}", include_in_schema=False)
+    async def frontend(path: str):
+        if path == "api" or path.startswith("api/"):
+            raise HTTPException(status_code=404)
+
+        requested_file = (static_dir / path).resolve()
+        if requested_file.is_relative_to(static_dir.resolve()) and requested_file.is_file():
+            return FileResponse(requested_file)
+        return FileResponse(index_file)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -55,6 +78,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.get("/api/health")
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": APP_VERSION}
+
+    add_frontend(application, resolved_settings.static_dir)
 
     return application
 

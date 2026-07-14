@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-14 19:43] Production-збірка та Synology deployment
+
+- `docker/Dockerfile`, `docker/docker-compose.yml`, `.dockerignore`, `.env.example` —
+  додано multi-stage frontend/backend образ, один Uvicorn worker, SQLite bind volume,
+  healthcheck, restart policy та безпечні placeholder-налаштування без credentials.
+- `backend/app/main.py`, `backend/app/config.py`, `backend/tests/test_static.py` —
+  production-застосунок віддає Vite assets і повертає `index.html` для SPA-маршрутів,
+  не підміняючи невідомі `/api/*`; додано success/error тести fallback.
+- `docs/deploy.md`, `.gitignore` — описано Synology Container Manager, оновлення,
+  консистентний бекап SQLite, reverse proxy, Let's Encrypt і вимогу одного worker;
+  локальні runtime-дані виключено з Git.
+- `docs/plans/20260714-rental-payment-portal.md` — Task 16 позначено виконаним після
+  43 backend і 13 frontend тестів, Ruff, Vite build та production smoke у Docker:
+  login, apartment, invoice, healthcheck і прямий refresh `/invoices` пройшли.
+
 ## [2026-07-14 19:37] Налаштування та імпорт у frontend
 
 - `frontend/src/pages/Settings.tsx`, `frontend/src/pages/portal.css` — додано форму

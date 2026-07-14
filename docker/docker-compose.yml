@@ -1,0 +1,25 @@
+services:
+  hometrap:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file:
+      - ../.env
+    environment:
+      HOMETRAP_DATABASE_PATH: /data/hometrap.db
+      HOMETRAP_DEBUG: "false"
+    ports:
+      - "${HOMETRAP_PORT:-8000}:8000"
+    volumes:
+      - ../data:/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped

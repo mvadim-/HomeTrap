@@ -213,6 +213,9 @@ node_modules/
 frontend/dist/
 *.tsbuildinfo
 
+# Local SQLite data mounted by the production compose file
+data/
+
 # Ruff stuff:
 .ruff_cache/
 

@@ -329,12 +329,12 @@ docs/
 - Modify: `docker/Dockerfile`
 - Create: `docker/docker-compose.yml`, `docs/deploy.md`, `.env.example`
 
-- [ ] multi-stage Dockerfile: стадія 1 — `npm run build` frontend; стадія 2 — python-slim + backend, статика копіюється й віддається FastAPI
-- [ ] SPA-fallback: невідомі не-`/api` шляхи → `index.html` (перевірити прямий перехід на /invoices у проді)
-- [ ] прод compose: один сервіс, **один uvicorn-воркер** (вимога APScheduler), volume для SQLite, порт, env із `.env`, healthcheck, restart unless-stopped
-- [ ] `docs/deploy.md`: перший запуск на Synology (Container Manager), оновлення, бекап БД (копія файлу з volume), reverse proxy + Let's Encrypt для hometrap.pp.ua, примітка про один воркер
-- [ ] перевірити повну збірку: `docker compose build` і смоук локально (логін, створення квартири, рахунок, refresh на /invoices)
-- [ ] прогнати всі тести в Docker — мають пройти перед таском 17
+- [x] multi-stage Dockerfile: стадія 1 — `npm run build` frontend; стадія 2 — python-slim + backend, статика копіюється й віддається FastAPI
+- [x] SPA-fallback: невідомі не-`/api` шляхи → `index.html` (перевірити прямий перехід на /invoices у проді)
+- [x] прод compose: один сервіс, **один uvicorn-воркер** (вимога APScheduler), volume для SQLite, порт, env із `.env`, healthcheck, restart unless-stopped
+- [x] `docs/deploy.md`: перший запуск на Synology (Container Manager), оновлення, бекап БД (копія файлу з volume), reverse proxy + Let's Encrypt для hometrap.pp.ua, примітка про один воркер
+- [x] перевірити повну збірку: `docker compose build` і смоук локально (логін, створення квартири, рахунок, refresh на /invoices)
+- [x] прогнати всі тести в Docker — мають пройти перед таском 17
 
 ### Task 17: Verify acceptance criteria
 

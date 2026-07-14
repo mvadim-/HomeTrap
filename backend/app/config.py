@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_path: Path = Path("/data/hometrap.db")
+    static_dir: Path = Path("/app/static")
     secret_key: str = "local-development-secret"
     debug: bool = False
     admin_username: str | None = Field(
