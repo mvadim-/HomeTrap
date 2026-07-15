@@ -1,5 +1,12 @@
 # ChangeLog
 
+## [2026-07-15 10:37] Однокомандний запуск Docker
+
+- `start.sh` — додано кореневий idempotent launcher: перевіряє Docker/Compose,
+  збирає й запускає dev-stack, чекає готовності backend/frontend та показує URL і
+  локальні credentials.
+- `README.md` — додано короткий сценарій запуску HomeTrap командою `./start.sh`.
+
 ## [2026-07-14 21:37] Серіалізація мутацій рахунків
 
 - `backend/app/services/billing.py`, `backend/app/routers/invoices.py` — мутації
