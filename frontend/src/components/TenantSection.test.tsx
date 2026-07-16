@@ -36,7 +36,10 @@ beforeEach(() => {
   }] : []);
 });
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("TenantSection", () => {
   it("renders the active tenant, contract file and collapsed history", async () => {
@@ -67,6 +70,7 @@ describe("TenantSection", () => {
 
     expect(apiClient.endTenantContract).toHaveBeenCalledWith(8, "2026-07-16");
     expect(await screen.findByLabelText("ПІБ")).toBeInTheDocument();
+    expect(screen.getByLabelText("Контракт з")).toHaveValue("2026-07-17");
     expect(screen.getByRole("button", { name: "Додати орендаря" })).toBeInTheDocument();
   });
 
@@ -108,5 +112,40 @@ describe("TenantSection", () => {
     await user.click(screen.getByRole("button", { name: "Завантажити" }));
 
     await waitFor(() => expect(apiClient.uploadTenantAttachments).toHaveBeenCalledWith(8, files));
+  });
+
+  it("uses a fresh local date whenever a tenant form is opened", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16, 23, 59));
+    vi.mocked(apiClient.getTenants).mockResolvedValue([]);
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<TenantSection apartmentId={1} />);
+
+    await user.click(await screen.findByRole("button", { name: "Новий орендар" }));
+    expect(screen.getByLabelText("Контракт з")).toHaveValue("2026-07-16");
+    await user.click(screen.getByRole("button", { name: "Скасувати" }));
+
+    vi.setSystemTime(new Date(2026, 6, 17, 0, 1));
+    await user.click(screen.getByRole("button", { name: "Новий орендар" }));
+    expect(screen.getByLabelText("Контракт з")).toHaveValue("2026-07-17");
+  });
+
+  it("loads attachments only for the active tenant", async () => {
+    render(<TenantSection apartmentId={1} />);
+
+    expect(await screen.findByText("Оксана Коваль")).toBeInTheDocument();
+    expect(apiClient.getTenantAttachments).toHaveBeenCalledTimes(1);
+    expect(apiClient.getTenantAttachments).toHaveBeenCalledWith(activeTenant.id);
+  });
+
+  it("uses the current local date when the end-contract form opens", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 17, 0, 1));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<TenantSection apartmentId={1} />);
+
+    await user.click(await screen.findByRole("button", { name: "Завершити контракт" }));
+
+    expect(screen.getByLabelText("Дата завершення контракту")).toHaveValue("2026-07-17");
   });
 });

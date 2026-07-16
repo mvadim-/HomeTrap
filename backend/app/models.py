@@ -18,6 +18,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -64,6 +65,12 @@ class Tenant(Base):
     __tablename__ = "tenants"
     __table_args__ = (
         Index("ix_tenants_apartment_id_contract_end", "apartment_id", "contract_end"),
+        Index(
+            "uq_tenants_active_apartment",
+            "apartment_id",
+            unique=True,
+            sqlite_where=text("contract_end IS NULL"),
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

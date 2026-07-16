@@ -3,19 +3,14 @@ from shutil import rmtree
 from uuid import uuid4
 
 
-CONTENT_TYPE_EXTENSIONS = {
-    "image/jpeg": {".jpg", ".jpeg"},
-    "image/png": {".png"},
-    "image/webp": {".webp"},
-    "application/pdf": {".pdf"},
-}
-STORED_EXTENSIONS = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/webp": ".webp",
-    "application/pdf": ".pdf",
+ATTACHMENT_TYPES = {
+    "image/jpeg": (".jpg", {".jpg", ".jpeg"}),
+    "image/png": (".png", {".png"}),
+    "image/webp": (".webp", {".webp"}),
+    "application/pdf": (".pdf", {".pdf"}),
 }
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+MAX_ATTACHMENT_FILES = 10
 
 
 def normalize_content_type(content_type: str | None) -> str:
@@ -24,8 +19,8 @@ def normalize_content_type(content_type: str | None) -> str:
 
 def validate_file_type(original_name: str, content_type: str | None) -> str:
     normalized_type = normalize_content_type(content_type)
-    allowed_extensions = CONTENT_TYPE_EXTENSIONS.get(normalized_type)
-    if allowed_extensions is None or Path(original_name).suffix.lower() not in allowed_extensions:
+    attachment_type = ATTACHMENT_TYPES.get(normalized_type)
+    if attachment_type is None or Path(original_name).suffix.lower() not in attachment_type[1]:
         raise ValueError("Unsupported attachment type")
     return normalized_type
 
@@ -53,7 +48,7 @@ def save_attachment(
     content_type: str,
     content: bytes,
 ) -> tuple[str, Path]:
-    stored_name = f"{uuid4().hex}{STORED_EXTENSIONS[content_type]}"
+    stored_name = f"{uuid4().hex}{ATTACHMENT_TYPES[content_type][0]}"
     target = attachment_path(uploads_dir, tenant_id, stored_name)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(content)

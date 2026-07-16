@@ -139,6 +139,27 @@ def test_can_create_tenant_with_nullable_contract_end(db_session: Session) -> No
     assert tenant.attachments[0].uploaded_at is not None
 
 
+def test_only_one_active_tenant_is_allowed_per_apartment(db_session: Session) -> None:
+    apartment = make_apartment()
+    db_session.add_all(
+        [
+            Tenant(
+                apartment=apartment,
+                full_name="Перший",
+                contract_start=date(2026, 1, 1),
+            ),
+            Tenant(
+                apartment=apartment,
+                full_name="Другий",
+                contract_start=date(2026, 7, 1),
+            ),
+        ]
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
 def test_database_cascade_deletes_tenant_and_attachments(db_session: Session) -> None:
     apartment = make_apartment()
     tenant = Tenant(

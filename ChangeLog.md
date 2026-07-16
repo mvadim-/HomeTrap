@@ -1,5 +1,26 @@
 # ChangeLog
 
+## [2026-07-16 14:54] Виправлення після комплексного code review
+
+- `backend/app/models.py`, `backend/alembic/versions/20260716_04_enforce_active_tenant.py`,
+  `backend/app/routers/tenants.py` — інваріант одного активного орендаря закріплено
+  частковим unique index, конфлікти commit повертають 409, а перетини контрактів
+  відхиляються; файли видаляються лише після успішного commit метаданих.
+- `backend/app/services/storage.py`, `backend/app/routers/tenants.py` — whitelist типів
+  файлів зведено до одного mapping, batch обмежено 10 файлами та обробляється по одному
+  файлу без накопичення всіх payload у пам'яті.
+- `frontend/src/components/TenantSection.tsx` — локальну дату обчислено під час відкриття
+  форм, наступний контракт починається з наступного календарного дня, а вкладення
+  завантажуються лише для активного орендаря.
+- `backend/tests/test_tenants.py`, `backend/tests/test_models.py`,
+  `backend/tests/test_attachments.py`, `backend/tests/test_stats.py`,
+  `frontend/src/components/TenantSection.test.tsx` — додано регресії конкурентного
+  створення, перетинів дат, commit failures, batch limit, актуальної локальної дати та
+  Kyiv-aware stats fixtures.
+- `README.md`, `ChangeLog.md` — уточнено dev/production storage і backup, виправлено
+  хронологію запису моделей. Для production потрібно перебудувати й перезапустити
+  контейнер за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-16 14:42] Документація орендарів і резервного копіювання
 
 - `README.md` — описано життєвий цикл орендарів, один активний контракт на квартиру,
@@ -107,7 +128,7 @@
   успішного backend-тесту і Ruff у Docker. Для production потрібна перебудова та
   перезапуск контейнера за `docs/deploy.md`; автоматичний деплой не виконувався.
 
-## [2026-07-16 14:20] Моделі орендарів і вкладень контракту
+## [2026-07-16 13:53] Моделі орендарів і вкладень контракту
 
 - `backend/app/models.py`, `backend/alembic/versions/20260716_03_add_tenants.py` —
   додано моделі й таблиці `Tenant`/`TenantAttachment`, зв'язки з каскадним видаленням,

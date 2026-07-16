@@ -15,16 +15,27 @@ import {
   uploadTenantAttachments,
 } from "../api/client";
 
-const today = new Date().toISOString().slice(0, 10);
+function localToday(): string {
+  const today = new Date();
+  return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+}
 
-const emptyTenant: TenantPayload = {
-  full_name: "",
-  phone: "",
-  email: "",
-  contract_start: today,
-  contract_end: null,
-  notes: "",
-};
+function emptyTenant(contractStart = localToday()): TenantPayload {
+  return {
+    full_name: "",
+    phone: "",
+    email: "",
+    contract_start: contractStart,
+    contract_end: null,
+    notes: "",
+  };
+}
+
+function nextDay(value: string): string {
+  const day = new Date(`${value}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + 1);
+  return day.toISOString().slice(0, 10);
+}
 
 function tenantPayload(tenant: Tenant): TenantPayload {
   return {
@@ -48,6 +59,9 @@ function normalizedPayload(payload: TenantPayload): TenantPayload {
 
 function readableError(error: unknown, fallback: string): string {
   if (error instanceof ApiError && error.status === 409) {
+    if (error.message.includes("overlaps")) {
+      return "Дати контракту перетинаються з уже збереженою історією орендарів.";
+    }
     return "У квартирі вже є активний орендар. Оновіть список і завершіть його контракт перед додаванням нового.";
   }
   return error instanceof ApiError ? error.message : fallback;
@@ -59,23 +73,22 @@ interface TenantSectionProps {
 
 export function TenantSection({ apartmentId }: TenantSectionProps) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [attachments, setAttachments] = useState<Record<number, TenantAttachment[]>>({});
+  const [attachments, setAttachments] = useState<TenantAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [editingTenantId, setEditingTenantId] = useState<number | null>(null);
-  const [draft, setDraft] = useState<TenantPayload>(emptyTenant);
+  const [draft, setDraft] = useState<TenantPayload>(() => emptyTenant());
   const [showEndForm, setShowEndForm] = useState(false);
-  const [contractEnd, setContractEnd] = useState(today);
+  const [contractEnd, setContractEnd] = useState(localToday);
   const [files, setFiles] = useState<File[]>([]);
 
   const load = useCallback(async () => {
     const tenantItems = await getTenants(apartmentId);
-    const attachmentEntries = await Promise.all(
-      tenantItems.map(async (tenant) => [tenant.id, await getTenantAttachments(tenant.id)] as const),
-    );
+    const active = tenantItems.find((tenant) => tenant.contract_end === null);
+    const activeAttachments = active ? await getTenantAttachments(active.id) : [];
     setTenants(tenantItems);
-    setAttachments(Object.fromEntries(attachmentEntries));
+    setAttachments(activeAttachments);
   }, [apartmentId]);
 
   useEffect(() => {
@@ -90,9 +103,16 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
 
   function beginCreate() {
     setEditingTenantId(null);
-    setDraft({ ...emptyTenant });
+    setDraft(emptyTenant());
     setShowTenantForm(true);
     setError("");
+  }
+
+  function toggleEndForm() {
+    setShowEndForm((shown) => {
+      if (!shown) setContractEnd(localToday());
+      return !shown;
+    });
   }
 
   function beginEdit(tenant: Tenant) {
@@ -128,7 +148,7 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
       setShowEndForm(false);
       setShowTenantForm(true);
       setEditingTenantId(null);
-      setDraft({ ...emptyTenant, contract_start: contractEnd });
+      setDraft(emptyTenant(nextDay(contractEnd)));
       await load();
     } catch (requestError) {
       setError(readableError(requestError, "Не вдалося завершити контракт."));
@@ -184,7 +204,7 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
           </dl>
 
           <div className="tenant-actions">
-            <button className="secondary-button" type="button" onClick={() => setShowEndForm((shown) => !shown)}>Завершити контракт</button>
+            <button className="secondary-button" type="button" onClick={toggleEndForm}>Завершити контракт</button>
           </div>
           {showEndForm && (
             <form className="tenant-end-form" onSubmit={submitContractEnd}>
@@ -196,14 +216,14 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
           <div className="tenant-files">
             <h3>Файли контракту</h3>
             <ul>
-              {(attachments[activeTenant.id] ?? []).map((attachment) => (
+              {attachments.map((attachment) => (
                 <li key={attachment.id}>
                   <a href={getAttachmentUrl(attachment.id)} target="_blank" rel="noreferrer">{attachment.original_name}</a>
                   <button className="table-action" type="button" onClick={() => removeAttachment(attachment)}>Видалити</button>
                 </li>
               ))}
             </ul>
-            {(attachments[activeTenant.id] ?? []).length === 0 && <p className="muted-text">Файлів ще немає.</p>}
+            {attachments.length === 0 && <p className="muted-text">Файлів ще немає.</p>}
             <form className="attachment-form" onSubmit={submitAttachments}>
               <input aria-label="Файли контракту" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple type="file" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
               <button className="button" disabled={files.length === 0} type="submit">Завантажити</button>

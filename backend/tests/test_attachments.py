@@ -1,4 +1,6 @@
+import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.main import create_app
@@ -143,6 +145,26 @@ async def test_upload_rejects_unsupported_and_oversized_files(tmp_path) -> None:
             },
         )
         assert oversized.status_code == 413
+
+        too_many = await client.post(
+            endpoint,
+            files=[
+                ("files", (f"contract-{index}.pdf", b"pdf", "application/pdf"))
+                for index in range(11)
+            ],
+        )
+        assert too_many.status_code == 413
+
+        invalid_batch = await client.post(
+            endpoint,
+            files=[
+                ("files", ("contract.pdf", b"pdf", "application/pdf")),
+                ("files", ("notes.txt", b"text", "text/plain")),
+            ],
+        )
+        assert invalid_batch.status_code == 415
+        tenant_dir = _settings.uploads_dir / "tenants" / str(tenant["id"])
+        assert not tenant_dir.exists() or not any(tenant_dir.iterdir())
     finally:
         await _close_client(lifespan, client)
 
@@ -166,6 +188,48 @@ async def test_tenant_delete_removes_attachment_files(tmp_path) -> None:
         deleted = await client.delete(f"/api/tenants/{tenant['id']}")
         assert deleted.status_code == 204
         assert not tenant_dir.exists()
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_delete_commit_failure_preserves_metadata_and_files(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    lifespan, client, settings = await _create_client(tmp_path)
+    try:
+        tenant = await _create_tenant(client)
+        upload = await client.post(
+            f"/api/tenants/{tenant['id']}/attachments",
+            files={"files": ("contract.pdf", b"pdf-content", "application/pdf")},
+        )
+        attachment = upload.json()[0]
+        path = attachment_path(
+            settings.uploads_dir,
+            tenant["id"],
+            next((settings.uploads_dir / "tenants" / str(tenant["id"])).iterdir()).name,
+        )
+        original_commit = Session.commit
+
+        def fail_commit(_session) -> None:
+            raise RuntimeError("injected commit failure")
+
+        monkeypatch.setattr(Session, "commit", fail_commit)
+        with pytest.raises(RuntimeError, match="injected commit failure"):
+            await client.delete(f"/api/attachments/{attachment['id']}")
+        monkeypatch.setattr(Session, "commit", original_commit)
+
+        assert path.is_file()
+        listed = await client.get(f"/api/tenants/{tenant['id']}/attachments")
+        assert [item["id"] for item in listed.json()] == [attachment["id"]]
+
+        monkeypatch.setattr(Session, "commit", fail_commit)
+        with pytest.raises(RuntimeError, match="injected commit failure"):
+            await client.delete(f"/api/tenants/{tenant['id']}")
+        monkeypatch.setattr(Session, "commit", original_commit)
+
+        assert path.is_file()
+        assert (await client.get(f"/api/tenants/{tenant['id']}/attachments")).status_code == 200
     finally:
         await _close_client(lifespan, client)
 

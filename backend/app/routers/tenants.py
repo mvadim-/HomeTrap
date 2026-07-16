@@ -9,13 +9,15 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_db, require_auth
 from app.models import Apartment, Tenant, TenantAttachment
 from app.schemas import TenantAttachmentOut, TenantEndContract, TenantIn, TenantOut
 from app.services.storage import (
+    MAX_ATTACHMENT_FILES,
     MAX_ATTACHMENT_SIZE,
     attachment_path,
     delete_attachment,
@@ -25,6 +27,43 @@ from app.services.storage import (
 )
 
 router = APIRouter(tags=["tenants"], dependencies=[Depends(require_auth)])
+
+
+def _commit_tenant(session: Session) -> None:
+    try:
+        session.commit()
+    except IntegrityError as error:
+        session.rollback()
+        if "tenants.apartment_id" in str(error.orig):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Apartment already has an active tenant",
+            ) from error
+        raise
+
+
+def _ensure_contract_does_not_overlap(
+    session: Session,
+    apartment_id: int,
+    payload: TenantIn,
+    tenant_id: int | None = None,
+) -> None:
+    query = select(Tenant.id).where(
+        Tenant.apartment_id == apartment_id,
+        or_(
+            Tenant.contract_end.is_(None),
+            Tenant.contract_end >= payload.contract_start,
+        ),
+    )
+    if payload.contract_end is not None:
+        query = query.where(Tenant.contract_start <= payload.contract_end)
+    if tenant_id is not None:
+        query = query.where(Tenant.id != tenant_id)
+    if session.scalar(query.limit(1)) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tenant contract overlaps an existing contract",
+        )
 
 
 def _get_apartment(session: Session, apartment_id: int) -> Apartment:
@@ -102,9 +141,10 @@ def create_tenant(
             detail="Apartment already has an active tenant",
         )
 
+    _ensure_contract_does_not_overlap(session, apartment_id, payload)
     tenant = Tenant(apartment_id=apartment_id, **payload.model_dump())
     session.add(tenant)
-    session.commit()
+    _commit_tenant(session)
     return tenant
 
 
@@ -128,9 +168,15 @@ def update_tenant(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Apartment already has an active tenant",
             )
+    _ensure_contract_does_not_overlap(
+        session,
+        tenant.apartment_id,
+        payload,
+        tenant.id,
+    )
     for field, value in payload.model_dump().items():
         setattr(tenant, field, value)
-    session.commit()
+    _commit_tenant(session)
     return tenant
 
 
@@ -167,9 +213,14 @@ def delete_tenant(
     session: Session = Depends(get_db),
 ) -> Response:
     tenant = _get_tenant(session, tenant_id)
-    delete_tenant_files(request.app.state.settings.uploads_dir, tenant.id)
+    tenant_id_to_delete = tenant.id
     session.delete(tenant)
-    session.commit()
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    delete_tenant_files(request.app.state.settings.uploads_dir, tenant_id_to_delete)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -190,28 +241,23 @@ async def upload_attachments(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="At least one attachment is required",
         )
-
-    prepared_files: list[tuple[UploadFile, str, bytes]] = []
-    for file in files:
-        try:
-            content_type = validate_file_type(file.filename or "", file.content_type)
-        except ValueError as error:
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=str(error),
-            ) from error
-        content = await file.read(MAX_ATTACHMENT_SIZE + 1)
-        if len(content) > MAX_ATTACHMENT_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail="Attachment exceeds 10 MB",
-            )
-        prepared_files.append((file, content_type, content))
+    if len(files) > MAX_ATTACHMENT_FILES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"No more than {MAX_ATTACHMENT_FILES} attachments are allowed per request",
+        )
 
     saved_paths = []
     attachments = []
     try:
-        for file, content_type, content in prepared_files:
+        for file in files:
+            content_type = validate_file_type(file.filename or "", file.content_type)
+            content = await file.read(MAX_ATTACHMENT_SIZE + 1)
+            if len(content) > MAX_ATTACHMENT_SIZE:
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail="Attachment exceeds 10 MB",
+                )
             stored_name, saved_path = save_attachment(
                 request.app.state.settings.uploads_dir,
                 tenant_id,
@@ -229,6 +275,14 @@ async def upload_attachments(
             session.add(attachment)
             attachments.append(attachment)
         session.commit()
+    except ValueError as error:
+        session.rollback()
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=str(error),
+        ) from error
     except Exception:
         session.rollback()
         for path in saved_paths:
@@ -296,17 +350,23 @@ def remove_attachment(
     session: Session = Depends(get_db),
 ) -> Response:
     attachment = _get_attachment(session, attachment_id)
+    tenant_id = attachment.tenant_id
+    stored_name = attachment.stored_name
+    session.delete(attachment)
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     try:
         delete_attachment(
             request.app.state.settings.uploads_dir,
-            attachment.tenant_id,
-            attachment.stored_name,
+            tenant_id,
+            stored_name,
         )
     except ValueError as error:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Attachment file not found",
         ) from error
-    session.delete(attachment)
-    session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

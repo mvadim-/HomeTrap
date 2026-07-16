@@ -1,3 +1,5 @@
+import asyncio
+
 from httpx import ASGITransport, AsyncClient
 
 from app.config import Settings
@@ -107,6 +109,15 @@ async def test_tenant_lifecycle_history_and_current_name(tmp_path) -> None:
         )
         assert repeated_end.status_code == 409
 
+        overlapping = await client.post(
+            f"/api/apartments/{apartment_id}/tenants",
+            json=_tenant_payload(
+                full_name="Іван Бондар",
+                contract_start="2025-12-31",
+            ),
+        )
+        assert overlapping.status_code == 409
+
         second_response = await client.post(
             f"/api/apartments/{apartment_id}/tenants",
             json=_tenant_payload(
@@ -131,6 +142,12 @@ async def test_tenant_lifecycle_history_and_current_name(tmp_path) -> None:
         )
         assert update_response.status_code == 200
         assert update_response.json()["phone"] == "+380671112233"
+
+        overlapping_update = await client.put(
+            f"/api/tenants/{first['id']}",
+            json=_tenant_payload(contract_end="2026-01-01"),
+        )
+        assert overlapping_update.status_code == 409
 
         history = await client.get(f"/api/apartments/{apartment_id}/tenants")
         assert history.status_code == 200
@@ -183,6 +200,24 @@ async def test_tenant_input_validation(tmp_path) -> None:
             json=_tenant_payload(email="missing-domain@"),
         )
         assert invalid_update.status_code == 422
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_concurrent_active_tenant_creation_returns_conflict(tmp_path) -> None:
+    lifespan, client = await _create_client(tmp_path)
+    try:
+        apartment = await _create_apartment(client)
+        endpoint = f"/api/apartments/{apartment['id']}/tenants"
+
+        first, second = await asyncio.gather(
+            client.post(endpoint, json=_tenant_payload(full_name="Перший")),
+            client.post(endpoint, json=_tenant_payload(full_name="Другий")),
+        )
+
+        assert sorted([first.status_code, second.status_code]) == [201, 409]
+        tenants = await client.get(endpoint)
+        assert len(tenants.json()) == 1
     finally:
         await _close_client(lifespan, client)
 

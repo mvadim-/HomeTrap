@@ -9,6 +9,7 @@ from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
 from app.models import Apartment, Invoice, InvoiceLine, Service
+from app.routers.stats import _today
 
 
 def _shift_month(value: date, offset: int) -> date:
@@ -83,7 +84,7 @@ def _add_invoice(
 
 
 def _seed_stats(application) -> tuple[int, int, int]:
-    current = date.today().replace(day=1)
+    current = _today().replace(day=1)
     previous = _shift_month(current, -1)
     old = _shift_month(current, -18)
     engine = create_database_engine(application.state.settings.database_path)
@@ -278,8 +279,6 @@ def test_stats_today_uses_kyiv_timezone(monkeypatch) -> None:
 
     monkeypatch.setattr("app.routers.stats.datetime", FrozenDateTime)
 
-    from app.routers.stats import _today
-
     assert _today() == date(2026, 7, 1)
 
 
@@ -306,7 +305,7 @@ async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:
         assert payload["top_service"] == {
             "name": "Утримання будинку",
             "share_percent": "60.00",
-            "peak_period": date.today().replace(day=1).isoformat(),
+            "peak_period": _today().replace(day=1).isoformat(),
         }
 
         portfolio = await client.get("/api/stats/income", params={"months": 2})
@@ -326,7 +325,7 @@ async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:
         assert payload["top_service"] == {
             "name": "Утримання будинку",
             "share_percent": "42.86",
-            "peak_period": date.today().replace(day=1).isoformat(),
+            "peak_period": _today().replace(day=1).isoformat(),
         }
     finally:
         await _close(lifespan, client)
@@ -347,7 +346,7 @@ async def test_dashboard_and_empty_history(tmp_path) -> None:
                 "invoice_id": payload["needs_attention"][0]["invoice_id"],
                 "apartment_id": first_id,
                 "apartment_name": "Квартира 1",
-                "period": date.today().replace(day=1).isoformat(),
+                "period": _today().replace(day=1).isoformat(),
                 "status": "issued",
                 "grand_total": "1700.00",
                 "reason": "unpaid",
@@ -403,7 +402,7 @@ async def test_stats_custom_period_and_all_time(tmp_path) -> None:
     application, lifespan, client = await _client(tmp_path)
     try:
         first_id, _, _ = _seed_stats(application)
-        current = date.today().replace(day=1)
+        current = _today().replace(day=1)
         previous = _shift_month(current, -1)
 
         consumption = await client.get(
@@ -465,7 +464,7 @@ async def test_stats_rejects_combined_and_invalid_periods(tmp_path) -> None:
     application, lifespan, client = await _client(tmp_path)
     try:
         first_id, _, _ = _seed_stats(application)
-        current = date.today().replace(day=1)
+        current = _today().replace(day=1)
         previous = _shift_month(current, -1)
         invalid_periods = [
             {
