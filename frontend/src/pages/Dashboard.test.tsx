@@ -93,8 +93,12 @@ describe("Dashboard", () => {
     expect(screen.getByText("Оксана К. · оренда 325 $")).toBeInTheDocument();
     expect(screen.getByText("Квартира вільна")).toBeInTheDocument();
 
-    expect(screen.getByText("Оплачено").nextElementSibling).not.toHaveClass("metric-note", "note-pos", "note-neg");
-    expect(screen.getByText("Заборгованість").nextElementSibling).not.toHaveClass("metric-note", "note-pos", "note-neg");
+    for (const label of ["Оплачено", "Заборгованість"]) {
+      const value = screen.getByText(label).nextElementSibling;
+      expect(value).not.toHaveClass("metric-note");
+      expect(value).not.toHaveClass("note-pos");
+      expect(value).not.toHaveClass("note-neg");
+    }
     const apartmentCard = screen.getByText("Квартира на Подолі", { selector: "h3" }).closest(".apartment-card");
     expect(apartmentCard).toHaveClass("dashboard-apartment-row");
     expect(apartmentCard?.parentElement).toHaveClass("dashboard-apartments-list");

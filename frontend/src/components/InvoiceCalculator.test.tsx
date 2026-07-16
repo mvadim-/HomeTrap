@@ -94,6 +94,29 @@ describe("InvoiceCalculator", () => {
     expect(screen.queryByText("Перевірте показники")).not.toBeInTheDocument();
   });
 
+  it("renders an issued invoice as read-only without warnings", () => {
+    render(
+      <InvoiceCalculator
+        invoice={{
+          ...invoice,
+          status: "issued",
+          warnings: [{
+            code: "consumption_anomaly",
+            message: "Anomalous consumption",
+            service_id: 5,
+          }],
+        }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Курс USD")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Поточний показник Газ")).not.toBeInTheDocument();
+    expect(screen.getByText("44,68")).toHaveClass("invoice-readonly-value");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("Перевірте показники")).not.toBeInTheDocument();
+  });
+
   it("rounds decimal halves like backend ROUND_HALF_UP", async () => {
     const user = userEvent.setup();
     const preciseInvoice: Invoice = {

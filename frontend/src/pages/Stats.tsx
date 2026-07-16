@@ -70,6 +70,22 @@ function fullMonthPeriods(periods: string[]): string[] {
   return result;
 }
 
+function chartMonthPeriods(statsPeriod: StatsPeriod | null, dataPeriods: string[]): string[] {
+  if (statsPeriod === null) return [];
+  if ("date_from" in statsPeriod) {
+    return fullMonthPeriods([statsPeriod.date_from, statsPeriod.date_to]);
+  }
+  if ("months" in statsPeriod) {
+    const end = new Date();
+    const start = new Date(end.getFullYear(), end.getMonth() - statsPeriod.months + 1, 1);
+    return fullMonthPeriods([
+      `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-01`,
+      `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-01`,
+    ]);
+  }
+  return fullMonthPeriods(dataPeriods);
+}
+
 function scaleTicks(max: number, step: number): number[] {
   return Array.from({ length: Math.round(max / step) + 1 }, (_, index) => index * step);
 }
@@ -153,14 +169,13 @@ function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods
   );
 }
 
-function IncomeChart({ stats }: { stats: IncomeStats }) {
+function IncomeChart({ stats, periods }: { stats: IncomeStats; periods: string[] }) {
   const [activeCorrection, setActiveCorrection] = useState<string | null>(null);
   const width = 760;
   const height = 270;
   const padding = { top: 28, right: 18, bottom: 38, left: 56 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const periods = fullMonthPeriods(stats.values.map((point) => point.period));
   const pointsByPeriod = new Map(stats.values.map((point) => [point.period.slice(0, 7), point]));
   const scale = niceScale(Math.max(...stats.values.map((point) => Math.max(Number(point.total), 0)), 1));
   const ticks = scaleTicks(scale.max, scale.step);
@@ -252,7 +267,11 @@ export function Stats() {
   const [income, setIncome] = useState<IncomeStats | null>(null);
   const [incomeLoading, setIncomeLoading] = useState(false);
   const [incomeError, setIncomeError] = useState("");
-  const [topServiceInvoiceId, setTopServiceInvoiceId] = useState<number | null>(null);
+  const [topServiceInvoice, setTopServiceInvoice] = useState<{
+    id: number;
+    apartmentId: number;
+    peakPeriod: string;
+  } | null>(null);
   const [error, setError] = useState("");
   const [periodMode, setPeriodMode] = useState<"6" | "12" | "24" | "all" | "custom">("12");
   const [dateFrom, setDateFrom] = useState("");
@@ -274,7 +293,10 @@ export function Stats() {
       : periodMode === "custom"
         ? "Споживання та дохід за довільний період"
         : `Споживання та дохід за останні ${periodMode} місяців`;
-  const consumptionPeriods = fullMonthPeriods(consumption?.flatMap((series) => series.values.map((point) => point.period)) ?? []);
+  const chartPeriods = chartMonthPeriods(statsPeriod, [
+    ...(consumption?.flatMap((series) => series.values.map((point) => point.period)) ?? []),
+    ...(income?.values.map((point) => point.period) ?? []),
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -327,7 +349,7 @@ export function Stats() {
   }, [apartmentId, scope, statsPeriod]);
 
   useEffect(() => {
-    setTopServiceInvoiceId(null);
+    setTopServiceInvoice(null);
     if (
       scope !== "apartment"
       || apartmentId === null
@@ -342,9 +364,13 @@ export function Stats() {
       .then((invoices) => {
         if (!active) return;
         const invoice = invoices.find((item) => item.period.slice(0, 7) === peakMonth);
-        setTopServiceInvoiceId(invoice?.id ?? null);
+        setTopServiceInvoice(invoice ? {
+          id: invoice.id,
+          apartmentId,
+          peakPeriod: income.top_service!.peak_period,
+        } : null);
       })
-      .catch(() => active && setTopServiceInvoiceId(null));
+      .catch(() => active && setTopServiceInvoice(null));
     return () => { active = false; };
   }, [apartmentId, income, scope]);
 
@@ -353,6 +379,15 @@ export function Stats() {
   ) : (
     <><span>Найбільша стаття</span>{income ? <strong className="muted-text">Немає даних</strong> : <strong>—</strong>}</>
   );
+  const topServiceInvoiceId = scope === "apartment"
+    && apartmentId !== null
+    && income?.scope === "apartment"
+    && income.apartment_id === apartmentId
+    && income.top_service
+    && topServiceInvoice?.apartmentId === apartmentId
+    && topServiceInvoice.peakPeriod === income.top_service.peak_period
+    ? topServiceInvoice.id
+    : null;
 
   return (
     <>
@@ -394,7 +429,7 @@ export function Stats() {
         ) : consumptionError ? (
           <p className="error-message">{consumptionError}</p>
         ) : consumption && consumption.length > 0 ? (
-          <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} periods={consumptionPeriods} />)}</div>
+          <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} periods={chartPeriods} />)}</div>
         ) : (
           <p className="empty-state">Ще немає історії споживання для цієї квартири.</p>
         )}
@@ -433,7 +468,7 @@ export function Stats() {
         ) : income.values.length > 0 ? (
           <>
             <div className="chart-legend"><span><i className="rent-swatch" />Оренда</span><span><i className="utilities-swatch" />Комунальні</span><strong>Разом: {formatUah(income.totals.total)}</strong></div>
-            <IncomeChart stats={income} />
+            <IncomeChart stats={income} periods={chartPeriods} />
           </>
         ) : (
           <p className="empty-state">Ще немає історії доходу за вибраний період.</p>

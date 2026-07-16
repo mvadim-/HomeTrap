@@ -54,7 +54,10 @@ function incomeStats(apartmentId?: number): apiClient.IncomeStats {
   };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("Stats", () => {
   it("renders consumption charts, stacked income and changes income scope", async () => {
@@ -122,6 +125,8 @@ describe("Stats", () => {
   });
 
   it("keeps missing months as empty slots and breaks consumption lines", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
     vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
       apartment_id: 1,
@@ -154,6 +159,11 @@ describe("Stats", () => {
     const incomeChart = await screen.findByRole("img", { name: "Стековий графік доходу" });
     const consumptionGap = consumptionChart.querySelector('[data-period="2025-10-01"]');
     const incomeGap = incomeChart.querySelector('[data-period="2025-10-01"]');
+
+    expect(consumptionChart.querySelector('[data-period="2025-08-01"]')).toHaveClass("chart-month-slot-empty");
+    expect(consumptionChart.querySelector('[data-period="2026-07-01"]')).toHaveClass("chart-month-slot-empty");
+    expect(incomeChart.querySelector('[data-period="2025-08-01"]')).toHaveClass("chart-month-slot-empty");
+    expect(incomeChart.querySelector('[data-period="2026-07-01"]')).toHaveClass("chart-month-slot-empty");
 
     expect(consumptionGap).toHaveClass("chart-month-slot-empty");
     expect(consumptionGap).toHaveTextContent("жовт");
@@ -243,18 +253,22 @@ describe("Stats", () => {
   it("requests a custom month range for both charts", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
-    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: null,
+      series: [{ service_id: 1, service_name: "Газ", unit: "м³", values: [{ period: "2025-06-01", consumed: "12" }] }],
+    });
     const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
       scope: "portfolio",
       apartment_id: null,
       months: null,
-      values: [],
-      totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+      values: [{ period: "2025-06-01", rent: "100.00", utilities: "20.00", total: "120.00" }],
+      totals: { rent: "100.00", utilities: "20.00", total: "120.00" },
       top_service: null,
     });
 
     renderStats();
-    await screen.findByText("Ще немає історії споживання для цієї квартири.");
+    await screen.findByRole("img", { name: "Графік споживання: Газ" });
     await user.click(screen.getByRole("button", { name: "Довільний період" }));
     fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2025-05" } });
     fireEvent.change(screen.getByLabelText("Період до"), { target: { value: "2025-07" } });
@@ -263,6 +277,12 @@ describe("Stats", () => {
     await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, period));
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, period));
     expect(screen.getByText(/Споживання та дохід за травень 2025.*липень 2025/)).toBeInTheDocument();
+    const consumptionChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    const incomeChart = await screen.findByRole("img", { name: "Стековий графік доходу" });
+    for (const chart of [consumptionChart, incomeChart]) {
+      expect(chart.querySelector('[data-period="2025-05-01"]')).toHaveClass("chart-month-slot-empty");
+      expect(chart.querySelector('[data-period="2025-07-01"]')).toHaveClass("chart-month-slot-empty");
+    }
 
     const consumptionCalls = getConsumptionStats.mock.calls.length;
     const incomeCalls = getIncomeStats.mock.calls.length;
@@ -342,8 +362,34 @@ describe("Stats", () => {
     expect(tile).toHaveAttribute("title", "Відкрити рахунок січня");
     expect(tile).toHaveClass("stats-summary-tile-link");
 
-    await user.click(tile);
+    await user.click(screen.getByRole("button", { name: "Портфель" }));
+    expect(screen.queryByRole("link", { name: /Найбільша стаття/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+    const refreshedTile = await screen.findByRole("link", { name: /Найбільша стаття/ });
+    await user.click(refreshedTile);
     expect(await screen.findByRole("heading", { name: "Рахунок відкрито" })).toBeInTheDocument();
+  });
+
+  it("removes a stale peak link synchronously when the apartment changes", async () => {
+    const user = userEvent.setup();
+    const secondApartment = { ...apartments[0], id: 2, name: "Квартира на Печерську" };
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue([...apartments, secondApartment]);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => {
+      if (apartmentId === 2) return new Promise(() => undefined);
+      return Promise.resolve(incomeStats(apartmentId));
+    });
+    vi.spyOn(apiClient, "getInvoices").mockResolvedValue([januaryInvoice]);
+
+    renderStats();
+    await screen.findByText("Ще немає історії споживання для цієї квартири.");
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+    expect(await screen.findByRole("link", { name: /Найбільша стаття/ })).toHaveAttribute("href", "/invoices/42");
+
+    await user.selectOptions(screen.getByLabelText("Квартира для статистики"), "2");
+
+    expect(screen.queryByRole("link", { name: /Найбільша стаття/ })).not.toBeInTheDocument();
   });
 
   it("keeps the peak tile non-clickable when no invoice matches", async () => {

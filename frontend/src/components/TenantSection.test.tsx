@@ -135,7 +135,7 @@ describe("TenantSection", () => {
       new File(["pdf"], "contract.pdf", { type: "application/pdf" }),
     ];
 
-    const input = await screen.findByLabelText("Файли контракту");
+    const input = await screen.findByLabelText<HTMLInputElement>("Файли контракту");
     await user.upload(input, files);
     const selectedFiles = screen.getByRole("list", { name: "Вибрані файли" });
     expect(within(selectedFiles).getByText("contract.jpg")).toBeInTheDocument();
@@ -147,6 +147,22 @@ describe("TenantSection", () => {
     await waitFor(() => expect(apiClient.uploadTenantAttachments).toHaveBeenCalledWith(8, files));
     expect(input).toHaveValue("");
     expect(screen.queryByRole("button", { name: "Завантажити" })).not.toBeInTheDocument();
+  });
+
+  it("keeps selected files available for retry when upload fails", async () => {
+    vi.spyOn(apiClient, "uploadTenantAttachments").mockRejectedValue(new apiClient.ApiError(503, "Upload unavailable"));
+    const user = userEvent.setup();
+    render(<TenantSection apartmentId={1} />);
+    const file = new File(["pdf"], "contract.pdf", { type: "application/pdf" });
+
+    const input = await screen.findByLabelText<HTMLInputElement>("Файли контракту");
+    await user.upload(input, file);
+    await user.click(screen.getByRole("button", { name: "Завантажити" }));
+
+    expect(await screen.findByText("Upload unavailable")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Вибрані файли" })).getByText("contract.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Завантажити" })).toBeEnabled();
+    expect(input.files).toHaveLength(1);
   });
 
   it("reports the active tenant to the apartment facts", async () => {

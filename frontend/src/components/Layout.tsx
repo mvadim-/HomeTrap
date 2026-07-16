@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { ExchangeRate, getCurrentRate, logout } from "../api/client";
+import { getAppliedTheme, Theme } from "../theme";
 import { formatRateSummary } from "../utils/format";
 import "./Layout.css";
 
@@ -13,24 +14,10 @@ const navigation = [
   { to: "/settings", label: "Налаштування" },
 ];
 
-type Theme = "light" | "dark";
-
-function getInitialTheme(): Theme {
-  const storedTheme = window.localStorage.getItem("theme");
-  if (storedTheme === "light" || storedTheme === "dark") {
-    return storedTheme;
-  }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
 export function Layout() {
   const navigate = useNavigate();
   const [rate, setRate] = useState<ExchangeRate | null>(null);
-  const [theme, setTheme] = useState<Theme>(() => {
-    const initialTheme = getInitialTheme();
-    document.documentElement.dataset.theme = initialTheme;
-    return initialTheme;
-  });
+  const [theme, setTheme] = useState<Theme>(getAppliedTheme);
 
   useEffect(() => {
     let active = true;

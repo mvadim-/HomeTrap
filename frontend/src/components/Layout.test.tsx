@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
+import { initializeTheme } from "../theme";
 import { Layout } from "./Layout";
 
 vi.mock("../api/client", () => ({
@@ -18,6 +19,7 @@ beforeEach(() => {
   vi.mocked(apiClient.logout).mockReset();
   window.localStorage.clear();
   delete document.documentElement.dataset.theme;
+  initializeTheme();
 });
 
 describe("Layout", () => {
@@ -48,12 +50,12 @@ describe("Layout", () => {
 
   it("restores the stored theme after remounting", () => {
     window.localStorage.setItem("theme", "dark");
+    initializeTheme();
 
     const view = render(<MemoryRouter><Layout /></MemoryRouter>);
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
 
     view.unmount();
-    document.documentElement.dataset.theme = "light";
     render(<MemoryRouter><Layout /></MemoryRouter>);
 
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
@@ -71,6 +73,7 @@ describe("Layout", () => {
       dispatchEvent: vi.fn(),
     }));
 
+    initializeTheme();
     render(<MemoryRouter><Layout /></MemoryRouter>);
 
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
