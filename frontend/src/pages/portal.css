@@ -987,6 +987,19 @@
   padding: 18px;
 }
 
+.stats-summary-tile-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.stats-summary-tile-link:hover,
+.stats-summary-tile-link:focus-visible {
+  border-color: var(--color-primary);
+  background: var(--color-surface-muted);
+}
+
 .stats-summary-tile span,
 .stats-summary-tile small {
   color: var(--color-text-muted);

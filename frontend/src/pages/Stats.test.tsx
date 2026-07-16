@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
@@ -16,6 +17,42 @@ const apartments: apiClient.Apartment[] = [{
   latest_invoice: null,
   current_tenant_name: null,
 }];
+
+const januaryInvoice: apiClient.InvoiceListItem = {
+  id: 42,
+  apartment_id: 1,
+  period: "2026-01-01",
+  status: "paid",
+  issued_at: "2026-01-15T12:00:00Z",
+  paid_at: "2026-01-20T12:00:00Z",
+  exchange_rate: "42.00",
+  rent_amount_usd: "325.00",
+  rent_amount_uah: "13650.00",
+  utilities_total: "2210.51",
+  grand_total: "15860.51",
+};
+
+function renderStats() {
+  return render(
+    <MemoryRouter initialEntries={["/stats"]}>
+      <Routes>
+        <Route path="/stats" element={<Stats />} />
+        <Route path="/invoices/:invoiceId" element={<h1>Рахунок відкрито</h1>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function incomeStats(apartmentId?: number): apiClient.IncomeStats {
+  return {
+    scope: apartmentId === undefined ? "portfolio" : "apartment",
+    apartment_id: apartmentId ?? null,
+    months: 12,
+    values: [{ period: "2026-01-01", rent: "13650.00", utilities: "2210.51", total: "15860.51" }],
+    totals: { rent: "13650.00", utilities: "2210.51", total: "15860.51" },
+    top_service: { name: "Газ", share_percent: "62.50", peak_period: "2026-01-01" },
+  };
+}
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -45,7 +82,7 @@ describe("Stats", () => {
       top_service: { name: "Газ", share_percent: "62.50", peak_period: "2026-06-01" },
     });
 
-    render(<Stats />);
+    renderStats();
 
     expect(await screen.findByRole("heading", { name: "Статистика" })).toBeInTheDocument();
     const gasChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
@@ -111,7 +148,7 @@ describe("Stats", () => {
       top_service: null,
     });
 
-    render(<Stats />);
+    renderStats();
 
     const consumptionChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
     const incomeChart = await screen.findByRole("img", { name: "Стековий графік доходу" });
@@ -146,7 +183,7 @@ describe("Stats", () => {
       top_service: null,
     });
 
-    render(<Stats />);
+    renderStats();
 
     const chart = await screen.findByRole("img", { name: "Стековий графік доходу" });
     const marker = screen.getByLabelText(/вер, коригування:/i);
@@ -182,7 +219,7 @@ describe("Stats", () => {
       top_service: null,
     });
 
-    render(<Stats />);
+    renderStats();
     await screen.findByText("Ще немає історії споживання для цієї квартири.");
     await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, { months: 12 }));
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, { months: 12 }));
@@ -216,7 +253,7 @@ describe("Stats", () => {
       top_service: null,
     });
 
-    render(<Stats />);
+    renderStats();
     await screen.findByText("Ще немає історії споживання для цієї квартири.");
     await user.click(screen.getByRole("button", { name: "Довільний період" }));
     fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2025-05" } });
@@ -247,7 +284,7 @@ describe("Stats", () => {
       top_service: null,
     });
 
-    render(<Stats />);
+    renderStats();
 
     expect(await screen.findByText("Ще немає історії споживання для цієї квартири.")).toBeInTheDocument();
     expect(await screen.findByText("Ще немає історії доходу за вибраний період.")).toBeInTheDocument();
@@ -263,7 +300,7 @@ describe("Stats", () => {
     const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats")
       .mockRejectedValue(new Error("offline"));
 
-    render(<Stats />);
+    renderStats();
 
     expect(await screen.findByText("Не вдалося завантажити статистику споживання.")).toBeInTheDocument();
     expect(await screen.findByText("Не вдалося завантажити статистику доходу.")).toBeInTheDocument();
@@ -286,5 +323,77 @@ describe("Stats", () => {
     expect(await screen.findByText("Ще немає історії доходу за вибраний період.")).toBeInTheDocument();
     expect(screen.queryByText("Не вдалося завантажити статистику споживання.")).not.toBeInTheDocument();
     expect(screen.queryByText("Не вдалося завантажити статистику доходу.")).not.toBeInTheDocument();
+  });
+
+  it("opens the invoice matching the peak month from the apartment scope", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
+    const getInvoices = vi.spyOn(apiClient, "getInvoices").mockResolvedValue([januaryInvoice]);
+
+    renderStats();
+    await screen.findByText("Ще немає історії споживання для цієї квартири.");
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+
+    const tile = await screen.findByRole("link", { name: /Найбільша стаття/ });
+    expect(getInvoices).toHaveBeenCalledWith({ apartmentId: 1 });
+    expect(tile).toHaveAttribute("href", "/invoices/42");
+    expect(tile).toHaveAttribute("title", "Відкрити рахунок січня");
+    expect(tile).toHaveClass("stats-summary-tile-link");
+
+    await user.click(tile);
+    expect(await screen.findByRole("heading", { name: "Рахунок відкрито" })).toBeInTheDocument();
+  });
+
+  it("keeps the peak tile non-clickable when no invoice matches", async () => {
+    const user = userEvent.setup();
+    let resolveInvoices!: (invoices: apiClient.InvoiceListItem[]) => void;
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
+    const getInvoices = vi.spyOn(apiClient, "getInvoices").mockImplementation(() => new Promise((resolve) => { resolveInvoices = resolve; }));
+
+    renderStats();
+    await screen.findByText("Ще немає історії споживання для цієї квартири.");
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+    await waitFor(() => expect(getInvoices).toHaveBeenCalledWith({ apartmentId: 1 }));
+    await act(async () => resolveInvoices([{ ...januaryInvoice, id: 43, period: "2026-02-01" }]));
+
+    expect(screen.queryByRole("link", { name: /Найбільша стаття/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Найбільша стаття").closest("article")).toHaveClass("stats-summary-tile");
+  });
+
+  it("does not request invoices for the portfolio scope", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+    const getInvoices = vi.spyOn(apiClient, "getInvoices");
+
+    renderStats();
+
+    await screen.findByText(/62,5% · пік — січ/);
+    expect(getInvoices).not.toHaveBeenCalled();
+    expect(screen.queryByRole("link", { name: /Найбільша стаття/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Найбільша стаття").closest("article")).toHaveClass("stats-summary-tile");
+  });
+
+  it("keeps the peak tile non-clickable when invoices fail to load", async () => {
+    const user = userEvent.setup();
+    let rejectInvoices!: (error: Error) => void;
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
+    const getInvoices = vi.spyOn(apiClient, "getInvoices").mockImplementation(() => new Promise((_, reject) => { rejectInvoices = reject; }));
+
+    renderStats();
+    await screen.findByText("Ще немає історії споживання для цієї квартири.");
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+    await waitFor(() => expect(getInvoices).toHaveBeenCalledWith({ apartmentId: 1 }));
+    await act(async () => rejectInvoices(new Error("offline")));
+
+    expect(screen.queryByRole("link", { name: /Найбільша стаття/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Найбільша стаття").closest("article")).toHaveClass("stats-summary-tile");
+    expect(screen.queryByText(/не вдалося завантажити рахунки/i)).not.toBeInTheDocument();
   });
 });

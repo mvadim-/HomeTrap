@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   Apartment,
@@ -8,6 +9,7 @@ import {
   getApartments,
   getConsumptionStats,
   getIncomeStats,
+  getInvoices,
 } from "../api/client";
 import { formatUah } from "../utils/format";
 import { niceScale } from "../utils/ticks";
@@ -35,6 +37,12 @@ function compactAmountLabel(value: number): string {
 function selectedMonthLabel(month: string): string {
   return new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" })
     .format(new Date(`${month}-01T00:00:00Z`));
+}
+
+function invoiceMonthLabel(period: string): string {
+  return new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "long", timeZone: "UTC" })
+    .format(new Date(`${period.slice(0, 7)}-01T00:00:00Z`))
+    .replace(/^\d+\s+/, "");
 }
 
 function seriesColor(name: string): string {
@@ -244,6 +252,7 @@ export function Stats() {
   const [income, setIncome] = useState<IncomeStats | null>(null);
   const [incomeLoading, setIncomeLoading] = useState(false);
   const [incomeError, setIncomeError] = useState("");
+  const [topServiceInvoiceId, setTopServiceInvoiceId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [periodMode, setPeriodMode] = useState<"6" | "12" | "24" | "all" | "custom">("12");
   const [dateFrom, setDateFrom] = useState("");
@@ -317,6 +326,34 @@ export function Stats() {
     return () => { active = false; };
   }, [apartmentId, scope, statsPeriod]);
 
+  useEffect(() => {
+    setTopServiceInvoiceId(null);
+    if (
+      scope !== "apartment"
+      || apartmentId === null
+      || income?.scope !== "apartment"
+      || income.apartment_id !== apartmentId
+      || !income.top_service
+    ) return;
+
+    let active = true;
+    const peakMonth = income.top_service.peak_period.slice(0, 7);
+    getInvoices({ apartmentId })
+      .then((invoices) => {
+        if (!active) return;
+        const invoice = invoices.find((item) => item.period.slice(0, 7) === peakMonth);
+        setTopServiceInvoiceId(invoice?.id ?? null);
+      })
+      .catch(() => active && setTopServiceInvoiceId(null));
+    return () => { active = false; };
+  }, [apartmentId, income, scope]);
+
+  const topServiceContent = income?.top_service ? (
+    <><span>Найбільша стаття</span><strong>{income.top_service.name}</strong><small>{numberLabel(Number(income.top_service.share_percent))}% · пік — {monthLabel(income.top_service.peak_period)}</small></>
+  ) : (
+    <><span>Найбільша стаття</span>{income ? <strong className="muted-text">Немає даних</strong> : <strong>—</strong>}</>
+  );
+
   return (
     <>
       <header className="page-header stats-header">
@@ -366,12 +403,15 @@ export function Stats() {
       <section className="stats-summary-grid" aria-label="Підсумки за період">
         <article className="stats-summary-tile"><span>Оренда за період</span><strong>{income ? formatUah(income.totals.rent) : "—"}</strong></article>
         <article className="stats-summary-tile"><span>Комунальні за період</span><strong>{income ? formatUah(income.totals.utilities) : "—"}</strong></article>
-        <article className="stats-summary-tile">
-          <span>Найбільша стаття</span>
-          {income?.top_service ? (
-            <><strong>{income.top_service.name}</strong><small>{numberLabel(Number(income.top_service.share_percent))}% · пік — {monthLabel(income.top_service.peak_period)}</small></>
-          ) : income ? <strong className="muted-text">Немає даних</strong> : <strong>—</strong>}
-        </article>
+        {topServiceInvoiceId !== null && income?.top_service ? (
+          <Link
+            className="stats-summary-tile stats-summary-tile-link"
+            to={`/invoices/${topServiceInvoiceId}`}
+            title={`Відкрити рахунок ${invoiceMonthLabel(income.top_service.peak_period)}`}
+          >
+            {topServiceContent}
+          </Link>
+        ) : <article className="stats-summary-tile">{topServiceContent}</article>}
       </section>
 
       <section className="section-card stats-section">
