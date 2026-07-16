@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-16 14:05] Файли контрактів орендарів
+
+- `backend/app/services/storage.py`, `backend/app/config.py` — додано приватне сховище
+  у `/data/uploads`, UUID-імена з MIME-whitelist розширень, обмеження 10 МБ і захист
+  шляхів від виходу за каталог завантажень.
+- `backend/app/routers/tenants.py`, `backend/app/schemas.py` — додано захищені API для
+  множинного завантаження, перегляду й видалення вкладень; DELETE орендаря явно
+  очищає його файли, а soft-архівація квартири їх зберігає.
+- `backend/tests/test_attachments.py` — перевірено два файли, MIME/розширення, ліміт
+  розміру, авторизацію, байти відповіді, видалення, архівацію та path traversal.
+- `docs/plans/20260716-mockup-gap-fixes.md` — Task 3 позначено виконаним після 75
+  успішних backend-тестів і Ruff у Docker. Для production потрібно перебудувати й
+  перезапустити контейнер за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-16 13:58] API орендарів і життєвий цикл контракту
 
 - `backend/app/schemas.py`, `backend/app/routers/tenants.py`, `backend/app/main.py` —

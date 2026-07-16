@@ -139,12 +139,12 @@ API:
 - Create: `backend/app/services/storage.py`, `backend/tests/test_attachments.py`
 - Modify: `backend/app/routers/tenants.py`, `backend/app/config.py`
 
-- [ ] `storage.py`: збереження на `uploads_dir=/data/uploads` (UUID-ім'я, розширення з whitelist за content-type, підпапка tenants/{id}), видалення, захист від path traversal
-- [ ] `POST /api/tenants/{id}/attachments` (кілька файлів): валідація типу (JPG/PNG/WebP/PDF) і розміру ≤ 10 МБ → 415/413
-- [ ] `GET /api/attachments/{id}` — FileResponse з правильним content-type, під require_auth; `DELETE /api/attachments/{id}` — файл + запис
-- [ ] DELETE орендаря прибирає його файли з диска явним кодом (не покладатися на БД-каскад; архівація квартири файли НЕ чіпає)
-- [ ] тести: upload ok (2 файли), заборонений тип → 415, завеликий → 413, GET віддає байти, GET без auth → 401, DELETE чистить диск
-- [ ] прогнати backend-тести — мають пройти перед таском 4
+- [x] `storage.py`: збереження на `uploads_dir=/data/uploads` (UUID-ім'я, розширення з whitelist за content-type, підпапка tenants/{id}), видалення, захист від path traversal
+- [x] `POST /api/tenants/{id}/attachments` (кілька файлів): валідація типу (JPG/PNG/WebP/PDF) і розміру ≤ 10 МБ → 415/413
+- [x] `GET /api/attachments/{id}` — FileResponse з правильним content-type, під require_auth; `DELETE /api/attachments/{id}` — файл + запис
+- [x] DELETE орендаря прибирає його файли з диска явним кодом (не покладатися на БД-каскад; архівація квартири файли НЕ чіпає)
+- [x] тести: upload ok (2 файли), заборонений тип → 415, завеликий → 413, GET віддає байти, GET без auth → 401, DELETE чистить диск
+- [x] прогнати backend-тести — мають пройти перед таском 4
 
 ### Task 4: Статистика — довільний період і summary
 

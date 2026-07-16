@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     database_path: Path = Path("/data/hometrap.db")
+    uploads_dir: Path = Path("/data/uploads")
     static_dir: Path = Path("/app/static")
     secret_key: str = "local-development-secret"
     debug: bool = False

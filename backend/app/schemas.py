@@ -91,6 +91,15 @@ class TenantEndContract(ApiSchema):
     contract_end: date
 
 
+class TenantAttachmentOut(ApiSchema):
+    id: int
+    tenant_id: int
+    original_name: str
+    content_type: str
+    size_bytes: int
+    uploaded_at: datetime
+
+
 class ServiceBase(ApiSchema):
     name: str = Field(min_length=1, max_length=200)
     kind: ServiceKind
