@@ -1,5 +1,12 @@
 # ChangeLog
 
+## [2026-07-16 23:41] Завершення плану фінального полірування
+
+- `docs/plans/20260716-review-polish.md` — завершений план із 11 виконаними задачами
+  переміщено до `docs/plans/completed/` після implementation, review, finalize та
+  stats фаз.
+- Зміни production-коду в цьому кроці відсутні; додатковий деплой не виконувався.
+
 ## [2026-07-16 23:40] Усунення дублювання та зайвих обчислень у frontend
 
 - `frontend/src/theme.ts`, `frontend/src/components/Layout.test.tsx` — inline bootstrap
