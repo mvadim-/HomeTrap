@@ -31,6 +31,12 @@ Always provide deployment instructions for any code that is meant to run in prod
 - Keep production Uvicorn at one worker because APScheduler runs in the application
   process. Follow `docs/deploy.md` for Synology deployment, updates, and backups.
 
+### Frontend Styling Conventions
+
+- Treat `frontend/src/theme.css` as the source of truth for light and dark design
+  tokens. Components should consume those CSS variables instead of duplicating
+  palette colors, card shadows, or chart colors.
+
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
 ## 1. Think Before Coding

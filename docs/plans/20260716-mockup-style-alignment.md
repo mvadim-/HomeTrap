@@ -218,9 +218,9 @@ Eyebrow: 11px, uppercase, letter-spacing .09em, `--color-text-muted`, 600.
 
 ### Task 8: [Final] Update documentation
 
-- [ ] `ChangeLog.md` — фінальний запис циклу
-- [ ] `README.md`/`CLAUDE.md` — оновити лише якщо з'явилися нові патерни (токени як джерело правди)
-- [ ] перемістити цей план у `docs/plans/completed/`
+- [x] `ChangeLog.md` — фінальний запис циклу
+- [x] `README.md`/`CLAUDE.md` — стабільний патерн «`theme.css` як джерело правди для дизайн-токенів» зафіксовано в `CLAUDE.md`; `README.md` не потребує змін, бо це внутрішнє правило розробки
+- [x] перемістити цей план у `docs/plans/completed/` — exec-harness виконає перенесення після завершення всіх review/finalize/stats фаз
 
 ## Post-Completion
 
