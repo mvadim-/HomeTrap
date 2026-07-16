@@ -115,10 +115,10 @@ API:
 - Create: `backend/alembic/versions/<rev>_add_tenants.py`
 - Modify: `backend/tests/test_models.py`
 
-- [ ] додати моделі `Tenant` і `TenantAttachment` за Technical Details (FK CASCADE, індекси)
-- [ ] Alembic-міграція: таблиці `tenants`, `tenant_attachments`
-- [ ] тести: створення орендаря з квартирою, каскад apartment→tenant→attachments, nullable contract_end
-- [ ] прогнати backend-тести — мають пройти перед таском 2
+- [x] додати моделі `Tenant` і `TenantAttachment` за Technical Details (FK CASCADE, індекси)
+- [x] Alembic-міграція: таблиці `tenants`, `tenant_attachments`
+- [x] тести: створення орендаря з квартирою, каскад apartment→tenant→attachments, nullable contract_end
+- [x] прогнати backend-тести — мають пройти перед таском 2
 
 ### Task 2: API орендарів (CRUD + життєвий цикл контракту)
 

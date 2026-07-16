@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-16 14:20] Моделі орендарів і вкладень контракту
+
+- `backend/app/models.py`, `backend/alembic/versions/20260716_03_add_tenants.py` —
+  додано моделі й таблиці `Tenant`/`TenantAttachment`, зв'язки з каскадним видаленням,
+  індекси орендарів і метадані файлів контракту.
+- `backend/tests/test_models.py` — додано перевірки створення активного орендаря,
+  nullable `contract_end`, вкладення та DB-рівневого каскаду
+  apartment → tenant → attachment; startup-тест перевіряє нові таблиці міграції.
+- `docs/plans/20260716-mockup-gap-fixes.md` — Task 1 позначено виконаним після 68
+  успішних backend-тестів, Ruff і `alembic check` у Docker.
+
 ## [2026-07-16 14:10] Правки плану після авто-рев'ю
 
 - `docs/plans/20260716-mockup-gap-fixes.md` — виправлено за знахідками plan-review:

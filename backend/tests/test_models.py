@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import func, inspect, select
+from sqlalchemy import delete, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,8 @@ from app.models import (
     ServiceKind,
     Setting,
     Tariff,
+    Tenant,
+    TenantAttachment,
     User,
 )
 
@@ -111,6 +113,57 @@ def test_deleting_apartment_cascades_services_and_tariffs(db_session: Session) -
     assert db_session.scalar(select(func.count()).select_from(Tariff)) == 0
 
 
+def test_can_create_tenant_with_nullable_contract_end(db_session: Session) -> None:
+    tenant = Tenant(
+        apartment=make_apartment(),
+        full_name="Оксана Коваль",
+        phone="+380501234567",
+        email="oksana@example.com",
+        contract_start=date(2026, 7, 1),
+        notes="Контракт підписано",
+        attachments=[
+            TenantAttachment(
+                original_name="contract.pdf",
+                stored_name="2f427e6c-00e1-41ce-b86a-07adaf1de9ed.pdf",
+                content_type="application/pdf",
+                size_bytes=1024,
+            )
+        ],
+    )
+    db_session.add(tenant)
+    db_session.commit()
+
+    assert tenant.apartment.tenants == [tenant]
+    assert tenant.contract_end is None
+    assert tenant.attachments[0].tenant is tenant
+    assert tenant.attachments[0].uploaded_at is not None
+
+
+def test_database_cascade_deletes_tenant_and_attachments(db_session: Session) -> None:
+    apartment = make_apartment()
+    tenant = Tenant(
+        apartment=apartment,
+        full_name="Оксана Коваль",
+        contract_start=date(2026, 7, 1),
+        attachments=[
+            TenantAttachment(
+                original_name="contract.pdf",
+                stored_name="2f427e6c-00e1-41ce-b86a-07adaf1de9ed.pdf",
+                content_type="application/pdf",
+                size_bytes=1024,
+            )
+        ],
+    )
+    db_session.add(tenant)
+    db_session.commit()
+
+    db_session.execute(delete(Apartment).where(Apartment.id == apartment.id))
+    db_session.commit()
+
+    assert db_session.scalar(select(func.count()).select_from(Tenant)) == 0
+    assert db_session.scalar(select(func.count()).select_from(TenantAttachment)) == 0
+
+
 def test_invoice_period_is_unique_per_apartment(db_session: Session) -> None:
     apartment = make_apartment()
     db_session.add_all(
@@ -197,6 +250,8 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         "exchange_rates",
         "users",
         "settings",
+        "tenants",
+        "tenant_attachments",
     } <= table_names
     assert invoice_line_columns["service_kind"]["nullable"] is False
     assert "ck_invoice_lines_service_kind" in invoice_line_checks

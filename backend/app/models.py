@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
@@ -12,6 +12,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     String,
@@ -53,6 +54,55 @@ class Apartment(Base):
         back_populates="apartment",
         cascade="all, delete-orphan",
     )
+    tenants: Mapped[list[Tenant]] = relationship(
+        back_populates="apartment",
+        cascade="all, delete-orphan",
+    )
+
+
+class Tenant(Base):
+    __tablename__ = "tenants"
+    __table_args__ = (
+        Index("ix_tenants_apartment_id_contract_end", "apartment_id", "contract_end"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    apartment_id: Mapped[int] = mapped_column(
+        ForeignKey("apartments.id", ondelete="CASCADE"),
+        index=True,
+    )
+    full_name: Mapped[str] = mapped_column(String(200))
+    phone: Mapped[str | None] = mapped_column(String(50))
+    email: Mapped[str | None] = mapped_column(String(320))
+    contract_start: Mapped[date] = mapped_column(Date)
+    contract_end: Mapped[date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    apartment: Mapped[Apartment] = relationship(back_populates="tenants")
+    attachments: Mapped[list[TenantAttachment]] = relationship(
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+
+
+class TenantAttachment(Base):
+    __tablename__ = "tenant_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        index=True,
+    )
+    original_name: Mapped[str] = mapped_column(String(500))
+    stored_name: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
+
+    tenant: Mapped[Tenant] = relationship(back_populates="attachments")
 
 
 class Service(Base):
