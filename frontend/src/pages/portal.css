@@ -326,6 +326,11 @@
   grid-column: 1 / -1;
 }
 
+.services-section {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
 .tenant-card {
   margin-top: 18px;
   padding: 18px;

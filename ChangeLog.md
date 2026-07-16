@@ -1,5 +1,15 @@
 # ChangeLog
 
+## [2026-07-16 15:56] Відновлення ширини таблиці послуг
+
+- `frontend/src/pages/ApartmentDetail.tsx`, `frontend/src/pages/portal.css` — секція
+  «Послуги й тарифи» явно займає обидві колонки detail-grid і більше не стискається
+  до вузької лівої колонки після додавання повноширинного блоку орендаря.
+- `frontend/src/pages/ApartmentDetail.test.tsx` — додано regression-перевірку
+  layout-класу секції послуг.
+- Зміна суто frontend; для production потрібні rebuild і restart контейнера за
+  `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 15:16] Повторюване видалення файлів орендаря
 
 - `backend/app/services/storage.py`, `backend/app/routers/tenants.py` — файли орендаря

@@ -57,6 +57,8 @@ describe("ApartmentDetail", () => {
     expect(screen.getByText("7.95689 ₴")).toBeInTheDocument();
     expect(screen.getByText("2026-07-01")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Посилання орендаря" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Послуги й тарифи" }).closest("section"))
+      .toHaveClass("services-section");
   });
 
   it("opens the service editing form with existing values", async () => {

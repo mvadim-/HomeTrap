@@ -133,7 +133,7 @@ export function ApartmentDetail() {
 
         <TenantSection apartmentId={id} />
 
-        <section className="section-card">
+        <section className="section-card services-section">
           <div className="section-heading">
             <div><h2>Послуги й тарифи</h2><p>Тарифна історія з датою початку дії</p></div>
             <button className="button" type="button" onClick={() => beginServiceEdit()}>Додати послугу</button>
