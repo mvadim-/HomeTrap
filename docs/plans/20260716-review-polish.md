@@ -140,10 +140,10 @@ light + dark, порівняння з макетом) підтвердило: б
 - Modify: `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/pages/portal.css`
 - Modify: `frontend/src/components/InvoiceCalculator.test.tsx`, `frontend/src/pages/InvoiceEdit.test.tsx`
 
-- [ ] для `status !== "draft"`: показники й курс — текст (formatReading/formatRate) замість disabled-інпутів; грид-структура таблиці не змінюється
-- [ ] панель «Перевірте показники» рендериться лише для чернетки
-- [ ] тести: paid-рахунок — немає інпутів, значення текстом, немає амбер-панелі; draft — інпути й панель на місці
-- [ ] прогнати frontend-тести — мають пройти перед таском 3
+- [x] для `status !== "draft"`: показники й курс — текст (formatReading/formatRate) замість disabled-інпутів; грид-структура таблиці не змінюється
+- [x] панель «Перевірте показники» рендериться лише для чернетки
+- [x] тести: paid-рахунок — немає інпутів, значення текстом, немає амбер-панелі; draft — інпути й панель на місці
+- [x] прогнати frontend-тести — мають пройти перед таском 3
 
 ### Task 3: Розрізнення 404 і навігація з помилки рахунку
 

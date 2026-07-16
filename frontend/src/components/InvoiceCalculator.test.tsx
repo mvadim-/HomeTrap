@@ -56,6 +56,32 @@ describe("InvoiceCalculator", () => {
     await user.type(reading, "99");
 
     expect(screen.getByRole("alert")).toHaveTextContent("Газ: поточний показник менший за попередній.");
+    expect(screen.getByLabelText("Курс USD")).toBeInTheDocument();
+    expect(screen.getByLabelText("Поточний показник Газ")).toBeInTheDocument();
+  });
+
+  it("renders paid invoice values as text without inputs or warnings", () => {
+    render(
+      <InvoiceCalculator
+        invoice={{
+          ...invoice,
+          status: "paid",
+          warnings: [{
+            code: "consumption_anomaly",
+            message: "Anomalous consumption",
+            service_id: 5,
+          }],
+        }}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+    expect(screen.getByText("44,68")).toHaveClass("invoice-readonly-value");
+    expect(within(screen.getByText("Газ").closest("tr") as HTMLElement).getByText("122"))
+      .toHaveClass("invoice-readonly-value");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("Перевірте показники")).not.toBeInTheDocument();
   });
 
   it("rounds decimal halves like backend ROUND_HALF_UP", async () => {

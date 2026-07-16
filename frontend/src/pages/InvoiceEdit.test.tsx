@@ -66,6 +66,32 @@ describe("InvoiceEdit", () => {
     expect(screen.getByLabelText("Курс USD")).toHaveValue("44,7917");
   });
 
+  it("shows a paid invoice as read-only text without the readings warning", async () => {
+    vi.spyOn(apiClient, "getInvoice").mockResolvedValue({
+      ...draft,
+      status: "paid",
+      paid_at: "2026-07-16T12:00:00Z",
+      exchange_rate: "44.791700",
+      warnings: [{
+        code: "consumption_anomaly",
+        message: "Anomalous consumption",
+        service_id: 5,
+      }],
+      lines: [{ ...draft.lines[0], curr_reading: "9583.500" }],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/invoices/7"]}>
+        <Routes><Route path="/invoices/:invoiceId" element={<InvoiceEdit />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("44,7917")).toHaveClass("invoice-readonly-value");
+    expect(screen.getByText(/9.583,5/)).toHaveClass("invoice-readonly-value");
+    expect(screen.queryAllByRole("textbox")).toHaveLength(0);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("does not issue a draft with an invalid exponent rate", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getInvoice").mockResolvedValue(draft);

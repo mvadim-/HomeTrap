@@ -804,6 +804,13 @@
   width: 120px;
 }
 
+.invoice-readonly-value {
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
 .warning-box {
   margin-top: 18px;
   padding: 14px 16px;

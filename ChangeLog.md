@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-16 22:00] Read-only вигляд завершених рахунків
+
+- `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/pages/portal.css` —
+  для виставлених і оплачених рахунків курс та поточні показники відображаються
+  форматованим текстом замість disabled-полів; панель перевірки показників лишається
+  тільки у чернетках.
+- `frontend/src/components/InvoiceCalculator.test.tsx`,
+  `frontend/src/pages/InvoiceEdit.test.tsx` — додано компонентні й сторінкові
+  перевірки read-only стану paid-рахунку та збереження інтерактивного draft-стану.
+- `docs/plans/20260716-review-polish.md` — Task 2 позначено виконаним після успішних
+  106 frontend-тестів і production build у Docker.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 21:56] Персистентність теми інтерфейсу
 
 - `frontend/src/components/Layout.tsx` — початкова тема синхронно відновлюється зі

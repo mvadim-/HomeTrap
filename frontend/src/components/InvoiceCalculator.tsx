@@ -26,6 +26,7 @@ export function InvoiceCalculator({
   saving = false,
   onDraftChange,
 }: InvoiceCalculatorProps) {
+  const isDraft = invoice.status === "draft";
   const [exchangeRate, setExchangeRate] = useState({
     display: formatRate(invoice.exchange_rate),
     exact: invoice.exchange_rate,
@@ -124,21 +125,27 @@ export function InvoiceCalculator({
     <section className="section-card invoice-calculator">
       <div className="section-heading">
         <div><h2>Розрахунок</h2><p>Суми оновлюються одразу після зміни показників або курсу.</p></div>
-        <label className="rate-field">
-          Курс USD
-          <input
-            aria-label="Курс USD"
-            disabled={invoice.status !== "draft"}
-            inputMode="decimal"
-            type="text"
-            value={exchangeRate.display}
-            placeholder={formatRate(invoice.exchange_rate)}
-            onChange={(event) => setExchangeRate({
-              display: event.target.value,
-              exact: normalizeDecimalInput(event.target.value),
-            })}
-          />
-        </label>
+        {isDraft ? (
+          <label className="rate-field">
+            Курс USD
+            <input
+              aria-label="Курс USD"
+              inputMode="decimal"
+              type="text"
+              value={exchangeRate.display}
+              placeholder={formatRate(invoice.exchange_rate)}
+              onChange={(event) => setExchangeRate({
+                display: event.target.value,
+                exact: normalizeDecimalInput(event.target.value),
+              })}
+            />
+          </label>
+        ) : (
+          <div className="rate-field">
+            <span>Курс USD</span>
+            <strong className="invoice-readonly-value">{formatRate(invoice.exchange_rate)}</strong>
+          </div>
+        )}
       </div>
 
       <div className="table-wrap">
@@ -153,15 +160,18 @@ export function InvoiceCalculator({
                   <td><strong>{line.service_name}</strong></td>
                   <td>{metered && line.prev_reading !== null ? formatReading(line.prev_reading) : "—"}</td>
                   <td>
-                    {metered ? (
+                    {metered && isDraft ? (
                       <input
                         aria-label={`Поточний показник ${line.service_name}`}
-                        disabled={invoice.status !== "draft"}
                         inputMode="decimal"
                         type="text"
                         value={readings[line.id] ?? ""}
                         onChange={(event) => setReadings({ ...readings, [line.id]: event.target.value })}
                       />
+                    ) : metered ? (
+                      <span className="invoice-readonly-value">
+                        {line.curr_reading === null ? "—" : formatReading(line.curr_reading)}
+                      </span>
                     ) : "Фіксована"}
                   </td>
                   <td>{consumed === null ? "—" : consumed.toLocaleString("uk-UA", { maximumFractionDigits: 3 })}</td>
@@ -174,7 +184,7 @@ export function InvoiceCalculator({
         </table>
       </div>
 
-      {(localWarnings.length > 0 || serverWarnings.length > 0) && (
+      {isDraft && (localWarnings.length > 0 || serverWarnings.length > 0) && (
         <div className="warning-box" role="alert">
           <strong>Перевірте показники</strong>
           <ul>{[...localWarnings, ...serverWarnings].map((warning) => <li key={warning}>{warning}</li>)}</ul>
@@ -186,7 +196,7 @@ export function InvoiceCalculator({
         <span>Комунальні <strong>{formatUah(Number(calculated.utilities) / 100)}</strong></span>
         <span className="grand-total">Разом <strong>{formatUah(Number(calculated.total) / 100)}</strong></span>
       </div>
-      {invoice.status === "draft" && <button className="button" type="button" disabled={saving || !draftValid} onClick={save}>{saving ? "Зберігаємо…" : "Зберегти чернетку"}</button>}
+      {isDraft && <button className="button" type="button" disabled={saving || !draftValid} onClick={save}>{saving ? "Зберігаємо…" : "Зберегти чернетку"}</button>}
     </section>
   );
 }
