@@ -236,9 +236,10 @@ light + dark, порівняння з макетом) підтвердило: б
 
 ### Task 11: [Final] Update documentation
 
-- [ ] `ChangeLog.md` — фінальний запис циклу
-- [ ] `README.md`/`CLAUDE.md` — лише якщо з'явилися нові патерни
-- [ ] перемістити цей план у `docs/plans/completed/`
+- [x] `ChangeLog.md` — фінальний запис циклу додано
+- [x] `README.md`/`CLAUDE.md` — нових стабільних патернів не виникло, зміни не потрібні
+- [x] перемістити цей план у `docs/plans/completed/` — відкладено оркестратору до
+  Step 13 після review/finalize/stats, щоб не порушити поточний exec-run
 
 ## Post-Completion
 
