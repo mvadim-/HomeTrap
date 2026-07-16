@@ -37,7 +37,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  box-shadow: 0 10px 30px var(--color-shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .metric-card {
@@ -739,7 +739,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
-  box-shadow: 0 8px 24px var(--color-shadow);
+  box-shadow: var(--shadow-card);
 }
 
 .stats-summary-tile span,

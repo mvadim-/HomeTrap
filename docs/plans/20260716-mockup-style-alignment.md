@@ -136,11 +136,11 @@ Eyebrow: 11px, uppercase, letter-spacing .09em, `--color-text-muted`, 600.
 - Modify: `frontend/src/theme.css`, `frontend/src/pages/portal.css`
 - Create: `frontend/src/theme.test.ts`
 
-- [ ] оновити ЗНАЧЕННЯ наявних `--color-*` токенів (light + dark) за мапінгом з Technical Details — імена не перейменовувати
-- [ ] додати нові токени: `--chart-*` (5 шт., light + dark) і `--color-on-primary`
-- [ ] hairline-бордер 1px `--color-border` для карток/плиток/секцій; `--shadow-card` до макетного; у dark — `--shadow-card: none` явно
-- [ ] тест (import `?raw`, нежорсткі case-insensitive регекси `--токен:\s*значення`): реальні імена токенів мають макетні значення в обох темах
-- [ ] прогнати frontend-тести — мають пройти перед таском 2
+- [x] оновити ЗНАЧЕННЯ наявних `--color-*` токенів (light + dark) за мапінгом з Technical Details — імена не перейменовувати
+- [x] додати нові токени: `--chart-*` (5 шт., light + dark) і `--color-on-primary`
+- [x] hairline-бордер 1px `--color-border` для карток/плиток/секцій; `--shadow-card` до макетного; у dark — `--shadow-card: none` явно
+- [x] тест (import `?raw`, нежорсткі case-insensitive регекси `--токен:\s*значення`): реальні імена токенів мають макетні значення в обох темах
+- [x] прогнати frontend-тести — мають пройти перед таском 2
 
 ### Task 2: Шапка й навігація в один рядок
 

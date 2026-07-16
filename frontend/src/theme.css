@@ -3,52 +3,72 @@
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --color-bg: #f6f3ed;
-  --color-surface: #fffdf9;
-  --color-surface-muted: #e8ede4;
-  --color-text: #253028;
-  --color-text-muted: #687169;
-  --color-primary: #71836b;
+  --color-bg: #f6f5f1;
+  --color-surface: #ffffff;
+  --color-surface-muted: #fbfaf7;
+  --color-text: #2f3833;
+  --color-text-muted: #8c958e;
+  --color-primary: #4e7a6a;
   --color-primary-hover: #5e7059;
-  --color-primary-soft: #dce5d8;
-  --color-border: #d9ddd5;
+  --color-primary-soft: #dfeae4;
+  --color-on-primary: #ffffff;
+  --color-border: #e7e5dd;
   --color-danger: #a14e4e;
   --color-shadow: rgba(48, 61, 51, 0.1);
+  --chart-gas: #eb6834;
+  --chart-elec: #eda100;
+  --chart-water: #2a78d6;
+  --chart-rent: #1baf7a;
+  --chart-util: #4a3aa7;
   --radius-sm: 10px;
-  --radius-md: 16px;
+  --radius-md: 12px;
   --radius-lg: 24px;
-  --shadow-card: 0 18px 55px var(--color-shadow);
+  --shadow-card: 0 1px 2px rgba(47, 56, 51, 0.05), 0 4px 14px rgba(47, 56, 51, 0.04);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-bg: #172019;
-  --color-surface: #202a22;
-  --color-surface-muted: #2b372d;
-  --color-text: #eef2ec;
-  --color-text-muted: #aeb9af;
-  --color-primary: #a5b99d;
+  --color-bg: #141613;
+  --color-surface: #1f211d;
+  --color-surface-muted: #24261f;
+  --color-text: #e9eae4;
+  --color-text-muted: #8a9089;
+  --color-primary: #7fab97;
   --color-primary-hover: #bbccb5;
-  --color-primary-soft: #354635;
-  --color-border: #3b493d;
+  --color-primary-soft: #2a3630;
+  --color-on-primary: #14251e;
+  --color-border: #33362f;
   --color-danger: #e69595;
   --color-shadow: rgba(0, 0, 0, 0.28);
+  --chart-gas: #d95926;
+  --chart-elec: #c98500;
+  --chart-water: #3987e5;
+  --chart-rent: #199e70;
+  --chart-util: #9085e9;
+  --shadow-card: none;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --color-bg: #172019;
-    --color-surface: #202a22;
-    --color-surface-muted: #2b372d;
-    --color-text: #eef2ec;
-    --color-text-muted: #aeb9af;
-    --color-primary: #a5b99d;
+    --color-bg: #141613;
+    --color-surface: #1f211d;
+    --color-surface-muted: #24261f;
+    --color-text: #e9eae4;
+    --color-text-muted: #8a9089;
+    --color-primary: #7fab97;
     --color-primary-hover: #bbccb5;
-    --color-primary-soft: #354635;
-    --color-border: #3b493d;
+    --color-primary-soft: #2a3630;
+    --color-on-primary: #14251e;
+    --color-border: #33362f;
     --color-danger: #e69595;
     --color-shadow: rgba(0, 0, 0, 0.28);
+    --chart-gas: #d95926;
+    --chart-elec: #c98500;
+    --chart-water: #3987e5;
+    --chart-rent: #199e70;
+    --chart-util: #9085e9;
+    --shadow-card: none;
   }
 }
 
