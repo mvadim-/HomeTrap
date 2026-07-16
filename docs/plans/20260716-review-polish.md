@@ -186,11 +186,11 @@ light + dark, порівняння з макетом) підтвердило: б
 - Modify: `frontend/src/components/TenantSection.tsx`, `frontend/src/pages/ApartmentDetail.tsx`
 - Modify: `frontend/src/components/TenantSection.test.tsx`, `frontend/src/pages/ApartmentDetail.test.tsx`
 
-- [ ] додати `formatDate` («13 лист. 2025 р.») у format.ts
-- [ ] застосувати: «контракт з …», «Орендар з» (плитка фактів), період контракту в історії орендарів
-- [ ] у формах введення дат нічого не змінюється (input type="date" лишається ISO)
-- [ ] тести: formatDate table-driven (+ некоректний рядок → повертається як є), компонентні тексти оновлені
-- [ ] прогнати frontend-тести — мають пройти перед таском 7
+- [x] додати `formatDate` («13 лист. 2025 р.») у format.ts
+- [x] застосувати: «контракт з …», «Орендар з» (плитка фактів), період контракту в історії орендарів
+- [x] у формах введення дат нічого не змінюється (input type="date" лишається ISO)
+- [x] тести: formatDate table-driven (+ некоректний рядок → повертається як є), компонентні тексти оновлені
+- [x] прогнати frontend-тести — мають пройти перед таском 7
 
 ### Task 7: Графіки — nice ticks, гріделі, порожні місяці
 

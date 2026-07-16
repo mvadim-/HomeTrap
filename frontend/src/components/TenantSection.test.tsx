@@ -50,8 +50,10 @@ describe("TenantSection", () => {
     expect(screen.getByRole("link", { name: "+380501112233" })).toHaveClass("tenant-contact-link");
     expect(screen.getByRole("link", { name: "oksana@example.com" })).toHaveClass("tenant-contact-link");
     expect(screen.getByRole("link", { name: "contract.pdf" })).toHaveAttribute("href", "/api/attachments/12");
+    expect(screen.getByText("контракт з 15 січ. 2026 р.")).toBeInTheDocument();
     expect(screen.getByText("Колишні орендарі (1)")).toBeInTheDocument();
     expect(screen.getByText("Іван Петренко")).toBeInTheDocument();
+    expect(screen.getByText("1 січ. 2025 р. — 31 груд. 2025 р.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Новий орендар" })).not.toBeInTheDocument();
   });
 

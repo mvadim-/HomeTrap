@@ -1,5 +1,21 @@
 # ChangeLog
 
+## [2026-07-16 22:15] Локалізація дат орендаря
+
+- `frontend/src/utils/format.ts`, `frontend/src/utils/format.test.ts` — додано
+  UTC-safe форматування ISO-дат українською з поверненням невалідного значення без
+  змін; table-driven тести охоплюють валідні, текстові й календарно хибні дати.
+- `frontend/src/components/TenantSection.tsx`, `frontend/src/pages/ApartmentDetail.tsx`
+  — локалізовано дату початку активного контракту, плитку «Орендар з» і періоди в
+  історії; поля `input type="date"` збережено в ISO-форматі.
+- `frontend/src/components/TenantSection.test.tsx`,
+  `frontend/src/pages/ApartmentDetail.test.tsx` — оновлено компонентні очікування
+  локалізованих дат і збережено перевірки ISO-значень у формах.
+- `docs/plans/20260716-review-polish.md` — Task 6 позначено виконаним після успішних
+  113 frontend-тестів і production build у Docker.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 22:11] Оновлення management-карток квартир
 
 - `frontend/src/pages/Apartments.tsx`, `frontend/src/pages/portal.css` — картки

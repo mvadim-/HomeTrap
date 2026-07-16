@@ -70,7 +70,7 @@ describe("ApartmentDetail", () => {
     expect(within(facts).getByText("325 $ / міс")).toBeInTheDocument();
     expect(within(facts).getByText("червень 2026 р. · Сплачений")).toBeInTheDocument();
     expect(await within(facts).findByText("2 500,00 ₴")).toBeInTheDocument();
-    expect(await within(facts).findByText("2026-01-15")).toBeInTheDocument();
+    expect(await within(facts).findByText("15 січ. 2026 р.")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Реквізити" })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Діє з" })).toBeInTheDocument();
     expect(screen.getByText("Газ").closest("strong")?.querySelector(".service-dot.gas")).toBeInTheDocument();
@@ -115,11 +115,11 @@ describe("ApartmentDetail", () => {
     );
 
     const firstFacts = await screen.findByRole("region", { name: "Факти квартири" });
-    expect(await within(firstFacts).findByText("2026-01-15")).toBeInTheDocument();
+    expect(await within(firstFacts).findByText("15 січ. 2026 р.")).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: "Наступна квартира" }));
     expect(await screen.findByRole("heading", { name: "Квартира 2" })).toBeInTheDocument();
     expect(await screen.findByText("Unavailable")).toBeInTheDocument();
-    expect(screen.queryByText("2026-01-15")).not.toBeInTheDocument();
+    expect(screen.queryByText("15 січ. 2026 р.")).not.toBeInTheDocument();
     const secondFacts = screen.getByRole("region", { name: "Факти квартири" });
     expect(secondFacts).not.toHaveTextContent("вільна");
     expect(within(secondFacts).getAllByText("—")).toHaveLength(3);

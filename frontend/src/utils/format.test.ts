@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatMonthYear, formatRate, formatRateSummary, formatReading, formatTariff } from "./format";
+import { formatDate, formatMonthYear, formatRate, formatRateSummary, formatReading, formatTariff } from "./format";
 
 describe("number formatters", () => {
   it.each([
@@ -40,5 +40,16 @@ describe("number formatters", () => {
   it("normalizes month and date API periods to one month-year label", () => {
     expect(formatMonthYear("2026-07")).toBe("липень 2026 р.");
     expect(formatMonthYear("2026-07-01")).toBe("липень 2026 р.");
+  });
+});
+
+describe("formatDate", () => {
+  it.each([
+    ["2025-11-13", "13 лист. 2025 р."],
+    ["2026-01-15", "15 січ. 2026 р."],
+    ["not-a-date", "not-a-date"],
+    ["2025-02-30", "2025-02-30"],
+  ])("formats %s as %s", (value, expected) => {
+    expect(formatDate(value)).toBe(expected);
   });
 });

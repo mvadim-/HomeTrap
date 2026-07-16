@@ -17,7 +17,7 @@ import {
   updateService,
 } from "../api/client";
 import { OccupancyState, TenantSection } from "../components/TenantSection";
-import { formatMonthYear, formatTariff, formatUah } from "../utils/format";
+import { formatDate, formatMonthYear, formatTariff, formatUah } from "../utils/format";
 import { utilityKind } from "../utils/utility";
 import "./portal.css";
 
@@ -199,7 +199,7 @@ export function ApartmentDetail() {
           <article className="apartment-fact"><span>Оренда</span><strong>{Number(apartment.rent_amount).toLocaleString("uk-UA", { maximumFractionDigits: 2 })} {apartment.rent_currency === "USD" ? "$" : apartment.rent_currency} / міс</strong></article>
           <article className="apartment-fact"><span>Останній рахунок</span><strong>{apartment.latest_invoice ? `${formatMonthYear(apartment.latest_invoice.period)} · ${invoiceStatusLabels[apartment.latest_invoice.status]}` : "—"}</strong></article>
           <article className="apartment-fact"><span>Середня комуналка</span><strong>{averageUtilitiesValue ?? "—"}</strong></article>
-          <article className="apartment-fact"><span>Орендар з</span><strong>{occupancy.status === "occupied" ? occupancy.contractStart : occupancy.status === "vacant" ? "вільна" : "—"}</strong></article>
+          <article className="apartment-fact"><span>Орендар з</span><strong>{occupancy.status === "occupied" ? formatDate(occupancy.contractStart) : occupancy.status === "vacant" ? "вільна" : "—"}</strong></article>
         </section>
 
         <TenantSection apartmentId={id} onOccupancyChange={setOccupancy} />

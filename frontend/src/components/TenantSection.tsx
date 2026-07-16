@@ -14,6 +14,7 @@ import {
   updateTenant,
   uploadTenantAttachments,
 } from "../api/client";
+import { formatDate } from "../utils/format";
 
 function localToday(): string {
   const today = new Date();
@@ -300,7 +301,7 @@ export function TenantSection({ apartmentId, onOccupancyChange }: TenantSectionP
       {!loading && activeTenant && (
         <div className="tenant-card">
           <div className="tenant-card-heading">
-            <div><strong>{activeTenant.full_name}</strong><span>контракт з {activeTenant.contract_start}</span></div>
+            <div><strong>{activeTenant.full_name}</strong><span>контракт з {formatDate(activeTenant.contract_start)}</span></div>
             <button className="table-action" type="button" onClick={() => beginEdit(activeTenant)}>Редагувати</button>
           </div>
           <dl className="details-list tenant-details">
@@ -360,7 +361,7 @@ export function TenantSection({ apartmentId, onOccupancyChange }: TenantSectionP
       {formerTenants.length > 0 && (
         <details className="tenant-history">
           <summary>Колишні орендарі ({formerTenants.length})</summary>
-          <ul>{formerTenants.map((tenant) => <li key={tenant.id}><strong>{tenant.full_name}</strong><span>{tenant.contract_start} — {tenant.contract_end}</span></li>)}</ul>
+          <ul>{formerTenants.map((tenant) => <li key={tenant.id}><strong>{tenant.full_name}</strong><span>{formatDate(tenant.contract_start)} — {formatDate(tenant.contract_end!)}</span></li>)}</ul>
         </details>
       )}
     </section>

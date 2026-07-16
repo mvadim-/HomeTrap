@@ -24,6 +24,13 @@ const RATE_SUMMARY_FORMATTER = new Intl.NumberFormat("uk-UA", {
   useGrouping: false,
 });
 
+const DATE_FORMATTER = new Intl.DateTimeFormat("uk-UA", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
 export function formatUah(value: string | number): string {
   return `${UAH_FORMATTER.format(Number(value))} ₴`;
 }
@@ -42,6 +49,21 @@ export function formatRate(value: string | number): string {
 
 export function formatRateSummary(value: string | number): string {
   return RATE_SUMMARY_FORMATTER.format(Number(value));
+}
+
+export function formatDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return value;
+
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) return value;
+
+  return DATE_FORMATTER.format(date);
 }
 
 export function formatMonthYear(value: string): string {
