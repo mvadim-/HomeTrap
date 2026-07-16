@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { ExchangeRate, getCurrentRate, logout } from "../api/client";
-import { formatRate } from "../utils/format";
+import { formatRateSummary } from "../utils/format";
 import "./Layout.css";
 
 const navigation = [
@@ -39,7 +39,7 @@ export function Layout() {
     root.dataset.theme = current === "dark" ? "light" : "dark";
   }
 
-  const formattedRate = rate ? formatRate(rate.rate) : null;
+  const formattedRate = rate ? formatRateSummary(rate.rate) : null;
 
   return (
     <div className="app-shell">

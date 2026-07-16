@@ -70,7 +70,7 @@ describe("Dashboard", () => {
       requested_date: "2026-07-14",
       rate_date: "2026-07-14",
       currency: "USD",
-      rate: "44.680000",
+      rate: "44.748000",
       is_fallback: false,
     });
 
@@ -79,7 +79,7 @@ describe("Dashboard", () => {
     expect(await screen.findByRole("heading", { name: "Дашборд" })).toBeInTheDocument();
     expect(screen.getByText("Нараховано")).toBeInTheDocument();
     expect(screen.getAllByText(/16.?731,51 ₴/).length).toBeGreaterThan(0);
-    expect(screen.getByText("44,68 ₴")).toBeInTheDocument();
+    expect(screen.getByText("44,75 ₴")).toBeInTheDocument();
     expect(screen.getAllByText("Квартира на Подолі")).toHaveLength(2);
     expect(screen.getByText("Виставлений")).toBeInTheDocument();
     expect(screen.getByText("Прострочена оплата")).toBeInTheDocument();

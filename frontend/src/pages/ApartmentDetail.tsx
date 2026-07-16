@@ -41,7 +41,7 @@ function monthLabel(period: string): string {
     month: "long",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(`${period}-01T00:00:00Z`));
+  }).format(new Date(`${period.slice(0, 7)}-01T00:00:00Z`));
 }
 
 function averageUtilities(stats: IncomeStats): string | null {

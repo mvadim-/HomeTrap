@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRate, formatReading, formatTariff } from "./format";
+import { formatRate, formatRateSummary, formatReading, formatTariff } from "./format";
 
 describe("number formatters", () => {
   it.each([
@@ -31,5 +31,9 @@ describe("number formatters", () => {
     ["12", "12,00"],
   ])("formats rate %s as %s", (value, expected) => {
     expect(formatRate(value)).toBe(expected);
+  });
+
+  it("rounds summary rates to exactly two decimal places", () => {
+    expect(formatRateSummary("44.748000")).toBe("44,75");
   });
 });

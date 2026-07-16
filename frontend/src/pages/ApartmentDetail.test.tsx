@@ -31,7 +31,7 @@ describe("ApartmentDetail", () => {
       rent_currency: "USD",
       notes: "Код домофона 42",
       is_active: true,
-      latest_invoice: { id: 14, period: "2026-06", status: "paid", grand_total: "15000.00" },
+      latest_invoice: { id: 14, period: "2026-06-01", status: "paid", grand_total: "15000.00" },
       current_tenant_name: "Оксана Коваль",
     });
     vi.mocked(apiClient.getTenants).mockResolvedValue([{

@@ -21,7 +21,7 @@ describe("Layout", () => {
       requested_date: "2026-07-16",
       rate_date: "2026-07-16",
       currency: "USD",
-      rate: "44.750000",
+      rate: "44.748000",
       is_fallback: false,
     });
 

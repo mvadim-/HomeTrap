@@ -18,6 +18,12 @@ const RATE_FORMATTER = new Intl.NumberFormat("uk-UA", {
   useGrouping: false,
 });
 
+const RATE_SUMMARY_FORMATTER = new Intl.NumberFormat("uk-UA", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+});
+
 export function formatUah(value: string | number): string {
   return `${UAH_FORMATTER.format(Number(value))} ₴`;
 }
@@ -32,6 +38,10 @@ export function formatReading(value: string | number): string {
 
 export function formatRate(value: string | number): string {
   return RATE_FORMATTER.format(Number(value));
+}
+
+export function formatRateSummary(value: string | number): string {
+  return RATE_SUMMARY_FORMATTER.format(Number(value));
 }
 
 export function formatTenantRent(

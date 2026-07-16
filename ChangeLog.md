@@ -1,5 +1,27 @@
 # ChangeLog
 
+## [2026-07-16 17:37] Верифікація стилів і live-форматів
+
+- `frontend/src/utils/format.ts`, `frontend/src/components/Layout.tsx`,
+  `frontend/src/pages/Dashboard.tsx` — summary-курс НБУ тепер завжди округлюється до
+  двох знаків: live-значення `44.748` показується як `44,75 ₴`, тоді як редаговане
+  поле рахунку зберігає точність до чотирьох знаків.
+- `frontend/src/pages/ApartmentDetail.tsx` — місяць останнього рахунку приймає
+  реальний API-формат `YYYY-MM-DD` без `RangeError`; картка з live-чернеткою знову
+  рендерить факти квартири.
+- `frontend/src/utils/format.test.ts`, `frontend/src/components/Layout.test.tsx`,
+  `frontend/src/pages/Dashboard.test.tsx`, `frontend/src/pages/ApartmentDetail.test.tsx` —
+  додано regression-покриття округлення `44.748 → 44,75` та ISO-дати рахунку.
+- У Playwright пройдено light/dark екрани шапки, дашборда, квартир, картки,
+  рахунків, редактора, статистики й налаштувань; зовнішній Claude artifact і реальні
+  дані вересня 2025 недоступні локальній автоматизації, тому їх покрито критеріями
+  плану й тестами, а фінальний side-by-side лишено власнику в Post-Completion.
+- Фінальний Docker-гейт: 81 frontend-тест, production build, 83 backend-тести та
+  Ruff пройшли; усі 6 груп знахідок Overview мають браузерні та/або тестові докази.
+- `docs/plans/20260716-mockup-style-alignment.md` — Task 7 позначено виконаним.
+- Зміна зачіпає frontend; для production потрібні rebuild і restart контейнера за
+  `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 17:16] Статистика за палітрою макета
 
 - `frontend/src/pages/Stats.tsx`, `frontend/src/pages/portal.css` — лінії споживання,
