@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-16 22:24] Умовна кнопка завантаження файлів орендаря
+
+- `frontend/src/components/TenantSection.tsx` — кнопка «Завантажити» тепер
+  з'являється лише після вибору файлів і знову приховується після успішного upload.
+- `frontend/src/components/TenantSection.test.tsx` — перевірено відсутність кнопки
+  без файлів, активний стан після вибору та приховування після успішного завантаження.
+- `docs/plans/20260716-review-polish.md` — Task 8 позначено виконаним після успішних
+  119 frontend-тестів і production build у Docker.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 22:21] Читабельні шкали та пропуски на графіках
 
 - `frontend/src/utils/ticks.ts`, `frontend/src/utils/ticks.test.ts` — додано

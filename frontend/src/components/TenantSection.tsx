@@ -335,7 +335,7 @@ export function TenantSection({ apartmentId, onOccupancyChange }: TenantSectionP
               <label className="secondary-button attachment-picker">Додати файли
                 <input ref={fileInputRef} className="file-input" aria-label="Файли контракту" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple type="file" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
               </label>
-              <button className="button" disabled={files.length === 0} type="submit">Завантажити</button>
+              {files.length > 0 && <button className="button" type="submit">Завантажити</button>}
             </form>
             {files.length > 0 && <ul className="selected-files" aria-label="Вибрані файли">{files.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}</ul>}
           </div>

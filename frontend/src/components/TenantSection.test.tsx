@@ -123,7 +123,7 @@ describe("TenantSection", () => {
     expect(screen.getByText("Файлів ще немає.")).toBeInTheDocument();
     expect(screen.getByText("Додати файли").closest("label")).toHaveClass("attachment-picker");
     expect(screen.getByLabelText("Файли контракту")).toHaveClass("file-input");
-    expect(screen.getByRole("button", { name: "Завантажити" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Завантажити" })).not.toBeInTheDocument();
   });
 
   it("uploads multiple selected contract files", async () => {
@@ -140,11 +140,13 @@ describe("TenantSection", () => {
     const selectedFiles = screen.getByRole("list", { name: "Вибрані файли" });
     expect(within(selectedFiles).getByText("contract.jpg")).toBeInTheDocument();
     expect(within(selectedFiles).getByText("contract.pdf")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Завантажити" }));
+    const uploadButton = screen.getByRole("button", { name: "Завантажити" });
+    expect(uploadButton).toBeEnabled();
+    await user.click(uploadButton);
 
     await waitFor(() => expect(apiClient.uploadTenantAttachments).toHaveBeenCalledWith(8, files));
     expect(input).toHaveValue("");
-    expect(screen.getByRole("button", { name: "Завантажити" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Завантажити" })).not.toBeInTheDocument();
   });
 
   it("reports the active tenant to the apartment facts", async () => {
