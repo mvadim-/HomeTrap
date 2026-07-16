@@ -49,8 +49,8 @@ export function Dashboard() {
 
       <section className="dashboard-grid" aria-label="Показники портфеля">
         <article className="metric-card"><span className="metric-label">Нараховано</span><strong>{formatUah(dashboard.charged)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Оплачено</span><strong>{formatUah(dashboard.paid)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Заборгованість</span><strong>{formatUah(dashboard.outstanding)}</strong></article>
+        <article className="metric-card"><span className="metric-label">Оплачено</span><strong className="metric-note note-pos">{formatUah(dashboard.paid)}</strong></article>
+        <article className="metric-card"><span className="metric-label">Заборгованість</span><strong className={Number(dashboard.outstanding) > 0 ? "metric-note note-neg" : undefined}>{formatUah(dashboard.outstanding)}</strong></article>
         <article className="metric-card"><span className="metric-label">Курс НБУ · {rate.currency}</span><strong>{formatRate(rate.rate)} ₴</strong></article>
       </section>
 
@@ -63,13 +63,16 @@ export function Dashboard() {
           <div className="apartments-grid">
             {apartments.map((apartment) => (
               <Link className="apartment-card" to={`/apartments/${apartment.id}`} key={apartment.id}>
-                <header>
+                <span className="apartment-avatar" aria-hidden="true">{apartment.name.trim().charAt(0)}</span>
+                <div className="apartment-details">
                   <h3>{apartment.name}</h3>
+                  {apartment.address.trim() !== apartment.name.trim() && <p className="apartment-address">{apartment.address}</p>}
+                  <span className="apartment-rent">{formatTenantRent(apartment.current_tenant_name, apartment.rent_amount, apartment.rent_currency)}</span>
+                </div>
+                <div className="apartment-summary">
+                  {apartment.latest_invoice && <strong>{formatUah(apartment.latest_invoice.grand_total)}</strong>}
                   <InvoiceStatusBadge status={apartment.latest_invoice?.status ?? null} />
-                </header>
-                <p className="apartment-address">{apartment.address}</p>
-                <div className="card-row"><span>{formatTenantRent(apartment.current_tenant_name, apartment.rent_amount, apartment.rent_currency)}</span></div>
-                {apartment.latest_invoice && <div className="card-row"><span>Останній рахунок</span><strong>{formatUah(apartment.latest_invoice.grand_total)}</strong></div>}
+                </div>
               </Link>
             ))}
           </div>
@@ -83,7 +86,11 @@ export function Dashboard() {
             <ul className="attention-list">
               {dashboard.needs_attention.map((item) => (
                 <li className="attention-item" key={item.invoice_id}>
-                  <div><Link to={`/apartments/${item.apartment_id}`}>{item.apartment_name}</Link><div className="muted-text">{item.reason === "unpaid" ? "Очікує оплати" : "Завершіть чернетку"}</div></div>
+                  <span
+                    aria-hidden="true"
+                    className={`attention-dot ${item.reason === "draft" ? "amber" : item.period < dashboard.period ? "rose" : "muted"}`}
+                  />
+                  <div className="attention-details"><Link to={`/apartments/${item.apartment_id}`}>{item.apartment_name}</Link><div className="muted-text">{item.reason === "draft" ? "Завершіть чернетку" : item.period < dashboard.period ? "Прострочена оплата" : "Очікує оплати"}</div></div>
                   <strong>{formatUah(item.grand_total)}</strong>
                 </li>
               ))}

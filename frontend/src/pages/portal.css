@@ -48,12 +48,30 @@
   display: block;
   margin-bottom: 10px;
   color: var(--color-text-muted);
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .metric-card strong {
   font-size: clamp(1.25rem, 3vw, 1.75rem);
+}
+
+.metric-note {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.note-pos {
+  color: var(--chart-rent);
+  background: color-mix(in srgb, var(--chart-rent) 13%, transparent);
+}
+
+.note-neg {
+  color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger) 13%, transparent);
 }
 
 .content-grid {
@@ -76,13 +94,15 @@
 
 .apartments-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
-  gap: 16px;
+  gap: 10px;
 }
 
 .apartment-card {
-  display: block;
-  padding: 20px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
   color: var(--color-text);
   text-decoration: none;
 }
@@ -91,7 +111,6 @@
   border-color: var(--color-primary);
 }
 
-.apartment-card header,
 .card-row,
 .attention-item {
   display: flex;
@@ -110,10 +129,40 @@
   color: inherit;
 }
 
+.apartment-avatar {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+  font-weight: 750;
+  place-items: center;
+}
+
+.apartment-details {
+  min-width: 0;
+}
+
 .apartment-address {
-  min-height: 2.6em;
-  margin: 10px 0 18px;
+  margin: 3px 0 0;
   color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.apartment-rent {
+  display: block;
+  margin-top: 5px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.apartment-summary {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 7px;
+  text-align: right;
 }
 
 .card-row {
@@ -162,6 +211,7 @@
 }
 
 .attention-item {
+  justify-content: initial;
   padding: 12px 0;
   border-bottom: 1px solid var(--color-border);
 }
@@ -174,6 +224,30 @@
   color: var(--color-text);
   font-weight: 700;
   text-decoration: none;
+}
+
+.attention-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.attention-dot.rose {
+  background: var(--color-danger);
+}
+
+.attention-dot.amber {
+  background: var(--chart-elec);
+}
+
+.attention-dot.muted {
+  background: var(--color-text-muted);
+}
+
+.attention-details {
+  flex: 1;
+  min-width: 0;
 }
 
 .button,
