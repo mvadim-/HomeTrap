@@ -126,12 +126,12 @@ API:
 - Create: `backend/app/routers/tenants.py`, `backend/tests/test_tenants.py`
 - Modify: `backend/app/schemas.py`, `backend/app/main.py`, `backend/app/routers/apartments.py`
 
-- [ ] схеми TenantIn/TenantOut/TenantEndContract (email-валідація, end ≥ start)
-- [ ] `GET/POST /api/apartments/{id}/tenants`, `PUT /api/tenants/{id}`, `POST /api/tenants/{id}/end-contract`, `DELETE /api/tenants/{id}`
-- [ ] інваріант: створення при наявному активному → 409; end-contract двічі → 409
-- [ ] `current_tenant_name` у відповіді списку квартир (`GET /api/apartments`)
-- [ ] тести: створення/історія (2 орендарі послідовно), 409-кейси, валідація дат/email, 404, current_tenant_name у списку
-- [ ] прогнати backend-тести — мають пройти перед таском 3
+- [x] схеми TenantIn/TenantOut/TenantEndContract (email-валідація, end ≥ start)
+- [x] `GET/POST /api/apartments/{id}/tenants`, `PUT /api/tenants/{id}`, `POST /api/tenants/{id}/end-contract`, `DELETE /api/tenants/{id}`
+- [x] інваріант: створення при наявному активному → 409; end-contract двічі → 409
+- [x] `current_tenant_name` у відповіді списку квартир (`GET /api/apartments`)
+- [x] тести: створення/історія (2 орендарі послідовно), 409-кейси, валідація дат/email, 404, current_tenant_name у списку
+- [x] прогнати backend-тести — мають пройти перед таском 3
 
 ### Task 3: Файли контракту — завантаження і перегляд
 

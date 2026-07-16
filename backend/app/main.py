@@ -16,6 +16,7 @@ from app.routers.rates import router as rates_router
 from app.routers.services import router as services_router
 from app.routers.stats import router as stats_router
 from app.routers.settings import router as settings_router
+from app.routers.tenants import router as tenants_router
 from app.services.scheduler import start_scheduler
 
 APP_VERSION = "0.1.0"
@@ -74,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.login_rate_limiter = LoginRateLimiter()
     application.include_router(auth_router)
     application.include_router(apartments_router)
+    application.include_router(tenants_router)
     application.include_router(services_router)
     application.include_router(rates_router)
     application.include_router(invoices_router)

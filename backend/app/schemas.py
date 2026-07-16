@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Literal
@@ -56,6 +57,38 @@ class ApartmentResponse(ApartmentBase):
     id: int
     is_active: bool
     latest_invoice: LatestInvoiceSummary | None = None
+    current_tenant_name: str | None = None
+
+
+class TenantIn(ApiSchema):
+    full_name: str = Field(min_length=1, max_length=200)
+    phone: str | None = Field(default=None, max_length=50)
+    email: str | None = Field(default=None, max_length=320)
+    contract_start: date
+    contract_end: date | None = None
+    notes: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str | None) -> str | None:
+        if value is not None and re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value) is None:
+            raise ValueError("invalid email address")
+        return value
+
+    @model_validator(mode="after")
+    def validate_contract_dates(self):
+        if self.contract_end is not None and self.contract_end < self.contract_start:
+            raise ValueError("contract_end must be on or after contract_start")
+        return self
+
+
+class TenantOut(TenantIn):
+    id: int
+    apartment_id: int
+
+
+class TenantEndContract(ApiSchema):
+    contract_end: date
 
 
 class ServiceBase(ApiSchema):

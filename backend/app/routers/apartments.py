@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import get_db, require_auth
-from app.models import Apartment, Invoice
+from app.models import Apartment, Invoice, Tenant
 from app.schemas import ApartmentCreate, ApartmentResponse, ApartmentUpdate
 
 router = APIRouter(
@@ -45,7 +45,26 @@ def _latest_invoices(session: Session, apartment_ids: list[int]) -> dict[int, In
     return {invoice.apartment_id: invoice for invoice in invoices}
 
 
-def _apartment_response(apartment: Apartment, latest_invoice: Invoice | None) -> dict:
+def _current_tenant_names(
+    session: Session,
+    apartment_ids: list[int],
+) -> dict[int, str]:
+    if not apartment_ids:
+        return {}
+    rows = session.execute(
+        select(Tenant.apartment_id, Tenant.full_name).where(
+            Tenant.apartment_id.in_(apartment_ids),
+            Tenant.contract_end.is_(None),
+        )
+    ).all()
+    return {apartment_id: full_name for apartment_id, full_name in rows}
+
+
+def _apartment_response(
+    apartment: Apartment,
+    latest_invoice: Invoice | None,
+    current_tenant_name: str | None = None,
+) -> dict:
     return {
         "id": apartment.id,
         "name": apartment.name,
@@ -55,6 +74,7 @@ def _apartment_response(apartment: Apartment, latest_invoice: Invoice | None) ->
         "notes": apartment.notes,
         "is_active": apartment.is_active,
         "latest_invoice": latest_invoice,
+        "current_tenant_name": current_tenant_name,
     }
 
 
@@ -63,8 +83,17 @@ def list_apartments(
     session: Session = Depends(get_db),
 ) -> list[dict]:
     apartments = session.scalars(select(Apartment).order_by(Apartment.id)).all()
-    latest = _latest_invoices(session, [apartment.id for apartment in apartments])
-    return [_apartment_response(apartment, latest.get(apartment.id)) for apartment in apartments]
+    apartment_ids = [apartment.id for apartment in apartments]
+    latest = _latest_invoices(session, apartment_ids)
+    tenant_names = _current_tenant_names(session, apartment_ids)
+    return [
+        _apartment_response(
+            apartment,
+            latest.get(apartment.id),
+            tenant_names.get(apartment.id),
+        )
+        for apartment in apartments
+    ]
 
 
 @router.post("", response_model=ApartmentResponse, status_code=status.HTTP_201_CREATED)
@@ -87,6 +116,7 @@ def get_apartment(
     return _apartment_response(
         apartment,
         _latest_invoices(session, [apartment.id]).get(apartment.id),
+        _current_tenant_names(session, [apartment.id]).get(apartment.id),
     )
 
 
@@ -103,6 +133,7 @@ def update_apartment(
     return _apartment_response(
         apartment,
         _latest_invoices(session, [apartment.id]).get(apartment.id),
+        _current_tenant_names(session, [apartment.id]).get(apartment.id),
     )
 
 
