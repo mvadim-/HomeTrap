@@ -76,11 +76,23 @@ describe("TenantSection", () => {
     const user = userEvent.setup();
     render(<TenantSection apartmentId={1} />);
 
+    expect(await screen.findByText("Активного орендаря немає.")).toBeInTheDocument();
     await user.click(await screen.findByRole("button", { name: "Новий орендар" }));
     await user.type(screen.getByLabelText("ПІБ"), "Марія Сидоренко");
     await user.click(screen.getByRole("button", { name: "Додати орендаря" }));
 
     expect(await screen.findByText(/вже є активний орендар/i)).toBeInTheDocument();
+  });
+
+  it("shows an explicit empty state when the active tenant has no files", async () => {
+    vi.mocked(apiClient.getTenants).mockResolvedValue([activeTenant]);
+    vi.mocked(apiClient.getTenantAttachments).mockResolvedValue([]);
+
+    render(<TenantSection apartmentId={1} />);
+
+    expect(await screen.findByText("Оксана Коваль")).toBeInTheDocument();
+    expect(screen.getByText("Файлів ще немає.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Завантажити" })).toBeDisabled();
   });
 
   it("uploads multiple selected contract files", async () => {

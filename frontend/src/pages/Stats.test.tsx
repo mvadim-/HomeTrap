@@ -80,11 +80,18 @@ describe("Stats", () => {
 
     render(<Stats />);
     await screen.findByText("Ще немає історії споживання для цієї квартири.");
+    await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, { months: 12 }));
+    await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, { months: 12 }));
     await user.click(screen.getByRole("button", { name: "6 міс" }));
 
     await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, { months: 6 }));
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, { months: 6 }));
     expect(screen.getByText("Споживання та дохід за останні 6 місяців")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "24 міс" }));
+    await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, { months: 24 }));
+    await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, { months: 24 }));
+    expect(screen.getByText("Споживання та дохід за останні 24 місяців")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Весь час" }));
     await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, { all_time: true }));
