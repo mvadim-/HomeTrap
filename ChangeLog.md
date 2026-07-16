@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-16 16:49] Однорядкова шапка за затвердженим макетом
+
+- `frontend/src/components/Layout.tsx`, `frontend/src/components/Layout.css` — логотип,
+  навігацію, курс НБУ, тему й вихід об'єднано в одну шапку; додано SVG-будинок,
+  суцільний активний pill, український формат курсу та перенос навігації з
+  горизонтальним прокручуванням на вузьких екранах.
+- `frontend/src/components/Layout.test.tsx` — перевірено SVG-марку, активний пункт,
+  текст курсу та fallback при помилці API.
+- `docs/plans/20260716-mockup-style-alignment.md` — Task 2 позначено виконаним після
+  успішних 58 frontend-тестів і production-збірки в Docker.
+- Зміна суто frontend; для production потрібні rebuild і restart контейнера за
+  `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 16:45] Дизайн-токени за затвердженим макетом
 
 - `frontend/src/theme.css` — оновлено light/dark палітри, додано токени кольорів
