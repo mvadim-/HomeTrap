@@ -50,8 +50,14 @@ export function InvoiceEdit() {
       .then((loadedInvoice) => {
         if (routeGeneration.current === generation) setInvoice(loadedInvoice);
       })
-      .catch(() => {
-        if (routeGeneration.current === generation) setError("Не вдалося завантажити рахунок.");
+      .catch((requestError) => {
+        if (routeGeneration.current === generation) {
+          setError(
+            requestError instanceof ApiError && requestError.status === 404
+              ? "Рахунок не знайдено"
+              : "Не вдалося завантажити рахунок",
+          );
+        }
       });
     return () => {
       if (routeGeneration.current === generation) routeGeneration.current += 1;
@@ -116,7 +122,14 @@ export function InvoiceEdit() {
     }
   }
 
-  if (error && !invoice) return <p className="error-message">{error}</p>;
+  if (error && !invoice) {
+    return (
+      <>
+        <Link className="muted-text" to="/invoices">← Рахунки</Link>
+        <p className="error-message">{error}</p>
+      </>
+    );
+  }
   if (!invoice) return <p className="muted-text">Завантажуємо рахунок…</p>;
 
   return (

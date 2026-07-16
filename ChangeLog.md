@@ -1,5 +1,17 @@
 # ChangeLog
 
+## [2026-07-16 22:03] Розрізнення помилок завантаження рахунку
+
+- `frontend/src/pages/InvoiceEdit.tsx` — екран завантаження рахунку використовує
+  `ApiError.status`: для 404 показує «Рахунок не знайдено», для інших помилок —
+  «Не вдалося завантажити рахунок»; обидва стани містять посилання на список.
+- `frontend/src/pages/InvoiceEdit.test.tsx` — додано регресійні перевірки 404 і
+  мережевої помилки, різних повідомлень та навігації до `/invoices`.
+- `docs/plans/20260716-review-polish.md` — Task 3 позначено виконаним після успішних
+  108 frontend-тестів і production build у Docker.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 22:00] Read-only вигляд завершених рахунків
 
 - `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/pages/portal.css` —

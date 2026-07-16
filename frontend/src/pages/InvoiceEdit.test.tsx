@@ -16,6 +16,34 @@ const draft: apiClient.Invoice = {
 };
 
 describe("InvoiceEdit", () => {
+  it("shows a not-found message and invoices link for a missing invoice", async () => {
+    vi.spyOn(apiClient, "getInvoice").mockRejectedValue(new apiClient.ApiError(404, "Not found"));
+
+    render(
+      <MemoryRouter initialEntries={["/invoices/404"]}>
+        <Routes><Route path="/invoices/:invoiceId" element={<InvoiceEdit />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Рахунок не знайдено")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Рахунки" })).toHaveAttribute("href", "/invoices");
+    expect(screen.queryByText("Не вдалося завантажити рахунок")).not.toBeInTheDocument();
+  });
+
+  it("shows a load failure and invoices link for a network error", async () => {
+    vi.spyOn(apiClient, "getInvoice").mockRejectedValue(new TypeError("Failed to fetch"));
+
+    render(
+      <MemoryRouter initialEntries={["/invoices/7"]}>
+        <Routes><Route path="/invoices/:invoiceId" element={<InvoiceEdit />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Не вдалося завантажити рахунок")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Рахунки" })).toHaveAttribute("href", "/invoices");
+    expect(screen.queryByText("Рахунок не знайдено")).not.toBeInTheDocument();
+  });
+
   it("issues a draft and shows actions for the resulting status", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getInvoice").mockResolvedValue(draft);
