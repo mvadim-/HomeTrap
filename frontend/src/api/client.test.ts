@@ -1,6 +1,6 @@
 import { afterEach, vi } from "vitest";
 
-import { ApiError, browserNavigation, deleteInvoice, getCurrentUser, importApartmentHistory, login, logout } from "./client";
+import { ApiError, browserNavigation, deleteInvoice, getCurrentUser, importApartmentHistory, login, logout, uploadTenantAttachments } from "./client";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -26,6 +26,20 @@ describe("API transport", () => {
     await importApartmentHistory(3, new File(["xlsx"], "history.xlsx"), true);
     const options = fetchMock.mock.calls[0][1] as RequestInit;
     expect(options.body).toBeInstanceOf(FormData);
+    expect(options.headers).not.toHaveProperty("Content-Type");
+  });
+
+  it("uploads multiple tenant attachments as multipart files", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const files = [new File(["one"], "one.pdf"), new File(["two"], "two.pdf")];
+
+    await uploadTenantAttachments(7, files);
+
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    const body = options.body as FormData;
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/tenants/7/attachments");
+    expect(body.getAll("files")).toEqual(files);
     expect(options.headers).not.toHaveProperty("Content-Type");
   });
 

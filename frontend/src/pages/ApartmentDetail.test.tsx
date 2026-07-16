@@ -1,12 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
 import { ApartmentDetail } from "./ApartmentDetail";
 
 afterEach(() => vi.restoreAllMocks());
+
+beforeEach(() => {
+  vi.spyOn(apiClient, "getTenants").mockResolvedValue([]);
+  vi.spyOn(apiClient, "getTenantAttachments").mockResolvedValue([]);
+});
 
 describe("ApartmentDetail", () => {
   it("renders apartment details and the services tariff table", async () => {

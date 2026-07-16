@@ -322,6 +322,125 @@
   gap: 20px;
 }
 
+.tenant-section {
+  grid-column: 1 / -1;
+}
+
+.tenant-card {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.tenant-card-heading,
+.tenant-card-heading div,
+.tenant-actions,
+.tenant-end-form,
+.attachment-form,
+.tenant-files li,
+.tenant-history li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tenant-card-heading {
+  justify-content: space-between;
+}
+
+.tenant-card-heading div,
+.tenant-history li {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tenant-card-heading strong {
+  font-size: 1.1rem;
+}
+
+.tenant-card-heading span,
+.tenant-history span {
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+}
+
+.tenant-details {
+  margin-top: 14px;
+}
+
+.tenant-actions,
+.tenant-end-form,
+.tenant-files {
+  margin-top: 16px;
+}
+
+.tenant-end-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.tenant-end-form input,
+.attachment-form input,
+.tenant-form textarea {
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.tenant-files {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.tenant-files h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.tenant-files ul,
+.tenant-history ul {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.tenant-files li {
+  justify-content: space-between;
+  padding: 7px 0;
+}
+
+.tenant-form .tenant-notes {
+  grid-column: 1 / -1;
+}
+
+.tenant-form textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.tenant-history {
+  margin-top: 18px;
+  color: var(--color-text-muted);
+}
+
+.tenant-history ul {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.tenant-history strong {
+  color: var(--color-text);
+}
+
 .details-list {
   display: grid;
   grid-template-columns: auto 1fr;

@@ -237,6 +237,24 @@ async def upload_attachments(
     return attachments
 
 
+@router.get(
+    "/api/tenants/{tenant_id}/attachments",
+    response_model=list[TenantAttachmentOut],
+)
+def list_attachments(
+    tenant_id: int,
+    session: Session = Depends(get_db),
+) -> list[TenantAttachment]:
+    _get_tenant(session, tenant_id)
+    return list(
+        session.scalars(
+            select(TenantAttachment)
+            .where(TenantAttachment.tenant_id == tenant_id)
+            .order_by(TenantAttachment.uploaded_at.desc(), TenantAttachment.id.desc())
+        ).all()
+    )
+
+
 @router.get("/api/attachments/{attachment_id}", response_class=FileResponse)
 def download_attachment(
     attachment_id: int,

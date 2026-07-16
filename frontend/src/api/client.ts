@@ -82,6 +82,29 @@ export interface ApartmentPayload {
   is_active?: boolean;
 }
 
+export interface TenantPayload {
+  full_name: string;
+  phone: string | null;
+  email: string | null;
+  contract_start: string;
+  contract_end: string | null;
+  notes: string | null;
+}
+
+export interface Tenant extends TenantPayload {
+  id: number;
+  apartment_id: number;
+}
+
+export interface TenantAttachment {
+  id: number;
+  tenant_id: number;
+  original_name: string;
+  content_type: string;
+  size_bytes: number;
+  uploaded_at: string;
+}
+
 export interface DashboardAttentionItem {
   invoice_id: number;
   apartment_id: number;
@@ -299,6 +322,55 @@ export function updateApartment(id: number, payload: ApartmentPayload): Promise<
 
 export function archiveApartment(id: number): Promise<void> {
   return request<void>(`/api/apartments/${id}`, { method: "DELETE" });
+}
+
+export function getTenants(apartmentId: number): Promise<Tenant[]> {
+  return request<Tenant[]>(`/api/apartments/${apartmentId}/tenants`);
+}
+
+export function createTenant(apartmentId: number, payload: TenantPayload): Promise<Tenant> {
+  return request<Tenant>(`/api/apartments/${apartmentId}/tenants`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateTenant(tenantId: number, payload: TenantPayload): Promise<Tenant> {
+  return request<Tenant>(`/api/tenants/${tenantId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function endTenantContract(tenantId: number, contractEnd: string): Promise<Tenant> {
+  return request<Tenant>(`/api/tenants/${tenantId}/end-contract`, {
+    method: "POST",
+    body: JSON.stringify({ contract_end: contractEnd }),
+  });
+}
+
+export function getTenantAttachments(tenantId: number): Promise<TenantAttachment[]> {
+  return request<TenantAttachment[]>(`/api/tenants/${tenantId}/attachments`);
+}
+
+export function uploadTenantAttachments(
+  tenantId: number,
+  files: File[],
+): Promise<TenantAttachment[]> {
+  const body = new FormData();
+  files.forEach((file) => body.append("files", file));
+  return request<TenantAttachment[]>(`/api/tenants/${tenantId}/attachments`, {
+    method: "POST",
+    body,
+  });
+}
+
+export function getAttachmentUrl(attachmentId: number): string {
+  return `/api/attachments/${attachmentId}`;
+}
+
+export function deleteTenantAttachment(attachmentId: number): Promise<void> {
+  return request<void>(`/api/attachments/${attachmentId}`, { method: "DELETE" });
 }
 
 export function getServices(apartmentId: number): Promise<Service[]> {

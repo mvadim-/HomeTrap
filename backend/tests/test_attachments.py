@@ -83,6 +83,13 @@ async def test_upload_download_and_delete_attachments(tmp_path) -> None:
         stored_files = sorted((settings.uploads_dir / "tenants" / str(tenant["id"])).iterdir())
         assert {path.suffix for path in stored_files} == {".jpg", ".pdf"}
 
+        listed = await client.get(f"/api/tenants/{tenant['id']}/attachments")
+        assert listed.status_code == 200
+        assert {item["original_name"] for item in listed.json()} == {
+            "contract.jpg",
+            "contract.pdf",
+        }
+
         downloaded = await client.get(f"/api/attachments/{attachments[0]['id']}")
         assert downloaded.status_code == 200
         assert downloaded.content == b"jpeg-content"

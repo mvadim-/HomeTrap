@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-16 14:18] Картка орендаря у квартирі
+
+- `frontend/src/components/TenantSection.tsx`, `frontend/src/pages/ApartmentDetail.tsx`,
+  `frontend/src/pages/portal.css` — додано активного орендаря, редагування й завершення
+  контракту, створення наступного орендаря, історію та керування файлами контракту.
+- `frontend/src/api/client.ts`, `backend/app/routers/tenants.py` — додано типізовані
+  tenant/attachment-запити, multipart upload і захищене читання списку метаданих файлів.
+- `frontend/src/components/TenantSection.test.tsx`, `frontend/src/api/client.test.ts`,
+  `frontend/src/pages/ApartmentDetail.test.tsx`, `backend/tests/test_attachments.py` —
+  перевірено активного/нового орендаря, історію, файли, 409 і multipart-контракт.
+- `docs/plans/20260716-mockup-gap-fixes.md` — Task 5 позначено виконаним після 44
+  frontend-тестів, frontend build, 77 backend-тестів і Ruff у Docker. Для production
+  потрібно перебудувати й перезапустити контейнер за `docs/deploy.md`; автоматичний
+  деплой не виконувався.
+
 ## [2026-07-16 14:11] Довільний період і summary статистики
 
 - `backend/app/routers/stats.py`, `backend/app/schemas.py` — додано взаємовиключні

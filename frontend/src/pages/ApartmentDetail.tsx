@@ -14,6 +14,7 @@ import {
   getTariffs,
   updateService,
 } from "../api/client";
+import { TenantSection } from "../components/TenantSection";
 import "./portal.css";
 
 const emptyService: ServicePayload = {
@@ -129,6 +130,8 @@ export function ApartmentDetail() {
             <dt>Примітки</dt><dd>{apartment.notes || "—"}</dd>
           </dl>
         </section>
+
+        <TenantSection apartmentId={id} />
 
         <section className="section-card">
           <div className="section-heading">
