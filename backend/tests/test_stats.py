@@ -85,6 +85,7 @@ def _add_invoice(
 def _seed_stats(application) -> tuple[int, int, int]:
     current = date.today().replace(day=1)
     previous = _shift_month(current, -1)
+    old = _shift_month(current, -18)
     engine = create_database_engine(application.state.settings.database_path)
     with create_session_factory(engine)() as session:
         first = Apartment(
@@ -130,6 +131,15 @@ def _seed_stats(application) -> tuple[int, int, int]:
                 _add_invoice(
                     first,
                     first_gas,
+                    period=old,
+                    status="paid",
+                    rent="500.00",
+                    utilities="25.00",
+                    consumed="5.000",
+                ),
+                _add_invoice(
+                    first,
+                    first_gas,
                     period=previous,
                     status="paid",
                     rent="1000.00",
@@ -147,7 +157,8 @@ def _seed_stats(application) -> tuple[int, int, int]:
                 ),
             ]
         )
-        first.invoices[0].lines.append(
+        previous_invoice = first.invoices[1]
+        previous_invoice.lines.append(
             InvoiceLine(
                 service=first_fixed,
                 service_name=first_fixed.name,
@@ -159,6 +170,24 @@ def _seed_stats(application) -> tuple[int, int, int]:
                 amount=Decimal("50.00"),
             )
         )
+        previous_invoice.utilities_total += Decimal("50.00")
+        previous_invoice.grand_total += Decimal("50.00")
+
+        current_invoice = first.invoices[2]
+        current_invoice.lines.append(
+            InvoiceLine(
+                service=first_fixed,
+                service_name=first_fixed.name,
+                service_kind="fixed",
+                prev_reading=None,
+                curr_reading=None,
+                consumed=None,
+                tariff_value=Decimal("400.00000"),
+                amount=Decimal("400.00"),
+            )
+        )
+        current_invoice.utilities_total += Decimal("400.00")
+        current_invoice.grand_total += Decimal("400.00")
         second.invoices.append(
             _add_invoice(
                 second,
@@ -267,13 +296,18 @@ async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:
         assert payload["scope"] == "apartment"
         assert payload["totals"] == {
             "rent": "2100.00",
-            "utilities": "300.00",
-            "total": "2400.00",
+            "utilities": "750.00",
+            "total": "2850.00",
         }
         assert [point["total"] for point in payload["values"]] == [
-            "1100.00",
-            "1300.00",
+            "1150.00",
+            "1700.00",
         ]
+        assert payload["top_service"] == {
+            "name": "Утримання будинку",
+            "share_percent": "60.00",
+            "peak_period": date.today().replace(day=1).isoformat(),
+        }
 
         portfolio = await client.get("/api/stats/income", params={"months": 2})
         assert portfolio.status_code == 200
@@ -282,13 +316,18 @@ async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:
         assert payload["apartment_id"] is None
         assert payload["totals"] == {
             "rent": "4100.00",
-            "utilities": "600.00",
-            "total": "4700.00",
+            "utilities": "1050.00",
+            "total": "5150.00",
         }
         assert [point["total"] for point in payload["values"]] == [
-            "1100.00",
-            "3600.00",
+            "1150.00",
+            "4000.00",
         ]
+        assert payload["top_service"] == {
+            "name": "Утримання будинку",
+            "share_percent": "42.86",
+            "peak_period": date.today().replace(day=1).isoformat(),
+        }
     finally:
         await _close(lifespan, client)
 
@@ -300,9 +339,9 @@ async def test_dashboard_and_empty_history(tmp_path) -> None:
         dashboard = await client.get("/api/stats/dashboard")
         assert dashboard.status_code == 200
         payload = dashboard.json()
-        assert payload["charged"] == "3600.00"
+        assert payload["charged"] == "4000.00"
         assert payload["paid"] == "2300.00"
-        assert payload["outstanding"] == "1300.00"
+        assert payload["outstanding"] == "1700.00"
         assert payload["needs_attention"] == [
             {
                 "invoice_id": payload["needs_attention"][0]["invoice_id"],
@@ -310,7 +349,7 @@ async def test_dashboard_and_empty_history(tmp_path) -> None:
                 "apartment_name": "Квартира 1",
                 "period": date.today().replace(day=1).isoformat(),
                 "status": "issued",
-                "grand_total": "1300.00",
+                "grand_total": "1700.00",
                 "reason": "unpaid",
             }
         ]
@@ -331,6 +370,7 @@ async def test_dashboard_and_empty_history(tmp_path) -> None:
             "utilities": "0.00",
             "total": "0.00",
         }
+        assert income.json()["top_service"] is None
     finally:
         await _close(lifespan, client)
 
@@ -355,5 +395,102 @@ async def test_stats_validation_not_found_and_auth(tmp_path) -> None:
         ).status_code == 422
         client.cookies.clear()
         assert (await client.get("/api/stats/dashboard")).status_code == 401
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_stats_custom_period_and_all_time(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        first_id, _, _ = _seed_stats(application)
+        current = date.today().replace(day=1)
+        previous = _shift_month(current, -1)
+
+        consumption = await client.get(
+            "/api/stats/consumption",
+            params={
+                "apartment_id": first_id,
+                "date_from": previous.isoformat(),
+                "date_to": previous.isoformat(),
+            },
+        )
+        assert consumption.status_code == 200
+        assert consumption.json()["months"] is None
+        assert [
+            point["consumed"]
+            for point in consumption.json()["series"][0]["values"]
+        ] == ["10.000"]
+
+        income = await client.get(
+            "/api/stats/income",
+            params={
+                "apartment_id": first_id,
+                "date_from": previous.isoformat(),
+                "date_to": previous.isoformat(),
+            },
+        )
+        assert income.status_code == 200
+        assert income.json()["months"] is None
+        assert [point["total"] for point in income.json()["values"]] == ["1150.00"]
+
+        default_period = await client.get(
+            "/api/stats/income", params={"apartment_id": first_id}
+        )
+        assert default_period.status_code == 200
+        assert default_period.json()["months"] == 12
+        assert len(default_period.json()["values"]) == 2
+
+        all_time_income = await client.get(
+            "/api/stats/income",
+            params={"apartment_id": first_id, "all_time": "true"},
+        )
+        assert all_time_income.status_code == 200
+        assert all_time_income.json()["months"] is None
+        assert len(all_time_income.json()["values"]) == 3
+
+        all_time_consumption = await client.get(
+            "/api/stats/consumption",
+            params={"apartment_id": first_id, "all_time": "true"},
+        )
+        assert all_time_consumption.status_code == 200
+        assert [
+            point["consumed"]
+            for point in all_time_consumption.json()["series"][0]["values"]
+        ] == ["5.000", "10.000", "12.000"]
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_stats_rejects_combined_and_invalid_periods(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        first_id, _, _ = _seed_stats(application)
+        current = date.today().replace(day=1)
+        previous = _shift_month(current, -1)
+        invalid_periods = [
+            {
+                "months": 6,
+                "date_from": previous.isoformat(),
+                "date_to": current.isoformat(),
+            },
+            {"months": 6, "all_time": "true"},
+            {
+                "date_from": current.isoformat(),
+                "date_to": previous.isoformat(),
+            },
+            {"date_from": previous.isoformat()},
+            {
+                "date_from": previous.replace(day=2).isoformat(),
+                "date_to": current.isoformat(),
+            },
+        ]
+
+        for endpoint in ("consumption", "income"):
+            for params in invalid_periods:
+                query = dict(params)
+                if endpoint == "consumption":
+                    query["apartment_id"] = first_id
+                response = await client.get(f"/api/stats/{endpoint}", params=query)
+                assert response.status_code == 422
     finally:
         await _close(lifespan, client)

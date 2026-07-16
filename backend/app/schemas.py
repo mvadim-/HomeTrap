@@ -232,7 +232,7 @@ class ConsumptionSeries(ApiSchema):
 
 class ConsumptionStats(ApiSchema):
     apartment_id: int
-    months: int
+    months: int | None
     series: list[ConsumptionSeries]
 
 
@@ -249,12 +249,19 @@ class IncomeTotals(ApiSchema):
     total: Decimal
 
 
+class TopServiceStats(ApiSchema):
+    name: str
+    share_percent: Decimal
+    peak_period: date
+
+
 class IncomeStats(ApiSchema):
     scope: str
     apartment_id: int | None
-    months: int
+    months: int | None
     values: list[IncomePoint]
     totals: IncomeTotals
+    top_service: TopServiceStats | None
 
 
 class DashboardAttentionItem(ApiSchema):

@@ -152,11 +152,11 @@ API:
 - Modify: `backend/app/routers/stats.py`, `backend/app/schemas.py`
 - Modify: `backend/tests/test_stats.py`
 
-- [ ] consumption та income: режими `date_from`/`date_to` (перше число місяця, обидва разом) та `all_time=true`; комбінування режимів або date_from > date_to → 422
-- [ ] income: поле `top_service` — агрегація InvoiceLine.amount по послугах (issued+paid): назва, share_percent від utilities_total, peak_period (місяць з max сумою послуги); null без комунальних даних; наявний `totals` не змінюється
-- [ ] `months` за замовчуванням 12 — наявні клієнти працюють без змін
-- [ ] тести: діапазон дат ріже вибірку, all_time знімає нижню межу, 422-кейси (months+dates, months+all_time, from>to), top_service за грошима на 2 квартирах (включно з fixed-послугою як топ), null без даних
-- [ ] прогнати backend-тести — мають пройти перед таском 5
+- [x] consumption та income: режими `date_from`/`date_to` (перше число місяця, обидва разом) та `all_time=true`; комбінування режимів або date_from > date_to → 422
+- [x] income: поле `top_service` — агрегація InvoiceLine.amount по послугах (issued+paid): назва, share_percent від utilities_total, peak_period (місяць з max сумою послуги); null без комунальних даних; наявний `totals` не змінюється
+- [x] `months` за замовчуванням 12 — наявні клієнти працюють без змін
+- [x] тести: діапазон дат ріже вибірку, all_time знімає нижню межу, 422-кейси (months+dates, months+all_time, from>to), top_service за грошима на 2 квартирах (включно з fixed-послугою як топ), null без даних
+- [x] прогнати backend-тести — мають пройти перед таском 5
 
 ### Task 5: Frontend — блок «Орендар» на картці квартири
 
