@@ -1,5 +1,17 @@
 # ChangeLog
 
+## [2026-07-16 23:40] Усунення дублювання та зайвих обчислень у frontend
+
+- `frontend/src/theme.ts`, `frontend/src/components/Layout.test.tsx` — inline bootstrap
+  лишився єдиним джерелом початкової теми; runtime лише читає застосований `data-theme`,
+  а компонентні тести виконують фактичний скрипт з `index.html`.
+- `frontend/src/pages/Stats.tsx` — форматери місяців і чисел створюються один раз на
+  рівні модуля та перевикористовуються під час рендерингу графіків.
+- `frontend/src/components/InvoiceCalculator.tsx` і тест — read-only рахунки більше не
+  будують draft payload, validity та warnings і не викликають `onDraftChange`.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 23:22] Усунення блимання теми до завантаження застосунку
 
 - `frontend/index.html`, `frontend/src/main.tsx` — збережена або системна тема тепер

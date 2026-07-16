@@ -3,14 +3,20 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
+import indexHtml from "../../index.html?raw";
 import * as apiClient from "../api/client";
-import { initializeTheme } from "../theme";
 import { Layout } from "./Layout";
 
 vi.mock("../api/client", () => ({
   getCurrentRate: vi.fn(),
   logout: vi.fn(),
 }));
+
+function runThemeBootstrap() {
+  const bootstrap = indexHtml.match(/<script data-theme-bootstrap>([\s\S]*?)<\/script>/)?.[1];
+  expect(bootstrap).toBeDefined();
+  Function(bootstrap!)();
+}
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -19,7 +25,7 @@ beforeEach(() => {
   vi.mocked(apiClient.logout).mockReset();
   window.localStorage.clear();
   delete document.documentElement.dataset.theme;
-  initializeTheme();
+  runThemeBootstrap();
 });
 
 describe("Layout", () => {
@@ -50,7 +56,7 @@ describe("Layout", () => {
 
   it("restores the stored theme after remounting", () => {
     window.localStorage.setItem("theme", "dark");
-    initializeTheme();
+    runThemeBootstrap();
 
     const view = render(<MemoryRouter><Layout /></MemoryRouter>);
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");
@@ -73,7 +79,7 @@ describe("Layout", () => {
       dispatchEvent: vi.fn(),
     }));
 
-    initializeTheme();
+    runThemeBootstrap();
     render(<MemoryRouter><Layout /></MemoryRouter>);
 
     expect(document.documentElement).toHaveAttribute("data-theme", "dark");

@@ -81,39 +81,42 @@ export function InvoiceCalculator({
     return { lines, rent, utilities, total };
   }, [exchangeRate.exact, invoice, isDraft, readings]);
 
-  const payload: InvoiceUpdatePayload = useMemo(() => ({
-    exchange_rate: sameNumber(exchangeRate.exact, invoice.exchange_rate)
-      ? invoice.exchange_rate
-      : normalizeDecimalInput(exchangeRate.exact),
-    lines: invoice.lines
-      .filter((line) => line.service_kind === "metered")
-      .map((line) => {
-        const reading = decimalInput(readings[line.id] || null);
-        return {
-          id: line.id,
-          curr_reading: sameNumber(readings[line.id] || null, line.curr_reading)
-            ? line.curr_reading
-            : reading.normalized,
-        };
-      }),
-  }), [exchangeRate.exact, invoice.exchange_rate, invoice.lines, readings]);
-  const dirty = !sameNumber(exchangeRate.exact, invoice.exchange_rate) || invoice.lines.some(
+  const payload = useMemo<InvoiceUpdatePayload | null>(() => {
+    if (!isDraft) return null;
+    return {
+      exchange_rate: sameNumber(exchangeRate.exact, invoice.exchange_rate)
+        ? invoice.exchange_rate
+        : normalizeDecimalInput(exchangeRate.exact),
+      lines: invoice.lines
+        .filter((line) => line.service_kind === "metered")
+        .map((line) => {
+          const reading = decimalInput(readings[line.id] || null);
+          return {
+            id: line.id,
+            curr_reading: sameNumber(readings[line.id] || null, line.curr_reading)
+              ? line.curr_reading
+              : reading.normalized,
+          };
+        }),
+    };
+  }, [exchangeRate.exact, invoice.exchange_rate, invoice.lines, isDraft, readings]);
+  const dirty = isDraft && (!sameNumber(exchangeRate.exact, invoice.exchange_rate) || invoice.lines.some(
     (line) => line.service_kind === "metered" && !sameNumber(readings[line.id] || null, line.curr_reading),
-  );
-  const readingsValid = invoice.lines.every(
+  ));
+  const readingsValid = isDraft && invoice.lines.every(
     (line) => line.service_kind !== "metered" || decimalInput(readings[line.id] || null).valid,
   );
-  const draftValid = Boolean(numberValue(exchangeRate.exact)) && readingsValid;
+  const draftValid = isDraft && Boolean(numberValue(exchangeRate.exact)) && readingsValid;
 
   useEffect(() => {
-    onDraftChange?.(draftValid ? payload : null, dirty);
-  }, [dirty, draftValid, onDraftChange, payload]);
+    if (isDraft) onDraftChange?.(draftValid ? payload : null, dirty);
+  }, [dirty, draftValid, isDraft, onDraftChange, payload]);
 
-  const localWarnings = calculated.lines.flatMap((line) => {
+  const localWarnings = isDraft ? calculated.lines.flatMap((line) => {
     if (line.calculatedConsumed === null || line.calculatedConsumed >= 0) return [];
     return [`${line.service_name}: поточний показник менший за попередній.`];
-  });
-  const serverWarnings = invoice.warnings.flatMap((warning) => {
+  }) : [];
+  const serverWarnings = isDraft ? invoice.warnings.flatMap((warning) => {
     const line = invoice.lines.find((item) => item.service_id === warning.service_id);
     const serviceName = line?.service_name ?? "Послуга";
     if (warning.code === "reading_decreased") {
@@ -126,10 +129,10 @@ export function InvoiceCalculator({
       return [`${serviceName}: споживання відхиляється від середнього за 6 місяців більш ніж на 50%.`];
     }
     return [warning.message];
-  });
+  }) : [];
 
   async function save() {
-    if (!draftValid) return;
+    if (!draftValid || payload === null) return;
     await onSave(payload);
   }
 

@@ -19,15 +19,28 @@ import "./portal.css";
 const CHART_WIDTH = 360;
 const CHART_HEIGHT = 150;
 const PADDING = { top: 16, right: 14, bottom: 30, left: 38 };
+const MONTH_FORMATTER = new Intl.DateTimeFormat("uk-UA", { month: "short", timeZone: "UTC" });
+const SELECTED_MONTH_FORMATTER = new Intl.DateTimeFormat("uk-UA", {
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const INVOICE_MONTH_FORMATTER = new Intl.DateTimeFormat("uk-UA", {
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
+const NUMBER_FORMATTERS = [0, 1, 2].map((maximumFractionDigits) => (
+  new Intl.NumberFormat("uk-UA", { maximumFractionDigits })
+));
 
 function monthLabel(period: string): string {
-  return new Intl.DateTimeFormat("uk-UA", { month: "short", timeZone: "UTC" })
-    .format(new Date(`${period}T00:00:00Z`))
+  return MONTH_FORMATTER.format(new Date(`${period}T00:00:00Z`))
     .replace(".", "");
 }
 
 function numberLabel(value: number, maximumFractionDigits = 2): string {
-  return new Intl.NumberFormat("uk-UA", { maximumFractionDigits }).format(value);
+  return NUMBER_FORMATTERS[maximumFractionDigits].format(value);
 }
 
 function compactAmountLabel(value: number): string {
@@ -35,13 +48,11 @@ function compactAmountLabel(value: number): string {
 }
 
 function selectedMonthLabel(month: string): string {
-  return new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" })
-    .format(new Date(`${month}-01T00:00:00Z`));
+  return SELECTED_MONTH_FORMATTER.format(new Date(`${month}-01T00:00:00Z`));
 }
 
 function invoiceMonthLabel(period: string): string {
-  return new Intl.DateTimeFormat("uk-UA", { day: "numeric", month: "long", timeZone: "UTC" })
-    .format(new Date(`${period.slice(0, 7)}-01T00:00:00Z`))
+  return INVOICE_MONTH_FORMATTER.format(new Date(`${period.slice(0, 7)}-01T00:00:00Z`))
     .replace(/^\d+\s+/, "");
 }
 

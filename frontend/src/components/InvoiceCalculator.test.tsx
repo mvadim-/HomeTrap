@@ -61,6 +61,7 @@ describe("InvoiceCalculator", () => {
   });
 
   it("renders paid invoice values as text without inputs or warnings", () => {
+    const onDraftChange = vi.fn();
     render(
       <InvoiceCalculator
         invoice={{
@@ -79,6 +80,7 @@ describe("InvoiceCalculator", () => {
           }],
         }}
         onSave={vi.fn()}
+        onDraftChange={onDraftChange}
       />,
     );
 
@@ -92,6 +94,7 @@ describe("InvoiceCalculator", () => {
     expect(screen.getByText("14 821,00 ₴")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText("Перевірте показники")).not.toBeInTheDocument();
+    expect(onDraftChange).not.toHaveBeenCalled();
   });
 
   it("renders an issued invoice as read-only without warnings", () => {
