@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-16 22:21] Читабельні шкали та пропуски на графіках
+
+- `frontend/src/utils/ticks.ts`, `frontend/src/utils/ticks.test.ts` — додано
+  обчислення заокругленої шкали з 3–4 поділками та table-driven перевірки, зокрема
+  для `361 → 400/100` і `15 → 16/4`.
+- `frontend/src/pages/Stats.tsx`, `frontend/src/pages/portal.css` — обидва графіки
+  отримали проміжні hairline-гріделі з muted-підписами; повний ряд місяців зберігає
+  порожні слоти доходу й розриває лінії споживання без штучних точок.
+- `frontend/src/pages/Stats.test.tsx` — перевірено гріделі, порожній жовтень 2025,
+  розрив лінії та відсутність `NaN` у SVG-геометрії.
+- `docs/plans/20260716-review-polish.md` — Task 7 позначено виконаним після успішних
+  119 frontend-тестів і production build у Docker.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 22:15] Локалізація дат орендаря
 
 - `frontend/src/utils/format.ts`, `frontend/src/utils/format.test.ts` — додано

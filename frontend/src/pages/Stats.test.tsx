@@ -61,12 +61,16 @@ describe("Stats", () => {
     expect(gasChart.querySelectorAll(".chart-point")[0]).toHaveAttribute("r", "3");
     expect(gasChart.querySelectorAll(".chart-point")[1]).toHaveAttribute("r", "5");
     expect(gasChart.querySelectorAll(".chart-point")[1]).toHaveAttribute("stroke", "var(--color-surface)");
+    expect(gasChart.querySelectorAll(".chart-gridline").length).toBeGreaterThanOrEqual(3);
+    expect(gasChart.querySelectorAll(".chart-tick-label").length).toBeGreaterThanOrEqual(3);
 
     const incomeChart = await screen.findByRole("img", { name: "Стековий графік доходу" });
     expect(incomeChart.querySelector(".income-rent")).toHaveAttribute("fill", "var(--chart-rent)");
     expect(incomeChart.querySelector(".income-utilities")).toHaveAttribute("fill", "var(--chart-util)");
     expect(incomeChart.querySelector(".income-rent")).toHaveAttribute("stroke", "var(--color-surface)");
     expect(incomeChart.querySelector(".income-rent")).toHaveAttribute("stroke-width", "2");
+    expect(incomeChart.querySelectorAll(".chart-gridline").length).toBeGreaterThanOrEqual(3);
+    expect(incomeChart.querySelectorAll(".chart-tick-label").length).toBeGreaterThanOrEqual(3);
     expect(screen.getByLabelText(/черв, оренда:/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Разом: 16.?731,51 ₴/).length).toBeGreaterThan(0);
     expect(screen.getByText("Оренда за період")).toBeInTheDocument();
@@ -78,6 +82,52 @@ describe("Stats", () => {
 
     await user.click(screen.getByRole("button", { name: "Квартира" }));
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(1, { months: 12 }));
+  });
+
+  it("keeps missing months as empty slots and breaks consumption lines", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: 12,
+      series: [{
+        service_id: 1,
+        service_name: "Газ",
+        unit: "м³",
+        values: [
+          { period: "2025-09-01", consumed: "12" },
+          { period: "2025-11-01", consumed: "18" },
+        ],
+      }],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
+      scope: "portfolio",
+      apartment_id: null,
+      months: 12,
+      values: [
+        { period: "2025-09-01", rent: "100.00", utilities: "20.00", total: "120.00" },
+        { period: "2025-11-01", rent: "100.00", utilities: "30.00", total: "130.00" },
+      ],
+      totals: { rent: "200.00", utilities: "50.00", total: "250.00" },
+      top_service: null,
+    });
+
+    render(<Stats />);
+
+    const consumptionChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    const incomeChart = await screen.findByRole("img", { name: "Стековий графік доходу" });
+    const consumptionGap = consumptionChart.querySelector('[data-period="2025-10-01"]');
+    const incomeGap = incomeChart.querySelector('[data-period="2025-10-01"]');
+
+    expect(consumptionGap).toHaveClass("chart-month-slot-empty");
+    expect(consumptionGap).toHaveTextContent("жовт");
+    expect(consumptionGap?.querySelector(".chart-point")).not.toBeInTheDocument();
+    expect(incomeGap).toHaveClass("chart-month-slot-empty");
+    expect(incomeGap).toHaveTextContent("жовт");
+    expect(incomeGap?.querySelector("rect")).not.toBeInTheDocument();
+    expect(consumptionChart.querySelector(".chart-line")).toHaveAttribute("d", expect.stringMatching(/^M [^L]+ M /));
+    [consumptionChart, incomeChart].forEach((chart) => {
+      expect(chart.innerHTML).not.toMatch(/NaN/);
+    });
   });
 
   it("renders a correction marker instead of bars for a month with a negative segment", async () => {

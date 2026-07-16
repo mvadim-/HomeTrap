@@ -1076,9 +1076,16 @@
   stroke-width: 1;
 }
 
+.chart-gridline {
+  stroke: var(--color-border);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
 .chart-label {
   fill: var(--color-text-muted);
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .income-value-label {

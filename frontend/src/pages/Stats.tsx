@@ -10,6 +10,7 @@ import {
   getIncomeStats,
 } from "../api/client";
 import { formatUah } from "../utils/format";
+import { niceScale } from "../utils/ticks";
 import { utilityKind } from "../utils/utility";
 import "./portal.css";
 
@@ -41,16 +42,65 @@ function seriesColor(name: string): string {
   return kind === "other" ? "var(--color-primary)" : `var(--chart-${kind})`;
 }
 
-function MiniLineChart({ series }: { series: ConsumptionSeries }) {
+function fullMonthPeriods(periods: string[]): string[] {
+  if (periods.length === 0) return [];
+  const months = periods.map((period) => period.slice(0, 7)).sort();
+  const [startYear, startMonth] = months[0].split("-").map(Number);
+  const [endYear, endMonth] = months.at(-1)!.split("-").map(Number);
+  const result: string[] = [];
+  let year = startYear;
+  let month = startMonth;
+
+  while (year < endYear || (year === endYear && month <= endMonth)) {
+    result.push(`${year}-${String(month).padStart(2, "0")}-01`);
+    month += 1;
+    if (month === 13) {
+      year += 1;
+      month = 1;
+    }
+  }
+  return result;
+}
+
+function scaleTicks(max: number, step: number): number[] {
+  return Array.from({ length: Math.round(max / step) + 1 }, (_, index) => index * step);
+}
+
+function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods: string[] }) {
+  const pointsByPeriod = new Map(series.values.map((point) => [point.period.slice(0, 7), point]));
+  const slots = periods.map((period) => pointsByPeriod.get(period.slice(0, 7)) ?? null);
   const values = series.values.map((point) => Number(point.consumed));
-  const maxValue = Math.max(...values, 1);
+  const scale = niceScale(Math.max(...values, 1));
+  const ticks = scaleTicks(scale.max, scale.step);
   const plotWidth = CHART_WIDTH - PADDING.left - PADDING.right;
   const plotHeight = CHART_HEIGHT - PADDING.top - PADDING.bottom;
-  const x = (index: number) => PADDING.left + (values.length === 1 ? plotWidth / 2 : (index / (values.length - 1)) * plotWidth);
-  const y = (value: number) => PADDING.top + plotHeight - (value / maxValue) * plotHeight;
-  const path = values.map((value, index) => `${index === 0 ? "M" : "L"} ${x(index)} ${y(value)}`).join(" ");
+  const x = (index: number) => PADDING.left + (slots.length === 1 ? plotWidth / 2 : (index / (slots.length - 1)) * plotWidth);
+  const y = (value: number) => PADDING.top + plotHeight - (value / scale.max) * plotHeight;
+  let previousPoint = false;
+  const path = slots.map((point, index) => {
+    if (!point) {
+      previousPoint = false;
+      return "";
+    }
+    const command = previousPoint ? "L" : "M";
+    previousPoint = true;
+    return `${command} ${x(index)} ${y(Number(point.consumed))}`;
+  }).filter(Boolean).join(" ");
   const baseline = PADDING.top + plotHeight;
-  const areaPath = path ? `${path} L ${x(values.length - 1)} ${baseline} L ${x(0)} ${baseline} Z` : "";
+  const areaPaths: string[] = [];
+  let areaPoints: string[] = [];
+  let areaStart = 0;
+  slots.forEach((point, index) => {
+    if (point) {
+      if (areaPoints.length === 0) areaStart = index;
+      areaPoints.push(`${areaPoints.length === 0 ? "M" : "L"} ${x(index)} ${y(Number(point.consumed))}`);
+    }
+    if ((!point || index === slots.length - 1) && areaPoints.length > 0) {
+      const areaEnd = point && index === slots.length - 1 ? index : index - 1;
+      areaPaths.push(`${areaPoints.join(" ")} L ${x(areaEnd)} ${baseline} L ${x(areaStart)} ${baseline} Z`);
+      areaPoints = [];
+    }
+  });
   const color = seriesColor(series.service_name);
 
   return (
@@ -60,27 +110,34 @@ function MiniLineChart({ series }: { series: ConsumptionSeries }) {
         <strong>{numberLabel(values.at(-1) ?? 0)}</strong>
       </div>
       <svg className="mini-chart" role="img" aria-label={`Графік споживання: ${series.service_name}`} viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}>
+        {ticks.slice(1).map((tick) => (
+          <g key={tick}>
+            <line className="chart-gridline" x1={PADDING.left} x2={CHART_WIDTH - PADDING.right} y1={y(tick)} y2={y(tick)} />
+            <text className="chart-label chart-tick-label" x="4" y={y(tick) + 4}>{numberLabel(tick)}</text>
+          </g>
+        ))}
         <line className="chart-axis" x1={PADDING.left} x2={CHART_WIDTH - PADDING.right} y1={baseline} y2={baseline} />
-        <text className="chart-label" x="4" y={PADDING.top + 5}>{numberLabel(maxValue)}</text>
         <text className="chart-label" x="25" y={baseline + 4}>0</text>
-        {areaPath && <path className="chart-area" d={areaPath} fill={color} fillOpacity="0.13" />}
+        {areaPaths.map((areaPath, index) => <path key={index} className="chart-area" d={areaPath} fill={color} fillOpacity="0.13" />)}
         {path && <path className="chart-line" d={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />}
-        {series.values.map((point, index) => (
-          <g key={point.period}>
+        {slots.map((point, index) => (
+          <g key={periods[index]} className={point ? "chart-month-slot" : "chart-month-slot chart-month-slot-empty"} data-period={periods[index]}>
+            {point && (
             <circle
               className="chart-point"
               cx={x(index)}
-              cy={y(values[index])}
+              cy={y(Number(point.consumed))}
               fill={color}
-              r={index === series.values.length - 1 ? 5 : 3}
-              stroke={index === series.values.length - 1 ? "var(--color-surface)" : undefined}
-              strokeWidth={index === series.values.length - 1 ? 2 : undefined}
+              r={point === series.values.at(-1) ? 5 : 3}
+              stroke={point === series.values.at(-1) ? "var(--color-surface)" : undefined}
+              strokeWidth={point === series.values.at(-1) ? 2 : undefined}
               tabIndex={0}
-              aria-label={`${monthLabel(point.period)}: ${numberLabel(values[index])} ${series.unit ?? "од."}`}
+              aria-label={`${monthLabel(point.period)}: ${numberLabel(Number(point.consumed))} ${series.unit ?? "од."}`}
             >
-              <title>{monthLabel(point.period)}: {numberLabel(values[index])} {series.unit ?? "од."}</title>
+              <title>{monthLabel(point.period)}: {numberLabel(Number(point.consumed))} {series.unit ?? "од."}</title>
             </circle>
-            <text className="chart-label month-label" textAnchor="middle" x={x(index)} y={CHART_HEIGHT - 8}>{monthLabel(point.period)}</text>
+            )}
+            <text className="chart-label month-label" textAnchor="middle" x={x(index)} y={CHART_HEIGHT - 8}>{monthLabel(periods[index])}</text>
           </g>
         ))}
       </svg>
@@ -95,18 +152,35 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
   const padding = { top: 28, right: 18, bottom: 38, left: 56 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const maxValue = Math.max(...stats.values.map((point) => Math.max(Number(point.total), 0)), 1);
-  const slotWidth = plotWidth / Math.max(stats.values.length, 1);
+  const periods = fullMonthPeriods(stats.values.map((point) => point.period));
+  const pointsByPeriod = new Map(stats.values.map((point) => [point.period.slice(0, 7), point]));
+  const scale = niceScale(Math.max(...stats.values.map((point) => Math.max(Number(point.total), 0)), 1));
+  const ticks = scaleTicks(scale.max, scale.step);
+  const slotWidth = plotWidth / Math.max(periods.length, 1);
   const barWidth = Math.min(42, slotWidth * 0.62);
-  const barHeight = (value: number) => (value / maxValue) * plotHeight;
+  const barHeight = (value: number) => (value / scale.max) * plotHeight;
+  const tickY = (value: number) => padding.top + plotHeight - (value / scale.max) * plotHeight;
 
   return (
     <svg className="income-chart" role="img" aria-label="Стековий графік доходу" viewBox={`0 0 ${width} ${height}`}>
+      {ticks.slice(1).map((tick) => (
+        <g key={tick}>
+          <line className="chart-gridline" x1={padding.left} x2={width - padding.right} y1={tickY(tick)} y2={tickY(tick)} />
+          <text className="chart-label chart-tick-label" x="4" y={tickY(tick) + 4}>{numberLabel(tick, 0)} ₴</text>
+        </g>
+      ))}
       <line className="chart-axis" x1={padding.left} x2={width - padding.right} y1={padding.top + plotHeight} y2={padding.top + plotHeight} />
-      <text className="chart-label" x="4" y={padding.top + 5}>{numberLabel(maxValue, 0)} ₴</text>
       <text className="chart-label" x="37" y={padding.top + plotHeight + 4}>0</text>
-      {stats.values.map((point, index) => {
+      {periods.map((period, index) => {
         const x = padding.left + slotWidth * index + (slotWidth - barWidth) / 2;
+        const point = pointsByPeriod.get(period.slice(0, 7));
+        if (!point) {
+          return (
+            <g key={period} className="chart-month-slot chart-month-slot-empty" data-period={period}>
+              <text className="chart-label month-label" textAnchor="middle" x={x + barWidth / 2} y={height - 11}>{monthLabel(period)}</text>
+            </g>
+          );
+        }
         const rent = Number(point.rent);
         const utilities = Number(point.utilities);
         const total = Number(point.total);
@@ -115,7 +189,7 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
         const utilitiesHeight = barHeight(utilities);
         const baseline = padding.top + plotHeight;
         return (
-          <g key={point.period}>
+          <g key={point.period} className="chart-month-slot" data-period={point.period}>
             {hasNegativeSegment ? (
               <polygon
                 className="income-adjustment-marker"
@@ -191,6 +265,7 @@ export function Stats() {
       : periodMode === "custom"
         ? "Споживання та дохід за довільний період"
         : `Споживання та дохід за останні ${periodMode} місяців`;
+  const consumptionPeriods = fullMonthPeriods(consumption?.flatMap((series) => series.values.map((point) => point.period)) ?? []);
 
   useEffect(() => {
     let active = true;
@@ -282,7 +357,7 @@ export function Stats() {
         ) : consumptionError ? (
           <p className="error-message">{consumptionError}</p>
         ) : consumption && consumption.length > 0 ? (
-          <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} />)}</div>
+          <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} periods={consumptionPeriods} />)}</div>
         ) : (
           <p className="empty-state">Ще немає історії споживання для цієї квартири.</p>
         )}
