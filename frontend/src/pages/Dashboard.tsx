@@ -10,7 +10,7 @@ import {
   getDashboard,
 } from "../api/client";
 import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
-import { formatTenantRent, formatUah } from "../utils/format";
+import { formatRate, formatTenantRent, formatUah } from "../utils/format";
 import "./portal.css";
 
 export function Dashboard() {
@@ -51,7 +51,7 @@ export function Dashboard() {
         <article className="metric-card"><span className="metric-label">Нараховано</span><strong>{formatUah(dashboard.charged)}</strong></article>
         <article className="metric-card"><span className="metric-label">Оплачено</span><strong>{formatUah(dashboard.paid)}</strong></article>
         <article className="metric-card"><span className="metric-label">Заборгованість</span><strong>{formatUah(dashboard.outstanding)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Курс НБУ · {rate.currency}</span><strong>{Number(rate.rate).toFixed(2)} ₴</strong></article>
+        <article className="metric-card"><span className="metric-label">Курс НБУ · {rate.currency}</span><strong>{formatRate(rate.rate)} ₴</strong></article>
       </section>
 
       <div className="content-grid">

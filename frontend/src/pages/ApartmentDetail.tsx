@@ -15,6 +15,7 @@ import {
   updateService,
 } from "../api/client";
 import { TenantSection } from "../components/TenantSection";
+import { formatTariff } from "../utils/format";
 import "./portal.css";
 
 const emptyService: ServicePayload = {
@@ -163,7 +164,7 @@ export function ApartmentDetail() {
                     <tr key={service.id}>
                       <td><strong>{service.name}</strong><div className="muted-text">{service.kind === "metered" ? `Лічильник${service.unit ? ` · ${service.unit}` : ""}` : "Фіксована"} · {service.is_active ? "активна" : "неактивна"}</div></td>
                       <td>{service.provider_account || "—"}</td>
-                      <td>{currentTariff ? `${currentTariff.value} ₴` : "—"}</td>
+                      <td>{currentTariff ? `${formatTariff(currentTariff.value)} ₴` : "—"}</td>
                       <td>{currentTariff?.valid_from ?? "—"}</td>
                       <td>
                         <button className="table-action" type="button" onClick={() => beginServiceEdit(service)}>Редагувати</button><br />
@@ -171,7 +172,7 @@ export function ApartmentDetail() {
                         {serviceTariffs.length > 0 && (
                           <details className="tariff-history">
                             <summary>Історія ({serviceTariffs.length})</summary>
-                            <ul>{[...serviceTariffs].reverse().map((tariff) => <li key={tariff.id}>{tariff.valid_from}: {tariff.value} ₴{tariff.valid_from > today ? " (заплановано)" : ""}</li>)}</ul>
+                            <ul>{[...serviceTariffs].reverse().map((tariff) => <li key={tariff.id}>{tariff.valid_from}: {formatTariff(tariff.value)} ₴{tariff.valid_from > today ? " (заплановано)" : ""}</li>)}</ul>
                           </details>
                         )}
                         {tariffServiceId === service.id && (

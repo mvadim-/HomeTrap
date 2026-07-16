@@ -54,7 +54,7 @@ describe("ApartmentDetail", () => {
     expect(screen.getByText("Код домофона 42")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Діє з" })).toBeInTheDocument();
     expect(screen.getByText("Газ")).toBeInTheDocument();
-    expect(screen.getByText("7.95689 ₴")).toBeInTheDocument();
+    expect(screen.getByText("7,95689 ₴")).toBeInTheDocument();
     expect(screen.getByText("2026-07-01")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Посилання орендаря" })).toBeDisabled();
     expect(screen.getByRole("heading", { name: "Послуги й тарифи" }).closest("section"))

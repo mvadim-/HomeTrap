@@ -63,7 +63,7 @@ describe("Dashboard", () => {
     expect(await screen.findByRole("heading", { name: "Дашборд" })).toBeInTheDocument();
     expect(screen.getByText("Нараховано")).toBeInTheDocument();
     expect(screen.getAllByText(/16.?731,51 ₴/).length).toBeGreaterThan(0);
-    expect(screen.getByText("44.68 ₴")).toBeInTheDocument();
+    expect(screen.getByText("44,68 ₴")).toBeInTheDocument();
     expect(screen.getAllByText("Квартира на Подолі")).toHaveLength(2);
     expect(screen.getByText("Виставлений")).toBeInTheDocument();
     expect(screen.getByText("Очікує оплати")).toBeInTheDocument();

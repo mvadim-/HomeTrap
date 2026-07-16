@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-16 16:55] Українські формати тарифів, показників і курсу
+
+- `frontend/src/utils/format.ts`, `frontend/src/utils/format.test.ts` — додано спільні
+  форматери тарифів, показників і курсу з українською комою, обрізанням хвостових
+  нулів, групуванням тисяч та табличним покриттям краєвих значень.
+- `frontend/src/pages/ApartmentDetail.tsx`, `frontend/src/components/InvoiceCalculator.tsx`,
+  `frontend/src/components/Layout.tsx`, `frontend/src/pages/Dashboard.tsx` — сирі значення
+  API замінено локалізованими форматами; редаговані числові поля отримують очищені
+  значення з крапкою без хибного dirty-стану.
+- Компонентні тести квартири, рахунку й дашборда оновлено під нові формати; у Docker
+  пройшли 75 frontend-тестів і production-збірка.
+- `docs/plans/20260716-mockup-style-alignment.md` — Task 3 позначено виконаним.
+- Зміна суто frontend; для production потрібні rebuild і restart контейнера за
+  `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 16:49] Однорядкова шапка за затвердженим макетом
 
 - `frontend/src/components/Layout.tsx`, `frontend/src/components/Layout.css` — логотип,

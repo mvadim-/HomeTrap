@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Invoice, InvoiceUpdatePayload } from "../api/client";
-import { formatUah } from "../utils/format";
+import { formatRate, formatReading, formatTariff, formatUah } from "../utils/format";
 import "../pages/portal.css";
 
 interface InvoiceCalculatorProps {
@@ -15,6 +15,14 @@ function numberValue(value: string | null): number | null {
   if (value === null || value.trim() === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function inputNumber(value: string, formatter: (input: string) => string): string {
+  return formatter(value).replaceAll("\u00a0", "").replace(",", ".");
+}
+
+function sameNumber(first: string | null, second: string | null): boolean {
+  return numberValue(first) === numberValue(second);
 }
 
 function decimalParts(value: string): { sign: bigint; digits: bigint; scale: number } {
@@ -63,14 +71,22 @@ export function InvoiceCalculator({
   saving = false,
   onDraftChange,
 }: InvoiceCalculatorProps) {
-  const [exchangeRate, setExchangeRate] = useState(invoice.exchange_rate);
+  const [exchangeRate, setExchangeRate] = useState(
+    inputNumber(invoice.exchange_rate, formatRate),
+  );
   const [readings, setReadings] = useState<Record<number, string>>(
-    Object.fromEntries(invoice.lines.map((line) => [line.id, line.curr_reading ?? ""])),
+    Object.fromEntries(invoice.lines.map((line) => [
+      line.id,
+      line.curr_reading === null ? "" : inputNumber(line.curr_reading, formatReading),
+    ])),
   );
 
   useEffect(() => {
-    setExchangeRate(invoice.exchange_rate);
-    setReadings(Object.fromEntries(invoice.lines.map((line) => [line.id, line.curr_reading ?? ""])));
+    setExchangeRate(inputNumber(invoice.exchange_rate, formatRate));
+    setReadings(Object.fromEntries(invoice.lines.map((line) => [
+      line.id,
+      line.curr_reading === null ? "" : inputNumber(line.curr_reading, formatReading),
+    ])));
   }, [invoice]);
 
   const calculated = useMemo(() => {
@@ -99,8 +115,8 @@ export function InvoiceCalculator({
       .filter((line) => line.service_kind === "metered")
       .map((line) => ({ id: line.id, curr_reading: readings[line.id] || null })),
   }), [exchangeRate, invoice.lines, readings]);
-  const dirty = exchangeRate !== invoice.exchange_rate || invoice.lines.some(
-    (line) => line.service_kind === "metered" && (readings[line.id] || null) !== line.curr_reading,
+  const dirty = !sameNumber(exchangeRate, invoice.exchange_rate) || invoice.lines.some(
+    (line) => line.service_kind === "metered" && !sameNumber(readings[line.id] || null, line.curr_reading),
   );
 
   useEffect(() => {
@@ -143,6 +159,7 @@ export function InvoiceCalculator({
             step="0.000001"
             type="number"
             value={exchangeRate}
+            placeholder={inputNumber(invoice.exchange_rate, formatRate)}
             onChange={(event) => setExchangeRate(event.target.value)}
           />
         </label>
@@ -158,7 +175,7 @@ export function InvoiceCalculator({
               return (
                 <tr key={line.id}>
                   <td><strong>{line.service_name}</strong></td>
-                  <td>{metered ? line.prev_reading ?? "—" : "—"}</td>
+                  <td>{metered && line.prev_reading !== null ? formatReading(line.prev_reading) : "—"}</td>
                   <td>
                     {metered ? (
                       <input
@@ -172,7 +189,7 @@ export function InvoiceCalculator({
                     ) : "Фіксована"}
                   </td>
                   <td>{consumed === null ? "—" : consumed.toLocaleString("uk-UA", { maximumFractionDigits: 3 })}</td>
-                  <td>{line.tariff_value} ₴</td>
+                  <td>{formatTariff(line.tariff_value)} ₴</td>
                   <td>{formatUah(Number(line.calculatedAmount) / 100)}</td>
                 </tr>
               );

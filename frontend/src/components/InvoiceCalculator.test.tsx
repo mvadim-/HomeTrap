@@ -30,6 +30,10 @@ describe("InvoiceCalculator", () => {
     render(<InvoiceCalculator invoice={invoice} onSave={vi.fn()} />);
 
     expect(screen.getByText("14 796,05 ₴")).toBeInTheDocument();
+    expect(screen.getByText("100")).toBeInTheDocument();
+    expect(screen.getByText("7,95689 ₴")).toBeInTheDocument();
+    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue(122);
+    expect(screen.getByLabelText("Курс USD")).toHaveValue(44.68);
 
     const reading = screen.getByLabelText("Поточний показник Газ");
     await user.clear(reading);
@@ -64,5 +68,22 @@ describe("InvoiceCalculator", () => {
     render(<InvoiceCalculator invoice={preciseInvoice} onSave={vi.fn()} />);
     await user.type(screen.getByLabelText("Поточний показник Газ"), "10.075");
     expect(screen.getAllByText("10,08 ₴").length).toBeGreaterThan(0);
+  });
+
+  it("trims the editable rate to four decimal places without making the draft dirty", () => {
+    const onDraftChange = vi.fn();
+    render(
+      <InvoiceCalculator
+        invoice={{ ...invoice, exchange_rate: "44.791700" }}
+        onSave={vi.fn()}
+        onDraftChange={onDraftChange}
+      />,
+    );
+
+    expect(screen.getByLabelText("Курс USD")).toHaveValue(44.7917);
+    expect(onDraftChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ exchange_rate: "44.7917" }),
+      false,
+    );
   });
 });

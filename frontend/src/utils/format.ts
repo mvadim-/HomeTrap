@@ -3,8 +3,35 @@ const UAH_FORMATTER = new Intl.NumberFormat("uk-UA", {
   maximumFractionDigits: 2,
 });
 
+const TARIFF_FORMATTER = new Intl.NumberFormat("uk-UA", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 20,
+});
+
+const READING_FORMATTER = new Intl.NumberFormat("uk-UA", {
+  maximumFractionDigits: 20,
+});
+
+const RATE_FORMATTER = new Intl.NumberFormat("uk-UA", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+  useGrouping: false,
+});
+
 export function formatUah(value: string | number): string {
   return `${UAH_FORMATTER.format(Number(value))} ₴`;
+}
+
+export function formatTariff(value: string | number): string {
+  return TARIFF_FORMATTER.format(Number(value));
+}
+
+export function formatReading(value: string | number): string {
+  return READING_FORMATTER.format(Number(value));
+}
+
+export function formatRate(value: string | number): string {
+  return RATE_FORMATTER.format(Number(value));
 }
 
 export function formatTenantRent(

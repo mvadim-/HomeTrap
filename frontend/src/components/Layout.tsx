@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { ExchangeRate, getCurrentRate, logout } from "../api/client";
+import { formatRate } from "../utils/format";
 import "./Layout.css";
 
 const navigation = [
@@ -38,13 +39,7 @@ export function Layout() {
     root.dataset.theme = current === "dark" ? "light" : "dark";
   }
 
-  const formattedRate = rate
-    ? new Intl.NumberFormat("uk-UA", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-        useGrouping: false,
-      }).format(Number(rate.rate))
-    : null;
+  const formattedRate = rate ? formatRate(rate.rate) : null;
 
   return (
     <div className="app-shell">

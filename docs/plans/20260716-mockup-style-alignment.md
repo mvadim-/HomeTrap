@@ -163,13 +163,13 @@ Eyebrow: 11px, uppercase, letter-spacing .09em, `--color-text-muted`, 600.
 - Modify: `frontend/src/pages/ApartmentDetail.tsx`, `frontend/src/pages/InvoiceEdit.tsx`, `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/components/Layout.tsx`, `frontend/src/pages/Dashboard.tsx`
 - Modify: `frontend/src/pages/ApartmentDetail.test.tsx`, `frontend/src/pages/InvoiceEdit.test.tsx`, `frontend/src/components/InvoiceCalculator.test.tsx`, `frontend/src/pages/Invoices.test.tsx`, `frontend/src/pages/Dashboard.test.tsx`, `frontend/src/components/Layout.test.tsx` (якщо є)
 
-- [ ] додати `formatTariff`, `formatReading`, `formatRate` за специфікацією з Technical Details
-- [ ] застосувати formatTariff у таблиці послуг (ApartmentDetail) і колонці тарифів рахунку
-- [ ] застосувати formatReading до попередніх/поточних показників (InvoiceCalculator/InvoiceEdit)
-- [ ] застосувати formatRate: чип курсу в шапці (Layout) і плитка курсу на дашборді (`Dashboard.tsx` — зараз `.toFixed(2)` з крапкою) — 2 знаки; поле курсу рахунку — 2–4 значущі знаки (значення поля — редаговане число, форматувати відображення/placeholder, не ламаючи введення)
-- [ ] тести: table-driven для трьох форматерів (хвости нулів, кома, тисячні пробіли, краєві «0», «0.500», цілі)
-- [ ] оновити ВСІ компонентні тести, що стверджують старі формати (`ApartmentDetail.test.tsx` «7.95689 ₴», `Dashboard.test.tsx` «44.68 ₴» тощо) — гейт таска має бути чесним
-- [ ] прогнати frontend-тести — мають пройти перед таском 4
+- [x] додати `formatTariff`, `formatReading`, `formatRate` за специфікацією з Technical Details
+- [x] застосувати formatTariff у таблиці послуг (ApartmentDetail) і колонці тарифів рахунку
+- [x] застосувати formatReading до попередніх/поточних показників (InvoiceCalculator/InvoiceEdit)
+- [x] застосувати formatRate: чип курсу в шапці (Layout) і плитка курсу на дашборді (`Dashboard.tsx` — зараз `.toFixed(2)` з крапкою) — 2 знаки; поле курсу рахунку — 2–4 значущі знаки (значення поля — редаговане число, форматувати відображення/placeholder, не ламаючи введення)
+- [x] тести: table-driven для трьох форматерів (хвости нулів, кома, тисячні пробіли, краєві «0», «0.500», цілі)
+- [x] оновити ВСІ компонентні тести, що стверджують старі формати (`ApartmentDetail.test.tsx` «7.95689 ₴», `Dashboard.test.tsx` «44.68 ₴» тощо) — гейт таска має бути чесним
+- [x] прогнати frontend-тести — мають пройти перед таском 4
 
 ### Task 4: Плитки й дашборд за макетом
 

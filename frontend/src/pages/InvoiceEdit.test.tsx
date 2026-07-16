@@ -42,6 +42,30 @@ describe("InvoiceEdit", () => {
     expect(screen.getByRole("button", { name: "Повернути в чернетку" })).toBeInTheDocument();
   });
 
+  it("shows trimmed readings and tariff values in the invoice table", async () => {
+    vi.spyOn(apiClient, "getInvoice").mockResolvedValue({
+      ...draft,
+      exchange_rate: "44.791700",
+      lines: [{
+        ...draft.lines[0],
+        prev_reading: "9582.000",
+        curr_reading: "9583.500",
+        tariff_value: "197.91000",
+      }],
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/invoices/7"]}>
+        <Routes><Route path="/invoices/:invoiceId" element={<InvoiceEdit />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/9.?582/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue(9583.5);
+    expect(screen.getByText("197,91 ₴")).toBeInTheDocument();
+    expect(screen.getByLabelText("Курс USD")).toHaveValue(44.7917);
+  });
+
   it.each([
     ["issued", "Повернути в чернетку", "revert-to-draft", "draft"],
     ["issued", "Позначити оплаченим", "mark-paid", "paid"],
