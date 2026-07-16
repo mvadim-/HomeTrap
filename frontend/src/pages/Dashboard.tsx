@@ -4,39 +4,43 @@ import { Link } from "react-router-dom";
 import {
   Apartment,
   DashboardStats,
-  ExchangeRate,
   getApartments,
-  getCurrentRate,
   getDashboard,
+  getIncomeStats,
 } from "../api/client";
 import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
-import { formatRateSummary, formatTenantRent, formatUah } from "../utils/format";
+import { formatTenantRent, formatUah } from "../utils/format";
 import "./portal.css";
 
 export function Dashboard() {
   const [dashboard, setDashboard] = useState<DashboardStats | null>(null);
   const [apartments, setApartments] = useState<Apartment[]>([]);
-  const [rate, setRate] = useState<ExchangeRate | null>(null);
+  const [incomeTotal, setIncomeTotal] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
-    Promise.all([getDashboard(), getApartments(), getCurrentRate()])
-      .then(([stats, apartmentItems, exchangeRate]) => {
+    Promise.all([getDashboard(), getApartments()])
+      .then(([stats, apartmentItems]) => {
         if (active) {
           setDashboard(stats);
           setApartments(apartmentItems);
-          setRate(exchangeRate);
         }
       })
       .catch(() => active && setError("Не вдалося завантажити дашборд."));
+    getIncomeStats(undefined, { months: 12 })
+      .then((stats) => active && setIncomeTotal(stats.totals.total))
+      .catch(() => undefined);
     return () => {
       active = false;
     };
   }, []);
 
   if (error) return <p className="error-message">{error}</p>;
-  if (!dashboard || !rate) return <p className="muted-text">Завантажуємо дашборд…</p>;
+  if (!dashboard) return <p className="muted-text">Завантажуємо дашборд…</p>;
+
+  const draftCount = dashboard.needs_attention.filter((item) => item.reason === "draft").length;
+  const unpaidCount = dashboard.needs_attention.filter((item) => item.reason === "unpaid").length;
 
   return (
     <>
@@ -48,10 +52,25 @@ export function Dashboard() {
       </header>
 
       <section className="dashboard-grid" aria-label="Показники портфеля">
-        <article className="metric-card"><span className="metric-label">Нараховано</span><strong>{formatUah(dashboard.charged)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Оплачено</span><strong className="metric-note note-pos">{formatUah(dashboard.paid)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Заборгованість</span><strong className={Number(dashboard.outstanding) > 0 ? "metric-note note-neg" : undefined}>{formatUah(dashboard.outstanding)}</strong></article>
-        <article className="metric-card"><span className="metric-label">Курс НБУ · {rate.currency}</span><strong>{formatRateSummary(rate.rate)} ₴</strong></article>
+        <article className="metric-card">
+          <span className="metric-label">Нараховано</span>
+          <strong>{formatUah(dashboard.charged)}</strong>
+          {draftCount > 0 && <small className="metric-note">Чернеток: {draftCount}</small>}
+        </article>
+        <article className="metric-card">
+          <span className="metric-label">Оплачено</span>
+          <strong>{formatUah(dashboard.paid)}</strong>
+        </article>
+        <article className="metric-card">
+          <span className="metric-label">Заборгованість</span>
+          <strong>{formatUah(dashboard.outstanding)}</strong>
+          {unpaidCount > 0 && <small className="metric-note note-neg">Неоплачених: {unpaidCount}</small>}
+        </article>
+        <article className="metric-card">
+          <span className="metric-label">Дохід за 12 місяців</span>
+          <strong>{incomeTotal === null ? "—" : formatUah(incomeTotal)}</strong>
+          {incomeTotal !== null && <small className="metric-note note-pos">оренда + комунальні</small>}
+        </article>
       </section>
 
       <div className="content-grid">
