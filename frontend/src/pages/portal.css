@@ -661,8 +661,98 @@
   background: var(--color-surface);
 }
 
+.stats-period-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.period-switch,
+.custom-period-fields {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.period-switch {
+  flex-wrap: wrap;
+}
+
+.period-switch button {
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--color-text-muted);
+  background: var(--color-surface-muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.period-switch button.active {
+  border-color: #71836b;
+  color: var(--color-surface);
+  background: #71836b;
+}
+
+.custom-period-fields label {
+  display: grid;
+  gap: 4px;
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.custom-period-fields input {
+  padding: 7px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
 .stats-section + .stats-section {
   margin-top: 20px;
+}
+
+.stats-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+
+.stats-summary-tile {
+  display: grid;
+  gap: 6px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px var(--color-shadow);
+}
+
+.stats-summary-tile span,
+.stats-summary-tile small {
+  color: var(--color-text-muted);
+}
+
+.stats-summary-tile span {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.stats-summary-tile strong {
+  font-size: 1.25rem;
+}
+
+.stats-summary-tile small {
+  font-size: 0.78rem;
 }
 
 .consumption-grid {
@@ -729,6 +819,12 @@
 .chart-label {
   fill: var(--color-text-muted);
   font-size: 10px;
+}
+
+.income-value-label {
+  fill: var(--color-text);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .chart-point,
@@ -817,6 +913,7 @@
   .content-grid,
   .detail-grid,
   .consumption-grid,
+  .stats-summary-grid,
   .schedule-grid,
   .import-summary {
     grid-template-columns: 1fr;
@@ -857,8 +954,14 @@
   }
 
   .stats-apartment-select,
-  .scope-switch {
+  .scope-switch,
+  .custom-period-fields {
     width: 100%;
+  }
+
+  .custom-period-fields {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .scope-switch button {

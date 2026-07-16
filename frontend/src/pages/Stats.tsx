@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   Apartment,
   ConsumptionSeries,
   IncomeStats,
+  StatsPeriod,
   getApartments,
   getConsumptionStats,
   getIncomeStats,
@@ -23,6 +24,15 @@ function monthLabel(period: string): string {
 
 function numberLabel(value: number, maximumFractionDigits = 2): string {
   return new Intl.NumberFormat("uk-UA", { maximumFractionDigits }).format(value);
+}
+
+function compactAmountLabel(value: number): string {
+  return numberLabel(Math.abs(value) >= 1000 ? value / 1000 : value, Math.abs(value) >= 1000 ? 1 : 0);
+}
+
+function selectedMonthLabel(month: string): string {
+  return new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${month}-01T00:00:00Z`));
 }
 
 function seriesColor(name: string): string {
@@ -70,7 +80,7 @@ function MiniLineChart({ series }: { series: ConsumptionSeries }) {
 function IncomeChart({ stats }: { stats: IncomeStats }) {
   const width = 760;
   const height = 270;
-  const padding = { top: 18, right: 18, bottom: 38, left: 56 };
+  const padding = { top: 28, right: 18, bottom: 38, left: 56 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const maxValue = Math.max(...stats.values.map((point) => Number(point.total)), 1);
@@ -96,6 +106,7 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
             <rect className="income-utilities" x={x} y={baseline - rentHeight - utilitiesHeight} width={barWidth} height={utilitiesHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, комунальні: ${formatUah(point.utilities)}`}>
               <title>{monthLabel(point.period)} · Комунальні: {formatUah(point.utilities)} · Разом: {formatUah(point.total)}</title>
             </rect>
+            <text className="income-value-label" textAnchor="middle" x={x + barWidth / 2} y={Math.max(13, baseline - rentHeight - utilitiesHeight - 7)}>{compactAmountLabel(Number(point.total))}</text>
             <text className="chart-label month-label" textAnchor="middle" x={x + barWidth / 2} y={height - 11}>{monthLabel(point.period)}</text>
           </g>
         );
@@ -111,6 +122,26 @@ export function Stats() {
   const [consumption, setConsumption] = useState<ConsumptionSeries[] | null>(null);
   const [income, setIncome] = useState<IncomeStats | null>(null);
   const [error, setError] = useState("");
+  const [periodMode, setPeriodMode] = useState<"6" | "12" | "24" | "all" | "custom">("12");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const customRangeInvalid = periodMode === "custom" && dateFrom !== "" && dateTo !== "" && dateFrom > dateTo;
+  const statsPeriod = useMemo<StatsPeriod | null>(() => {
+    if (periodMode === "all") return { all_time: true };
+    if (periodMode === "custom") {
+      if (!dateFrom || !dateTo || dateFrom > dateTo) return null;
+      return { date_from: `${dateFrom}-01`, date_to: `${dateTo}-01` };
+    }
+    return { months: Number(periodMode) };
+  }, [dateFrom, dateTo, periodMode]);
+  const periodDescription = periodMode === "all"
+    ? "Споживання та дохід за весь час"
+    : periodMode === "custom" && dateFrom && dateTo && !customRangeInvalid
+      ? `Споживання та дохід за ${selectedMonthLabel(dateFrom)} — ${selectedMonthLabel(dateTo)}`
+      : periodMode === "custom"
+        ? "Споживання та дохід за довільний період"
+        : `Споживання та дохід за останні ${periodMode} місяців`;
 
   useEffect(() => {
     let active = true;
@@ -126,28 +157,36 @@ export function Stats() {
 
   useEffect(() => {
     if (apartmentId === null) return;
+    if (statsPeriod === null) {
+      setConsumption(null);
+      return;
+    }
     let active = true;
     setConsumption(null);
-    getConsumptionStats(apartmentId)
+    getConsumptionStats(apartmentId, statsPeriod)
       .then((stats) => active && setConsumption(stats.series))
       .catch(() => active && setError("Не вдалося завантажити статистику споживання."));
     return () => { active = false; };
-  }, [apartmentId]);
+  }, [apartmentId, statsPeriod]);
 
   useEffect(() => {
     if (scope === "apartment" && apartmentId === null) return;
+    if (statsPeriod === null) {
+      setIncome(null);
+      return;
+    }
     let active = true;
     setIncome(null);
-    getIncomeStats(scope === "apartment" ? apartmentId ?? undefined : undefined)
+    getIncomeStats(scope === "apartment" ? apartmentId ?? undefined : undefined, statsPeriod)
       .then((stats) => active && setIncome(stats))
       .catch(() => active && setError("Не вдалося завантажити статистику доходу."));
     return () => { active = false; };
-  }, [apartmentId, scope]);
+  }, [apartmentId, scope, statsPeriod]);
 
   return (
     <>
       <header className="page-header stats-header">
-        <div><h1>Статистика</h1><p>Споживання та дохід за останні 12 місяців</p></div>
+        <div><h1>Статистика</h1><p>{periodDescription}</p></div>
         {apartments.length > 0 && (
           <label className="stats-apartment-select">Квартира
             <select aria-label="Квартира для статистики" value={apartmentId ?? ""} onChange={(event) => setApartmentId(Number(event.target.value))}>
@@ -158,15 +197,45 @@ export function Stats() {
       </header>
       {error && <p className="error-message">{error}</p>}
 
+      <section className="stats-period-panel" aria-label="Період статистики">
+        <div className="period-switch" role="group" aria-label="Оберіть період">
+          {([6, 12, 24] as const).map((months) => (
+            <button key={months} className={periodMode === String(months) ? "active" : ""} type="button" aria-pressed={periodMode === String(months)} onClick={() => setPeriodMode(String(months) as "6" | "12" | "24")}>{months} міс</button>
+          ))}
+          <button className={periodMode === "all" ? "active" : ""} type="button" aria-pressed={periodMode === "all"} onClick={() => setPeriodMode("all")}>Весь час</button>
+          <button className={periodMode === "custom" ? "active" : ""} type="button" aria-pressed={periodMode === "custom"} onClick={() => setPeriodMode("custom")}>Довільний період</button>
+        </div>
+        {periodMode === "custom" && (
+          <div className="custom-period-fields">
+            <label>Від<input aria-label="Період від" type="month" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} /></label>
+            <label>До<input aria-label="Період до" type="month" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} /></label>
+          </div>
+        )}
+        {customRangeInvalid && <p className="error-message">Початок періоду не може бути пізніше завершення.</p>}
+      </section>
+
       <section className="section-card stats-section">
         <div className="section-heading"><div><h2>Споживання</h2><p>Показники лічильників по вибраній квартирі</p></div></div>
-        {consumption === null && apartmentId !== null ? (
+        {statsPeriod === null ? (
+          <p className="empty-state">Оберіть початок і завершення періоду.</p>
+        ) : consumption === null && apartmentId !== null ? (
           <p className="muted-text">Завантажуємо споживання…</p>
         ) : consumption && consumption.length > 0 ? (
           <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} />)}</div>
         ) : (
           <p className="empty-state">Ще немає історії споживання для цієї квартири.</p>
         )}
+      </section>
+
+      <section className="stats-summary-grid" aria-label="Підсумки за період">
+        <article className="stats-summary-tile"><span>Оренда за період</span><strong>{income ? formatUah(income.totals.rent) : "—"}</strong></article>
+        <article className="stats-summary-tile"><span>Комунальні за період</span><strong>{income ? formatUah(income.totals.utilities) : "—"}</strong></article>
+        <article className="stats-summary-tile">
+          <span>Найбільша стаття</span>
+          {income?.top_service ? (
+            <><strong>{income.top_service.name}</strong><small>{numberLabel(Number(income.top_service.share_percent))}% · пік — {monthLabel(income.top_service.peak_period)}</small></>
+          ) : income ? <strong className="muted-text">Немає даних</strong> : <strong>—</strong>}
+        </article>
       </section>
 
       <section className="section-card stats-section">
@@ -177,7 +246,9 @@ export function Stats() {
             <button className={scope === "apartment" ? "active" : ""} type="button" aria-pressed={scope === "apartment"} disabled={apartmentId === null} onClick={() => setScope("apartment")}>Квартира</button>
           </div>
         </div>
-        {income === null ? (
+        {statsPeriod === null ? (
+          <p className="empty-state">Оберіть початок і завершення періоду.</p>
+        ) : income === null ? (
           <p className="muted-text">Завантажуємо дохід…</p>
         ) : income.values.length > 0 ? (
           <>

@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-16 14:29] Діапазон і підсумки статистики
+
+- `frontend/src/pages/Stats.tsx`, `frontend/src/pages/portal.css` — додано спільний
+  вибір періоду для споживання й доходу, довільний діапазон по місяцях, три
+  підсумкові тайли та компактні суми над стовпчиками доходу.
+- `frontend/src/api/client.ts` — типізовано пресети, весь час і довільний період для
+  stats API, nullable `months` та найбільшу статтю комунальних у відповіді доходу.
+- `frontend/src/pages/Stats.test.tsx` — перевірено пресети, весь час, довільний і
+  помилковий діапазони, тайли, стан без даних та підписи стовпчиків.
+- `docs/plans/20260716-mockup-gap-fixes.md` — Task 7 позначено виконаним після 47
+  frontend-тестів і production build у Docker. Для production потрібно перебудувати
+  й перезапустити контейнер за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-16 14:22] Орендарі у списках квартир
 
 - `frontend/src/pages/Apartments.tsx`, `frontend/src/pages/Dashboard.tsx`,

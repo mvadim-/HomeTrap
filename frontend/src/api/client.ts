@@ -138,9 +138,14 @@ export interface ConsumptionSeries {
 
 export interface ConsumptionStats {
   apartment_id: number;
-  months: number;
+  months: number | null;
   series: ConsumptionSeries[];
 }
+
+export type StatsPeriod =
+  | { months: number }
+  | { all_time: true }
+  | { date_from: string; date_to: string };
 
 export interface IncomePoint {
   period: string;
@@ -152,13 +157,18 @@ export interface IncomePoint {
 export interface IncomeStats {
   scope: "apartment" | "portfolio";
   apartment_id: number | null;
-  months: number;
+  months: number | null;
   values: IncomePoint[];
   totals: {
     rent: string;
     utilities: string;
     total: string;
   };
+  top_service: {
+    name: string;
+    share_percent: string;
+    peak_period: string;
+  } | null;
 }
 
 export interface NotificationSettings {
@@ -288,14 +298,33 @@ export function getDashboard(): Promise<DashboardStats> {
   return request<DashboardStats>("/api/stats/dashboard");
 }
 
-export function getConsumptionStats(apartmentId: number, months = 12): Promise<ConsumptionStats> {
-  const query = new URLSearchParams({ apartment_id: String(apartmentId), months: String(months) });
+function addStatsPeriod(query: URLSearchParams, period: StatsPeriod): void {
+  if ("months" in period) {
+    query.set("months", String(period.months));
+  } else if ("all_time" in period) {
+    query.set("all_time", "true");
+  } else {
+    query.set("date_from", period.date_from);
+    query.set("date_to", period.date_to);
+  }
+}
+
+export function getConsumptionStats(
+  apartmentId: number,
+  period: StatsPeriod = { months: 12 },
+): Promise<ConsumptionStats> {
+  const query = new URLSearchParams({ apartment_id: String(apartmentId) });
+  addStatsPeriod(query, period);
   return request<ConsumptionStats>(`/api/stats/consumption?${query.toString()}`);
 }
 
-export function getIncomeStats(apartmentId?: number, months = 12): Promise<IncomeStats> {
-  const query = new URLSearchParams({ months: String(months) });
+export function getIncomeStats(
+  apartmentId?: number,
+  period: StatsPeriod = { months: 12 },
+): Promise<IncomeStats> {
+  const query = new URLSearchParams();
   if (apartmentId) query.set("apartment_id", String(apartmentId));
+  addStatsPeriod(query, period);
   return request<IncomeStats>(`/api/stats/income?${query.toString()}`);
 }
 
