@@ -205,10 +205,10 @@ API:
 
 ### Task 9: [Final] Update documentation
 
-- [ ] `docs/deploy.md`: примітка про міграцію (автозастосовується) і файли у `data/uploads` (входять у наявний volume/бекап)
-- [ ] `README.md`: розділ про орендарів і файли контрактів
-- [ ] фінальний запис у `ChangeLog.md`
-- [ ] перемістити цей план у `docs/plans/completed/`
+- [x] `docs/deploy.md`: примітка про міграцію (автозастосовується) і файли у `data/uploads` (входять у наявний volume/бекап)
+- [x] `README.md`: розділ про орендарів і файли контрактів
+- [x] фінальний запис у `ChangeLog.md`
+- [x] перемістити цей план у `docs/plans/completed/` — final harness виконає перенесення після review/finalize
 
 ## Post-Completion
 

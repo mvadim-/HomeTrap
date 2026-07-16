@@ -47,8 +47,10 @@ Python runtime-залежності образу зафіксовані точн
    endpoint із самого NAS через `http://127.0.0.1:8000/api/health`. Порт можна
    змінити через `HOMETRAP_PORT` у `.env`.
 
-SQLite зберігається у `data/hometrap.db` поза контейнером. Каталог `data/` і `.env`
-ігноруються Git.
+SQLite зберігається у `data/hometrap.db`, а файли контрактів — у `data/uploads` поза
+контейнером. Увесь каталог `data/` підключений до `/data` наявним Docker volume,
+тому база й завантажені файли зберігаються між перебудовами. Каталог `data/` і
+`.env` ігноруються Git.
 
 ## Оновлення
 
@@ -61,24 +63,28 @@ docker compose --env-file .env -f docker/docker-compose.yml up -d --build
 docker compose --env-file .env -f docker/docker-compose.yml ps
 ```
 
-Міграції Alembic застосовуються автоматично під час старту. Не збільшуйте кількість
-Uvicorn workers і не масштабуйте сервіс: APScheduler виконується в процесі застосунку.
+Міграції Alembic, включно з таблицями орендарів і вкладень контрактів, застосовуються
+автоматично під час старту; окрема команда міграції не потрібна. Не збільшуйте
+кількість Uvicorn workers і не масштабуйте сервіс: APScheduler виконується в процесі
+застосунку.
 
-## Бекап і відновлення SQLite
+## Бекап і відновлення даних
 
-Щоб отримати узгоджену копію, коротко зупиніть контейнер перед копіюванням файлу:
+Щоб отримати узгоджену копію бази й файлів контрактів, коротко зупиніть контейнер і
+архівуйте весь каталог `data/`:
 
 ```sh
 cd /volume1/docker/hometrap
 docker compose --env-file .env -f docker/docker-compose.yml stop hometrap
-cp data/hometrap.db /volume1/backup/hometrap-$(date +%F-%H%M).db
+tar -czf /volume1/backup/hometrap-$(date +%F-%H%M).tar.gz data
 docker compose --env-file .env -f docker/docker-compose.yml start hometrap
 ```
 
-SQLite-бекап містить Telegram token і SMTP credentials у відкритому вигляді, тому
-вважайте кожен файл бекапу секретом: обмежте ACL та використовуйте шифроване сховище
-Hyper Backup. Для відновлення зупиніть сервіс, збережіть поточний
-файл окремо, скопіюйте обраний бекап у `data/hometrap.db`, потім запустіть сервіс.
+Архів містить SQLite з Telegram token і SMTP credentials у відкритому вигляді, а
+також приватні файли контрактів. Вважайте кожен бекап секретом: обмежте ACL та
+використовуйте шифроване сховище Hyper Backup. Для відновлення зупиніть сервіс,
+збережіть поточний каталог `data/` окремо, відновіть із вибраного архіву одночасно
+`data/hometrap.db` і `data/uploads`, потім запустіть сервіс.
 
 ## HTTPS для hometrap.pp.ua
 
