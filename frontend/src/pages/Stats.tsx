@@ -120,7 +120,11 @@ export function Stats() {
   const [apartmentId, setApartmentId] = useState<number | null>(null);
   const [scope, setScope] = useState<"portfolio" | "apartment">("portfolio");
   const [consumption, setConsumption] = useState<ConsumptionSeries[] | null>(null);
+  const [consumptionLoading, setConsumptionLoading] = useState(false);
+  const [consumptionError, setConsumptionError] = useState("");
   const [income, setIncome] = useState<IncomeStats | null>(null);
+  const [incomeLoading, setIncomeLoading] = useState(false);
+  const [incomeError, setIncomeError] = useState("");
   const [error, setError] = useState("");
   const [periodMode, setPeriodMode] = useState<"6" | "12" | "24" | "all" | "custom">("12");
   const [dateFrom, setDateFrom] = useState("");
@@ -159,13 +163,18 @@ export function Stats() {
     if (apartmentId === null) return;
     if (statsPeriod === null) {
       setConsumption(null);
+      setConsumptionLoading(false);
+      setConsumptionError("");
       return;
     }
     let active = true;
     setConsumption(null);
+    setConsumptionLoading(true);
+    setConsumptionError("");
     getConsumptionStats(apartmentId, statsPeriod)
       .then((stats) => active && setConsumption(stats.series))
-      .catch(() => active && setError("Не вдалося завантажити статистику споживання."));
+      .catch(() => active && setConsumptionError("Не вдалося завантажити статистику споживання."))
+      .finally(() => active && setConsumptionLoading(false));
     return () => { active = false; };
   }, [apartmentId, statsPeriod]);
 
@@ -173,13 +182,18 @@ export function Stats() {
     if (scope === "apartment" && apartmentId === null) return;
     if (statsPeriod === null) {
       setIncome(null);
+      setIncomeLoading(false);
+      setIncomeError("");
       return;
     }
     let active = true;
     setIncome(null);
+    setIncomeLoading(true);
+    setIncomeError("");
     getIncomeStats(scope === "apartment" ? apartmentId ?? undefined : undefined, statsPeriod)
       .then((stats) => active && setIncome(stats))
-      .catch(() => active && setError("Не вдалося завантажити статистику доходу."));
+      .catch(() => active && setIncomeError("Не вдалося завантажити статистику доходу."))
+      .finally(() => active && setIncomeLoading(false));
     return () => { active = false; };
   }, [apartmentId, scope, statsPeriod]);
 
@@ -218,8 +232,10 @@ export function Stats() {
         <div className="section-heading"><div><h2>Споживання</h2><p>Показники лічильників по вибраній квартирі</p></div></div>
         {statsPeriod === null ? (
           <p className="empty-state">Оберіть початок і завершення періоду.</p>
-        ) : consumption === null && apartmentId !== null ? (
+        ) : consumptionLoading ? (
           <p className="muted-text">Завантажуємо споживання…</p>
+        ) : consumptionError ? (
+          <p className="error-message">{consumptionError}</p>
         ) : consumption && consumption.length > 0 ? (
           <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} />)}</div>
         ) : (
@@ -248,6 +264,10 @@ export function Stats() {
         </div>
         {statsPeriod === null ? (
           <p className="empty-state">Оберіть початок і завершення періоду.</p>
+        ) : incomeLoading ? (
+          <p className="muted-text">Завантажуємо дохід…</p>
+        ) : incomeError ? (
+          <p className="error-message">{incomeError}</p>
         ) : income === null ? (
           <p className="muted-text">Завантажуємо дохід…</p>
         ) : income.values.length > 0 ? (

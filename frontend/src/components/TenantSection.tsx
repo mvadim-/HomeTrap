@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -82,20 +82,34 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
   const [showEndForm, setShowEndForm] = useState(false);
   const [contractEnd, setContractEnd] = useState(localToday);
   const [files, setFiles] = useState<File[]>([]);
+  const loadRequestId = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async () => {
-    const tenantItems = await getTenants(apartmentId);
-    const active = tenantItems.find((tenant) => tenant.contract_end === null);
-    const activeAttachments = active ? await getTenantAttachments(active.id) : [];
-    setTenants(tenantItems);
-    setAttachments(activeAttachments);
+  const load = useCallback(async (manageLoading = false) => {
+    const requestId = ++loadRequestId.current;
+    if (manageLoading) {
+      setLoading(true);
+      setError("");
+    }
+    try {
+      const tenantItems = await getTenants(apartmentId);
+      const active = tenantItems.find((tenant) => tenant.contract_end === null);
+      const activeAttachments = active ? await getTenantAttachments(active.id) : [];
+      if (requestId !== loadRequestId.current) return;
+      setTenants(tenantItems);
+      setAttachments(activeAttachments);
+    } catch (requestError) {
+      if (requestId !== loadRequestId.current) return;
+      if (!manageLoading) throw requestError;
+      setError(readableError(requestError, "Не вдалося завантажити орендарів."));
+    } finally {
+      if (manageLoading && requestId === loadRequestId.current) setLoading(false);
+    }
   }, [apartmentId]);
 
   useEffect(() => {
-    setLoading(true);
-    load()
-      .catch((requestError) => setError(readableError(requestError, "Не вдалося завантажити орендарів.")))
-      .finally(() => setLoading(false));
+    void load(true);
+    return () => { loadRequestId.current += 1; };
   }, [load]);
 
   const activeTenant = tenants.find((tenant) => tenant.contract_end === null);
@@ -162,6 +176,7 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
     try {
       await uploadTenantAttachments(activeTenant.id, files);
       setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       await load();
     } catch (requestError) {
       setError(readableError(requestError, "Не вдалося завантажити файли."));
@@ -225,7 +240,7 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
             </ul>
             {attachments.length === 0 && <p className="muted-text">Файлів ще немає.</p>}
             <form className="attachment-form" onSubmit={submitAttachments}>
-              <input aria-label="Файли контракту" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple type="file" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+              <input ref={fileInputRef} aria-label="Файли контракту" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple type="file" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
               <button className="button" disabled={files.length === 0} type="submit">Завантажити</button>
             </form>
           </div>

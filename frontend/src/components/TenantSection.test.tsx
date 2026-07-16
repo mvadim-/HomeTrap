@@ -108,10 +108,13 @@ describe("TenantSection", () => {
       new File(["pdf"], "contract.pdf", { type: "application/pdf" }),
     ];
 
-    await user.upload(await screen.findByLabelText("Файли контракту"), files);
+    const input = await screen.findByLabelText("Файли контракту");
+    await user.upload(input, files);
     await user.click(screen.getByRole("button", { name: "Завантажити" }));
 
     await waitFor(() => expect(apiClient.uploadTenantAttachments).toHaveBeenCalledWith(8, files));
+    expect(input).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Завантажити" })).toBeDisabled();
   });
 
   it("uses a fresh local date whenever a tenant form is opened", async () => {
@@ -136,6 +139,26 @@ describe("TenantSection", () => {
     expect(await screen.findByText("Оксана Коваль")).toBeInTheDocument();
     expect(apiClient.getTenantAttachments).toHaveBeenCalledTimes(1);
     expect(apiClient.getTenantAttachments).toHaveBeenCalledWith(activeTenant.id);
+  });
+
+  it("ignores a stale load after apartment changes", async () => {
+    let resolveFirst!: (tenants: apiClient.Tenant[]) => void;
+    const firstRequest = new Promise<apiClient.Tenant[]>((resolve) => { resolveFirst = resolve; });
+    const secondTenant = { ...activeTenant, id: 18, apartment_id: 2, full_name: "Марія Сидоренко" };
+    vi.mocked(apiClient.getTenants).mockImplementation((apartmentId) => (
+      apartmentId === 1 ? firstRequest : Promise.resolve([secondTenant])
+    ));
+    vi.mocked(apiClient.getTenantAttachments).mockResolvedValue([]);
+
+    const { rerender } = render(<TenantSection apartmentId={1} />);
+    rerender(<TenantSection apartmentId={2} />);
+
+    expect(await screen.findByText("Марія Сидоренко")).toBeInTheDocument();
+    resolveFirst([activeTenant]);
+    await waitFor(() => expect(apiClient.getTenantAttachments).toHaveBeenCalledWith(activeTenant.id));
+
+    expect(screen.getByText("Марія Сидоренко")).toBeInTheDocument();
+    expect(screen.queryByText("Оксана Коваль")).not.toBeInTheDocument();
   });
 
   it("uses the current local date when the end-contract form opens", async () => {

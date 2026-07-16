@@ -1,10 +1,12 @@
+from pathlib import Path
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.main import create_app
-from app.services.storage import attachment_path
+from app.services.storage import attachment_path, save_attachment
 
 
 async def _create_client(tmp_path):
@@ -167,6 +169,22 @@ async def test_upload_rejects_unsupported_and_oversized_files(tmp_path) -> None:
         assert not tenant_dir.exists() or not any(tenant_dir.iterdir())
     finally:
         await _close_client(lifespan, client)
+
+
+def test_save_attachment_cleans_up_partial_write(tmp_path, monkeypatch) -> None:
+    original_write_bytes = Path.write_bytes
+
+    def fail_after_partial_write(path: Path, _content: bytes) -> int:
+        original_write_bytes(path, b"partial")
+        raise OSError("injected write failure")
+
+    monkeypatch.setattr(Path, "write_bytes", fail_after_partial_write)
+
+    with pytest.raises(OSError, match="injected write failure"):
+        save_attachment(tmp_path / "uploads", 1, "application/pdf", b"pdf-content")
+
+    tenant_dir = tmp_path / "uploads" / "tenants" / "1"
+    assert not tenant_dir.exists()
 
 
 async def test_tenant_delete_removes_attachment_files(tmp_path) -> None:

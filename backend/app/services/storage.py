@@ -50,8 +50,17 @@ def save_attachment(
 ) -> tuple[str, Path]:
     stored_name = f"{uuid4().hex}{ATTACHMENT_TYPES[content_type][0]}"
     target = attachment_path(uploads_dir, tenant_id, stored_name)
+    temporary = target.with_name(f".{stored_name}.tmp")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(content)
+    try:
+        temporary.write_bytes(content)
+        temporary.replace(target)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
+        if target.parent.is_dir() and not any(target.parent.iterdir()):
+            target.parent.rmdir()
+        raise
     return stored_name, target
 
 

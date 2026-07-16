@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-16 15:08] Усунення code smells після рев'ю
+
+- `backend/app/services/storage.py`, `backend/tests/test_attachments.py` — запис
+  вкладень переведено на атомарну заміну тимчасового файлу з очищенням partial write;
+  додано регресію ін'єктованої помилки запису.
+- `frontend/src/pages/Stats.tsx`, `frontend/src/pages/Stats.test.tsx` — розділено
+  loading/error стани запитів споживання й доходу, завершення помилкових запитів та
+  очищення помилок після успішної повторної спроби покрито тестом.
+- `frontend/src/components/TenantSection.tsx`,
+  `frontend/src/components/TenantSection.test.tsx` — stale відповіді попередньої
+  квартири ігноруються, а file input повністю скидається після успішного upload.
+- Для production потрібно перебудувати й перезапустити контейнер за `docs/deploy.md`;
+  автоматичний деплой не виконувався.
+
 ## [2026-07-16 14:54] Виправлення після комплексного code review
 
 - `backend/app/models.py`, `backend/alembic/versions/20260716_04_enforce_active_tenant.py`,

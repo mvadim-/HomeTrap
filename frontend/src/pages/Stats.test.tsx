@@ -150,4 +150,37 @@ describe("Stats", () => {
     expect(screen.getByText("Немає даних")).toBeInTheDocument();
     expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
+
+  it("finishes failed requests and clears section errors after a successful retry", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats")
+      .mockRejectedValue(new Error("offline"));
+    const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats")
+      .mockRejectedValue(new Error("offline"));
+
+    render(<Stats />);
+
+    expect(await screen.findByText("Не вдалося завантажити статистику споживання.")).toBeInTheDocument();
+    expect(await screen.findByText("Не вдалося завантажити статистику доходу.")).toBeInTheDocument();
+    expect(screen.queryByText("Завантажуємо споживання…")).not.toBeInTheDocument();
+    expect(screen.queryByText("Завантажуємо дохід…")).not.toBeInTheDocument();
+
+    getConsumptionStats.mockResolvedValue({ apartment_id: 1, months: 6, series: [] });
+    getIncomeStats.mockResolvedValue({
+      scope: "portfolio",
+      apartment_id: null,
+      months: 6,
+      values: [],
+      totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+      top_service: null,
+    });
+
+    await user.click(screen.getByRole("button", { name: "6 міс" }));
+
+    expect(await screen.findByText("Ще немає історії споживання для цієї квартири.")).toBeInTheDocument();
+    expect(await screen.findByText("Ще немає історії доходу за вибраний період.")).toBeInTheDocument();
+    expect(screen.queryByText("Не вдалося завантажити статистику споживання.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Не вдалося завантажити статистику доходу.")).not.toBeInTheDocument();
+  });
 });
