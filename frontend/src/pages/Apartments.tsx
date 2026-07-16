@@ -92,9 +92,9 @@ export function Apartments() {
         </form>
       )}
       {!apartments ? <p className="muted-text">Завантажуємо квартири…</p> : (
-        <div className="apartments-grid">
+        <div className="apartments-grid apartment-management-grid">
           {apartments.map((apartment) => (
-            <article className="apartment-card" key={apartment.id}>
+            <article className="apartment-card apartment-management-card" key={apartment.id}>
               <header>
                 <h2><Link to={`/apartments/${apartment.id}`}>{apartment.name}</Link></h2>
                 <InvoiceStatusBadge status={apartment.latest_invoice?.status ?? null} />

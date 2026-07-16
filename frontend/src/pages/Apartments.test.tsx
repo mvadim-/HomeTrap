@@ -24,6 +24,9 @@ describe("Apartments", () => {
 
     expect(await screen.findByText("Оксана К. · оренда 325 $")).toBeInTheDocument();
     expect(screen.getByText("Квартира вільна")).toBeInTheDocument();
+    const card = screen.getByRole("heading", { name: "Поділ" }).closest("article");
+    expect(card).toHaveClass("apartment-management-card");
+    expect(card?.parentElement).toHaveClass("apartment-management-grid");
   });
 
   it("creates, edits and archives apartments", async () => {

@@ -60,9 +60,9 @@ export function Dashboard() {
             <div><h2>Квартири</h2><p>{apartments.length} об'єктів у портфелі</p></div>
             <Link className="secondary-button" to="/apartments">Усі квартири</Link>
           </div>
-          <div className="apartments-grid">
+          <div className="apartments-grid dashboard-apartments-list">
             {apartments.map((apartment) => (
-              <Link className="apartment-card" to={`/apartments/${apartment.id}`} key={apartment.id}>
+              <Link className="apartment-card dashboard-apartment-row" to={`/apartments/${apartment.id}`} key={apartment.id}>
                 <span className="apartment-avatar" aria-hidden="true">{apartment.name.trim().charAt(0)}</span>
                 <div className="apartment-details">
                   <h3>{apartment.name}</h3>

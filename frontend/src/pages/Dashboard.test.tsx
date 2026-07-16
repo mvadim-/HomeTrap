@@ -90,7 +90,10 @@ describe("Dashboard", () => {
 
     expect(screen.getByText("Оплачено").nextElementSibling).toHaveClass("note-pos");
     expect(screen.getByText("Заборгованість").nextElementSibling).toHaveClass("note-neg");
-    expect(screen.getByText("Квартира на Подолі", { selector: "h3" }).closest(".apartment-card")?.querySelector(".apartment-avatar")).toHaveTextContent("К");
+    const apartmentCard = screen.getByText("Квартира на Подолі", { selector: "h3" }).closest(".apartment-card");
+    expect(apartmentCard).toHaveClass("dashboard-apartment-row");
+    expect(apartmentCard?.parentElement).toHaveClass("dashboard-apartments-list");
+    expect(apartmentCard?.querySelector(".apartment-avatar")).toHaveTextContent("К");
     expect(screen.queryByText("Вільна квартира", { selector: ".apartment-address" })).not.toBeInTheDocument();
 
     const attentionItems = screen.getAllByRole("listitem");

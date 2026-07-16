@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-16 19:17] Відновлення layout карток квартир
+
+- `frontend/src/pages/Dashboard.tsx`, `frontend/src/pages/Apartments.tsx`,
+  `frontend/src/pages/portal.css` — dashboard-рядки та management-картки квартир
+  отримали окремі variant-класи; grid дашборда більше не стискає заголовок і не
+  накладає адресу, статус та кнопки на сторінці `/apartments`.
+- `frontend/src/pages/Dashboard.test.tsx`, `frontend/src/pages/Apartments.test.tsx` —
+  додано регресійні перевірки окремих layout-контрактів для двох екранів.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 18:58] Безпечне оновлення після збереження послуг і тарифів
 
 - `frontend/src/pages/ApartmentDetail.tsx` — помилка refresh після успішного створення

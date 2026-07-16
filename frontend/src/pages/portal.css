@@ -94,10 +94,18 @@
 
 .apartments-grid {
   display: grid;
+}
+
+.dashboard-apartments-list {
   gap: 10px;
 }
 
-.apartment-card {
+.apartment-management-grid {
+  grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+  gap: 16px;
+}
+
+.dashboard-apartment-row {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
   align-items: center;
@@ -107,10 +115,16 @@
   text-decoration: none;
 }
 
+.apartment-management-card {
+  display: block;
+  padding: 20px;
+}
+
 .apartment-card:hover {
   border-color: var(--color-primary);
 }
 
+.apartment-management-card header,
 .card-row,
 .attention-item {
   display: flex;
@@ -148,6 +162,11 @@
   margin: 3px 0 0;
   color: var(--color-text-muted);
   font-size: 0.82rem;
+}
+
+.apartment-management-card .apartment-address {
+  min-height: 2.6em;
+  margin: 10px 0 18px;
 }
 
 .apartment-rent {
