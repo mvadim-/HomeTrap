@@ -26,7 +26,7 @@ describe("Stats", () => {
     vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
       apartment_id: 1,
       months: 12,
-      series: ["Газ", "Світло", "Вода"].map((service_name, index) => ({
+      series: ["Газ", "Світло", "Вода", "Опалення"].map((service_name, index) => ({
         service_id: index + 1,
         service_name,
         unit: index === 0 ? "м³" : "кВт·год",
@@ -48,10 +48,25 @@ describe("Stats", () => {
     render(<Stats />);
 
     expect(await screen.findByRole("heading", { name: "Статистика" })).toBeInTheDocument();
-    expect(await screen.findByRole("img", { name: "Графік споживання: Газ" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Графік споживання: Світло" })).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Графік споживання: Вода" })).toBeInTheDocument();
-    expect(await screen.findByRole("img", { name: "Стековий графік доходу" })).toBeInTheDocument();
+    const gasChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    const electricityChart = screen.getByRole("img", { name: "Графік споживання: Світло" });
+    const waterChart = screen.getByRole("img", { name: "Графік споживання: Вода" });
+    const otherChart = screen.getByRole("img", { name: "Графік споживання: Опалення" });
+    expect(gasChart.querySelector(".chart-line")).toHaveAttribute("stroke", "var(--chart-gas)");
+    expect(electricityChart.querySelector(".chart-line")).toHaveAttribute("stroke", "var(--chart-elec)");
+    expect(waterChart.querySelector(".chart-line")).toHaveAttribute("stroke", "var(--chart-water)");
+    expect(otherChart.querySelector(".chart-line")).toHaveAttribute("stroke", "var(--color-primary)");
+    expect(gasChart.querySelector(".chart-area")).toHaveAttribute("fill", "var(--chart-gas)");
+    expect(gasChart.querySelector(".chart-area")).toHaveAttribute("fill-opacity", "0.13");
+    expect(gasChart.querySelectorAll(".chart-point")[0]).toHaveAttribute("r", "3");
+    expect(gasChart.querySelectorAll(".chart-point")[1]).toHaveAttribute("r", "5");
+    expect(gasChart.querySelectorAll(".chart-point")[1]).toHaveAttribute("stroke", "var(--color-surface)");
+
+    const incomeChart = await screen.findByRole("img", { name: "Стековий графік доходу" });
+    expect(incomeChart.querySelector(".income-rent")).toHaveAttribute("fill", "var(--chart-rent)");
+    expect(incomeChart.querySelector(".income-utilities")).toHaveAttribute("fill", "var(--chart-util)");
+    expect(incomeChart.querySelector(".income-rent")).toHaveAttribute("stroke", "var(--color-surface)");
+    expect(incomeChart.querySelector(".income-rent")).toHaveAttribute("stroke-width", "2");
     expect(screen.getByLabelText(/черв, оренда:/i)).toBeInTheDocument();
     expect(screen.getAllByText(/Разом: 16.?731,51 ₴/).length).toBeGreaterThan(0);
     expect(screen.getByText("Оренда за період")).toBeInTheDocument();
@@ -63,6 +78,39 @@ describe("Stats", () => {
 
     await user.click(screen.getByRole("button", { name: "Квартира" }));
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(1, { months: 12 }));
+  });
+
+  it("renders a correction marker instead of bars for a month with a negative segment", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
+      scope: "portfolio",
+      apartment_id: null,
+      months: 12,
+      values: [
+        { period: "2025-08-01", rent: "14521.00", utilities: "2210.51", total: "16731.51" },
+        { period: "2025-09-01", rent: "0.00", utilities: "-10740.93", total: "-10740.93" },
+      ],
+      totals: { rent: "14521.00", utilities: "-8530.42", total: "5990.58" },
+      top_service: null,
+    });
+
+    render(<Stats />);
+
+    const chart = await screen.findByRole("img", { name: "Стековий графік доходу" });
+    const marker = screen.getByLabelText(/вер, коригування:/i);
+    expect(marker).toHaveClass("income-adjustment-marker");
+    expect(marker).toHaveTextContent(/Оренда: 0,00 ₴/);
+    expect(marker).toHaveTextContent(/Комунальні: -10.?740,93 ₴/);
+    expect(marker).toHaveTextContent(/Разом: -10.?740,93 ₴/);
+    expect(screen.queryByLabelText(/вер, оренда:/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/вер, комунальні:/i)).not.toBeInTheDocument();
+    expect(chart.querySelectorAll(".income-rent")).toHaveLength(1);
+    expect(chart.querySelectorAll(".income-utilities")).toHaveLength(1);
+    expect(chart.querySelectorAll(".income-value-label")).toHaveLength(1);
+    chart.querySelectorAll("[d], [points], [x], [y], [cx], [cy]").forEach((element) => {
+      expect(element.outerHTML).not.toMatch(/NaN/);
+    });
   });
 
   it("uses the selected preset for consumption and income", async () => {

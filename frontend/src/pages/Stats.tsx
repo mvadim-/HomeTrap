@@ -37,10 +37,10 @@ function selectedMonthLabel(month: string): string {
 
 function seriesColor(name: string): string {
   const normalized = name.toLocaleLowerCase("uk-UA");
-  if (normalized.includes("газ")) return "#c88761";
-  if (normalized.includes("світ") || normalized.includes("елект")) return "#d5aa3f";
-  if (normalized.includes("вод")) return "#6798ad";
-  return "#71836b";
+  if (normalized.includes("газ")) return "var(--chart-gas)";
+  if (normalized.includes("світ") || normalized.includes("елект")) return "var(--chart-elec)";
+  if (normalized.includes("вод")) return "var(--chart-water)";
+  return "var(--color-primary)";
 }
 
 function MiniLineChart({ series }: { series: ConsumptionSeries }) {
@@ -51,6 +51,8 @@ function MiniLineChart({ series }: { series: ConsumptionSeries }) {
   const x = (index: number) => PADDING.left + (values.length === 1 ? plotWidth / 2 : (index / (values.length - 1)) * plotWidth);
   const y = (value: number) => PADDING.top + plotHeight - (value / maxValue) * plotHeight;
   const path = values.map((value, index) => `${index === 0 ? "M" : "L"} ${x(index)} ${y(value)}`).join(" ");
+  const baseline = PADDING.top + plotHeight;
+  const areaPath = path ? `${path} L ${x(values.length - 1)} ${baseline} L ${x(0)} ${baseline} Z` : "";
   const color = seriesColor(series.service_name);
 
   return (
@@ -60,13 +62,24 @@ function MiniLineChart({ series }: { series: ConsumptionSeries }) {
         <strong>{numberLabel(values.at(-1) ?? 0)}</strong>
       </div>
       <svg className="mini-chart" role="img" aria-label={`Графік споживання: ${series.service_name}`} viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}>
-        <line className="chart-axis" x1={PADDING.left} x2={CHART_WIDTH - PADDING.right} y1={PADDING.top + plotHeight} y2={PADDING.top + plotHeight} />
+        <line className="chart-axis" x1={PADDING.left} x2={CHART_WIDTH - PADDING.right} y1={baseline} y2={baseline} />
         <text className="chart-label" x="4" y={PADDING.top + 5}>{numberLabel(maxValue)}</text>
-        <text className="chart-label" x="25" y={PADDING.top + plotHeight + 4}>0</text>
-        {path && <path d={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />}
+        <text className="chart-label" x="25" y={baseline + 4}>0</text>
+        {areaPath && <path className="chart-area" d={areaPath} fill={color} fillOpacity="0.13" />}
+        {path && <path className="chart-line" d={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />}
         {series.values.map((point, index) => (
           <g key={point.period}>
-            <circle className="chart-point" cx={x(index)} cy={y(values[index])} fill={color} r="5" tabIndex={0} aria-label={`${monthLabel(point.period)}: ${numberLabel(values[index])} ${series.unit ?? "од."}`}>
+            <circle
+              className="chart-point"
+              cx={x(index)}
+              cy={y(values[index])}
+              fill={color}
+              r={index === series.values.length - 1 ? 5 : 3}
+              stroke={index === series.values.length - 1 ? "var(--color-surface)" : undefined}
+              strokeWidth={index === series.values.length - 1 ? 2 : undefined}
+              tabIndex={0}
+              aria-label={`${monthLabel(point.period)}: ${numberLabel(values[index])} ${series.unit ?? "од."}`}
+            >
               <title>{monthLabel(point.period)}: {numberLabel(values[index])} {series.unit ?? "од."}</title>
             </circle>
             <text className="chart-label month-label" textAnchor="middle" x={x(index)} y={CHART_HEIGHT - 8}>{monthLabel(point.period)}</text>
@@ -83,7 +96,7 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
   const padding = { top: 28, right: 18, bottom: 38, left: 56 };
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
-  const maxValue = Math.max(...stats.values.map((point) => Number(point.total)), 1);
+  const maxValue = Math.max(...stats.values.map((point) => Math.max(Number(point.total), 0)), 1);
   const slotWidth = plotWidth / Math.max(stats.values.length, 1);
   const barWidth = Math.min(42, slotWidth * 0.62);
   const barHeight = (value: number) => (value / maxValue) * plotHeight;
@@ -95,18 +108,35 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
       <text className="chart-label" x="37" y={padding.top + plotHeight + 4}>0</text>
       {stats.values.map((point, index) => {
         const x = padding.left + slotWidth * index + (slotWidth - barWidth) / 2;
-        const rentHeight = barHeight(Number(point.rent));
-        const utilitiesHeight = barHeight(Number(point.utilities));
+        const rent = Number(point.rent);
+        const utilities = Number(point.utilities);
+        const total = Number(point.total);
+        const hasNegativeSegment = rent < 0 || utilities < 0 || total < 0;
+        const rentHeight = barHeight(rent);
+        const utilitiesHeight = barHeight(utilities);
         const baseline = padding.top + plotHeight;
         return (
           <g key={point.period}>
-            <rect className="income-rent" x={x} y={baseline - rentHeight} width={barWidth} height={rentHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, оренда: ${formatUah(point.rent)}`}>
-              <title>{monthLabel(point.period)} · Оренда: {formatUah(point.rent)}</title>
-            </rect>
-            <rect className="income-utilities" x={x} y={baseline - rentHeight - utilitiesHeight} width={barWidth} height={utilitiesHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, комунальні: ${formatUah(point.utilities)}`}>
-              <title>{monthLabel(point.period)} · Комунальні: {formatUah(point.utilities)} · Разом: {formatUah(point.total)}</title>
-            </rect>
-            <text className="income-value-label" textAnchor="middle" x={x + barWidth / 2} y={Math.max(13, baseline - rentHeight - utilitiesHeight - 7)}>{compactAmountLabel(Number(point.total))}</text>
+            {hasNegativeSegment ? (
+              <polygon
+                className="income-adjustment-marker"
+                points={`${x + barWidth / 2},${baseline - 7} ${x + barWidth / 2 + 7},${baseline} ${x + barWidth / 2},${baseline + 7} ${x + barWidth / 2 - 7},${baseline}`}
+                tabIndex={0}
+                aria-label={`${monthLabel(point.period)}, коригування: оренда ${formatUah(point.rent)}, комунальні ${formatUah(point.utilities)}, разом ${formatUah(point.total)}`}
+              >
+                <title>{monthLabel(point.period)} · Коригування · Оренда: {formatUah(point.rent)} · Комунальні: {formatUah(point.utilities)} · Разом: {formatUah(point.total)}</title>
+              </polygon>
+            ) : (
+              <>
+                <rect className="income-rent" fill="var(--chart-rent)" stroke="var(--color-surface)" strokeWidth="2" x={x} y={baseline - rentHeight} width={barWidth} height={rentHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, оренда: ${formatUah(point.rent)}`}>
+                  <title>{monthLabel(point.period)} · Оренда: {formatUah(point.rent)}</title>
+                </rect>
+                <rect className="income-utilities" fill="var(--chart-util)" stroke="var(--color-surface)" strokeWidth="2" x={x} y={baseline - rentHeight - utilitiesHeight} width={barWidth} height={utilitiesHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, комунальні: ${formatUah(point.utilities)}`}>
+                  <title>{monthLabel(point.period)} · Комунальні: {formatUah(point.utilities)} · Разом: {formatUah(point.total)}</title>
+                </rect>
+                <text className="income-value-label" textAnchor="middle" x={x + barWidth / 2} y={Math.max(13, baseline - rentHeight - utilitiesHeight - 7)}>{compactAmountLabel(total)}</text>
+              </>
+            )}
             <text className="chart-label month-label" textAnchor="middle" x={x + barWidth / 2} y={height - 11}>{monthLabel(point.period)}</text>
           </g>
         );

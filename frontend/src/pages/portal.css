@@ -997,13 +997,15 @@
 
 .chart-point,
 .income-rent,
-.income-utilities {
+.income-utilities,
+.income-adjustment-marker {
   cursor: help;
 }
 
 .chart-point:focus,
 .income-rent:focus,
-.income-utilities:focus {
+.income-utilities:focus,
+.income-adjustment-marker:focus {
   outline: none;
   filter: brightness(1.12);
   stroke: var(--color-text);
@@ -1061,16 +1063,18 @@
   border-radius: 3px;
 }
 
-.rent-swatch,
-.income-rent {
-  fill: #71836b;
-  background: #71836b;
+.rent-swatch {
+  background: var(--chart-rent);
 }
 
-.utilities-swatch,
-.income-utilities {
-  fill: #d7b47a;
-  background: #d7b47a;
+.utilities-swatch {
+  background: var(--chart-util);
+}
+
+.income-adjustment-marker {
+  fill: var(--color-danger);
+  stroke: var(--color-surface);
+  stroke-width: 2;
 }
 
 @media (max-width: 900px) {
