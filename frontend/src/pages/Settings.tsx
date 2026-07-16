@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
+  ApiError,
   Apartment,
   ImportReport,
   NotificationSettings,
@@ -100,8 +102,10 @@ export function Settings() {
     try {
       const value = await importApartmentHistory(Number(apartmentId), file, dryRun);
       setReport({ value, dryRun });
-    } catch {
-      setError(dryRun ? "Не вдалося перевірити файл імпорту." : "Не вдалося імпортувати файл.");
+    } catch (caught) {
+      setError(caught instanceof ApiError
+        ? caught.message
+        : dryRun ? "Не вдалося перевірити файл імпорту." : "Не вдалося імпортувати файл.");
     } finally {
       setBusy(null);
     }
@@ -156,6 +160,13 @@ export function Settings() {
 
       <section className="section-card settings-section">
         <div className="section-heading"><div><h2>Імпорт XLSX</h2><p>Спочатку перевірте файл без запису змін</p></div></div>
+        {settings && apartments.length === 0 && (
+          <div className="warning-box" role="status">
+            <strong>Спочатку створіть квартиру</strong>
+            <p>Історія імпортується в конкретну квартиру, тому без неї попередній перегляд та імпорт недоступні.</p>
+            <Link to="/apartments">Перейти до квартир</Link>
+          </div>
+        )}
         <div className="import-form">
           <label>Квартира<select value={apartmentId} onChange={(event) => setApartmentId(event.target.value)} disabled={apartments.length === 0}><option value="">Оберіть квартиру</option>{apartments.map((apartment) => <option key={apartment.id} value={apartment.id}>{apartment.name}</option>)}</select></label>
           <label>Файл XLSX<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(event) => { setFile(event.target.files?.[0] ?? null); setReport(null); }} /></label>

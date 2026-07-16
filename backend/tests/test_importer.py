@@ -8,7 +8,7 @@ from pathlib import Path
 from threading import Event
 
 from httpx import ASGITransport, AsyncClient
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from sqlalchemy import func, select
 
 from app.config import Settings
@@ -21,6 +21,58 @@ from app.services.billing import create_draft
 from app.services.importer import ImportFormatError, import_xlsx
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_import.xlsx"
+
+
+def _legacy_export_content() -> bytes:
+    workbook = Workbook()
+    information = workbook.active
+    information.title = "Загальна інформація"
+    information["A1"] = "Тарифи на комунальні послуги"
+    information["B2"] = "Номер рахунку"
+    information["D2"] = "Квітень 2024"
+    information["E2"] = "Травень 2024"
+    information.append(["Газ", "ACC-GAS", None, 7.95689, 7.95689])
+    information.append(["Водопостачання", "ACC-WATER", None, 28.24, 28.24])
+    information.append(["Інтернет", "ACC-NET", None, 240, 240])
+    information["A8"] = "Курс Валют"
+
+    for title, previous, current, water_previous, water_current, rate, adjustment in (
+        ("Квітень 2024", 100, 122, 10, 15, 44.68, False),
+        ("Травень 2024", 122, 132, 15, 19, 45, True),
+    ):
+        sheet = workbook.create_sheet(title)
+        sheet.append(["Комунальні послуги", "Показники", None, None, "Тариф", "До оплати"])
+        sheet.append([None, "Попередні", "Поточні", "Спожито"])
+        gas_amount = (current - previous) * 7.95689
+        water_amount = (water_current - water_previous) * 28.24
+        sheet.append(["Газ", previous, current, current - previous, 7.95689, gas_amount])
+        sheet.append([
+            "Вода",
+            water_previous,
+            water_current,
+            water_current - water_previous,
+            28.24,
+            water_amount,
+        ])
+        sheet.append(["Інтернет (uteam)", "-", "-", None, 240, 240])
+        utility_total = Decimal(str(gas_amount)) + Decimal(str(water_amount)) + Decimal("240")
+        if adjustment:
+            sheet.append(["Виклик майстра", None, None, None, None, -50])
+            utility_total -= Decimal("50")
+        sheet.append(["Разом", None, None, None, None, float(utility_total)])
+        sheet.append([])
+        sheet.append(["Оренда", "Вартість", "Курс"])
+        rent_uah = Decimal("325") * Decimal(str(rate))
+        sheet.append([None, 325, rate, None, None, float(rent_uah)])
+        expected_total = utility_total + rent_uah
+        if adjustment:
+            sheet.append(["Завдаток", None, None, None, None, 500])
+            expected_total -= Decimal("500")
+        sheet.append(["Разом до оплати", None, None, None, None, float(expected_total)])
+
+    content = BytesIO()
+    workbook.save(content)
+    return content.getvalue()
 
 
 async def _client(tmp_path):
@@ -103,6 +155,47 @@ async def test_full_import_handles_export_artifacts_and_broken_cells(tmp_path) -
             assert invoices[0].lines[1].prev_reading is None
             assert session.scalar(select(func.count(Service.id))) == 2
             assert session.scalar(select(func.count(Tariff.id))) == 4
+        engine.dispose()
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_import_supports_real_export_layout_and_dry_run(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        apartment_id = _apartment(application)
+        content = _legacy_export_content()
+
+        preview = await _upload(client, apartment_id, content, dry_run="true")
+        assert preview.status_code == 200
+        assert preview.json()["invoices_created"] == 2
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            assert session.scalar(select(func.count(Invoice.id))) == 0
+            assert session.scalar(select(func.count(Service.id))) == 0
+        engine.dispose()
+
+        imported = await _upload(client, apartment_id, content)
+        assert imported.status_code == 200
+        assert imported.json()["invoices_created"] == 2
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            invoices = list(session.scalars(select(Invoice).order_by(Invoice.period)))
+            assert str(invoices[1].grand_total) == "14507.53"
+            lines = list(
+                session.scalars(
+                    select(InvoiceLine)
+                    .where(InvoiceLine.invoice_id == invoices[1].id)
+                    .order_by(InvoiceLine.id)
+                )
+            )
+            amounts = {line.service_name: str(line.amount) for line in lines}
+            assert amounts["Виклик майстра"] == "-50.00"
+            assert amounts["Завдаток"] == "-500.00"
+            inactive = list(session.scalars(select(Service).where(Service.is_active.is_(False))))
+            assert {service.name for service in inactive} == {"Виклик майстра", "Завдаток"}
         engine.dispose()
     finally:
         await _close(lifespan, client)

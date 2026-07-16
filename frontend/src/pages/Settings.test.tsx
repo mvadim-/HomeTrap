@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
@@ -36,6 +37,21 @@ const apartments: apiClient.Apartment[] = [{
 afterEach(() => vi.restoreAllMocks());
 
 describe("Settings", () => {
+  it("explains why import is unavailable without an apartment", async () => {
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue([]);
+
+    render(<MemoryRouter><Settings /></MemoryRouter>);
+
+    expect(await screen.findByText("Спочатку створіть квартиру")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Перейти до квартир" })).toHaveAttribute(
+      "href",
+      "/apartments",
+    );
+    expect(screen.getByRole("button", { name: "Попередній перегляд" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Імпортувати" })).toBeDisabled();
+  });
+
   it("renders notification settings without seeded credentials", async () => {
     vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
@@ -113,5 +129,25 @@ describe("Settings", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Не вдалося перевірити файл");
     await user.click(screen.getByRole("button", { name: "Імпортувати" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Не вдалося імпортувати файл");
+  });
+
+  it("shows the XLSX validation detail returned by the API", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "importApartmentHistory").mockRejectedValue(
+      new apiClient.ApiError(422, "Не знайдено таблицю у вкладці «Загальна інформація»"),
+    );
+
+    render(<Settings />);
+    await user.upload(
+      screen.getByLabelText("Файл XLSX"),
+      new File(["xlsx"], "history.xlsx"),
+    );
+    await user.click(screen.getByRole("button", { name: "Попередній перегляд" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Не знайдено таблицю у вкладці «Загальна інформація»",
+    );
   });
 });

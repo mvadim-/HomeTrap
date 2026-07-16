@@ -20,6 +20,7 @@ from app.services.billing import (
 
 MONEY = Decimal("0.01")
 ZERO = Decimal("0")
+ONE = Decimal("1")
 MONTHS = {
     "січ": 1,
     "січень": 1,
@@ -45,6 +46,22 @@ MONTHS = {
     "листопад": 11,
     "гру": 12,
     "грудень": 12,
+}
+
+LEGACY_SERVICE_ALIASES = {
+    "доставка газу": "газ доставка",
+    "газ доставка": "газ доставка",
+    "водопостачання": "вода",
+    "вода": "вода",
+    "вода абонентська плата": "вода доставка",
+    "вода доставка": "вода доставка",
+    "інтернет": "інтернет (uteam)",
+    "інтернет (uteam)": "інтернет (uteam)",
+}
+LEGACY_UNITS = {
+    "газ": "м³",
+    "світло": "кВт·год",
+    "вода": "м³",
 }
 
 
@@ -173,6 +190,127 @@ def _find_information_sheet(sheet_names: list[str]) -> str:
     raise ImportFormatError("Відсутня вкладка «Загальна інформація»")
 
 
+def _legacy_service_key(value: object) -> str:
+    normalized = _normalized(value)
+    return LEGACY_SERVICE_ALIASES.get(normalized, normalized)
+
+
+def _is_legacy_export(sheet: Worksheet) -> bool:
+    return _normalized(sheet.cell(1, 1).value) == "тарифи на комунальні послуги"
+
+
+def _legacy_month_rows(sheet: Worksheet) -> list[tuple[object, ...]]:
+    rows = _rows(sheet)
+    if not rows or _normalized(rows[0][0]) != "комунальні послуги":
+        raise ImportFormatError(f"Невідомий формат вкладки «{sheet.title}»")
+    result: list[tuple[object, ...]] = []
+    for row in rows[2:]:
+        name = _normalized(row[0] if row else None)
+        if name == "разом":
+            return result
+        if name:
+            result.append(row)
+    raise ImportFormatError(f"Не знайдено підсумок у вкладці «{sheet.title}»")
+
+
+def _legacy_appearances(
+    workbook,
+    information_name: str,
+) -> dict[str, tuple[str, bool]]:
+    result: dict[str, tuple[str, bool]] = {}
+    for name in workbook.sheetnames:
+        if name == information_name or _period(name) is None:
+            continue
+        for row in _legacy_month_rows(workbook[name]):
+            display_name = str(row[0]).strip()
+            key = _legacy_service_key(display_name)
+            try:
+                previous = parse_decimal(row[1] if len(row) > 1 else None)
+                current = parse_decimal(row[2] if len(row) > 2 else None)
+            except InvalidOperation:
+                previous = current = None
+            metered = previous is not None or current is not None
+            existing = result.get(key)
+            result[key] = (display_name, metered or (existing[1] if existing else False))
+    return result
+
+
+def _cell_text(value: object) -> str | None:
+    if value is None or _normalized(value) in {"", "-", "—", "–"}:
+        return None
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip() or None
+
+
+def _import_legacy_services(
+    session: Session,
+    apartment: Apartment,
+    workbook,
+    information_name: str,
+    report: ImportReport,
+) -> dict[str, Service]:
+    sheet = workbook[information_name]
+    rows = _rows(sheet)
+    if len(rows) < 3:
+        raise ImportFormatError("Вкладка «Загальна інформація» порожня")
+    appearances = _legacy_appearances(workbook, information_name)
+    known: dict[str, Service] = {}
+    for service in apartment.services:
+        known[_legacy_service_key(service.name)] = service
+        known[_normalized(service.name)] = service
+    tariff_columns = [
+        (index, period)
+        for index, value in enumerate(rows[1])
+        if (period := _period(value)) is not None
+    ]
+    if not tariff_columns:
+        raise ImportFormatError("Не знайдено дат тарифів у вкладці «Загальна інформація»")
+
+    for row in rows[2:]:
+        raw_name = row[0] if row else None
+        if _normalized(raw_name) == "курс валют":
+            break
+        if raw_name is None or not _normalized(raw_name):
+            continue
+        info_name = str(raw_name).strip()
+        key = _legacy_service_key(info_name)
+        appearance = appearances.get(key)
+        display_name = appearance[0] if appearance else info_name
+        service = known.get(key)
+        if service is None:
+            service = Service(
+                apartment=apartment,
+                name=display_name,
+                kind="metered" if appearance and appearance[1] else "fixed",
+                unit=LEGACY_UNITS.get(key),
+                provider_account=_cell_text(row[1] if len(row) > 1 else None),
+                sort_order=max((item.sort_order for item in known.values()), default=-1) + 1,
+                is_active=appearance is not None,
+            )
+            session.add(service)
+            session.flush()
+            report.services_created += 1
+        known[key] = service
+        known[_normalized(info_name)] = service
+        known[_normalized(display_name)] = service
+        existing_dates = {tariff.valid_from for tariff in service.tariffs}
+        for column, valid_from in tariff_columns:
+            raw = row[column] if column < len(row) else None
+            tariff_value = _tariff_or_warning(
+                raw,
+                sheet=sheet.title,
+                field_name=f"тариф для «{display_name}» за {valid_from:%Y-%m}",
+                report=report,
+            )
+            if tariff_value is None or valid_from in existing_dates:
+                continue
+            session.add(Tariff(service=service, value=tariff_value, valid_from=valid_from))
+            existing_dates.add(valid_from)
+            report.tariffs_created += 1
+    return known
+
+
 def _import_services(
     session: Session,
     apartment: Apartment,
@@ -262,6 +400,89 @@ def _active_tariff(service: Service, period: date) -> Decimal | None:
     return max(candidates, key=lambda item: item.valid_from).value if candidates else None
 
 
+def _legacy_month_metadata(
+    sheet: Worksheet,
+) -> tuple[dict[str, object], object | None, str | None]:
+    rows = _rows(sheet)
+    rent_heading_index = next(
+        (index for index, row in enumerate(rows) if _normalized(row[0]) == "оренда"),
+        None,
+    )
+    final_index = next(
+        (index for index, row in enumerate(rows) if _normalized(row[0]) == "разом до оплати"),
+        None,
+    )
+    if rent_heading_index is None or final_index is None:
+        raise ImportFormatError(f"Не знайдено секцію оренди у вкладці «{sheet.title}»")
+    rent_index = next(
+        (
+            index
+            for index in range(rent_heading_index + 1, final_index)
+            if len(rows[index]) > 5
+            and any(rows[index][column] not in (None, "") for column in (1, 2, 5))
+        ),
+        None,
+    )
+    if rent_index is None:
+        raise ImportFormatError(f"Не знайдено дані оренди у вкладці «{sheet.title}»")
+    adjustment_names = [
+        str(rows[index][0]).strip()
+        for index in range(rent_index + 1, final_index)
+        if rows[index][0] not in (None, "") and len(rows[index]) > 5 and rows[index][5] not in (None, "")
+    ]
+    rent_row = rows[rent_index]
+    final_row = rows[final_index]
+    return (
+        {
+            "rent_usd": rent_row[1] if len(rent_row) > 1 else None,
+            "rate": rent_row[2] if len(rent_row) > 2 else None,
+            "rent_uah": rent_row[5] if len(rent_row) > 5 else None,
+        },
+        final_row[5] if len(final_row) > 5 else None,
+        " / ".join(adjustment_names) or None,
+    )
+
+
+def _legacy_adjustment_service(
+    session: Session,
+    apartment: Apartment,
+    services: dict[str, Service],
+    name: str,
+    report: ImportReport,
+) -> Service:
+    key = _legacy_service_key(name)
+    service = services.get(key)
+    if service is not None:
+        return service
+    service = Service(
+        apartment=apartment,
+        name=name,
+        kind="fixed",
+        sort_order=max((item.sort_order for item in services.values()), default=-1) + 1,
+        is_active=False,
+    )
+    session.add(service)
+    services[key] = service
+    services[_normalized(name)] = service
+    report.services_created += 1
+    return service
+
+
+def _record_legacy_tariff(
+    session: Session,
+    service: Service,
+    period: date,
+    value: Decimal,
+    report: ImportReport,
+) -> None:
+    if not service.is_active or any(tariff.valid_from == period for tariff in service.tariffs):
+        return
+    if _active_tariff(service, period) == value:
+        return
+    session.add(Tariff(service=service, value=value, valid_from=period))
+    report.tariffs_created += 1
+
+
 def _import_month(
     session: Session,
     apartment: Apartment,
@@ -269,6 +490,8 @@ def _import_month(
     sheet: Worksheet,
     period: date,
     report: ImportReport,
+    *,
+    legacy: bool = False,
 ) -> None:
     existing = session.scalar(
         select(Invoice).where(
@@ -288,8 +511,16 @@ def _import_month(
         }
         raise ImportFormatError(f"{sheet.title}: {messages[error.code]}") from error
 
-    header_index, mapping, rows = _find_table(sheet, {"service", "amount"})
-    metadata = _metadata(sheet)
+    if legacy:
+        mapping = {"service": 0, "previous": 1, "current": 2, "tariff": 4, "amount": 5}
+        month_rows = _legacy_month_rows(sheet)
+        metadata, legacy_final_total, legacy_adjustment_name = _legacy_month_metadata(sheet)
+    else:
+        header_index, mapping, rows = _find_table(sheet, {"service", "amount"})
+        month_rows = rows[header_index + 1 :]
+        metadata = _metadata(sheet)
+        legacy_final_total = None
+        legacy_adjustment_name = None
     rate = _decimal_or_warning(
         metadata.get("rate"), sheet=sheet.title, field_name="курс", report=report
     )
@@ -327,14 +558,18 @@ def _import_month(
     )
     report.invoices_created += 1
     utilities_total = ZERO
-    for row in rows[header_index + 1 :]:
+    for row in month_rows:
         name_value = _value(row, mapping, "service")
         name = str(name_value).strip() if name_value is not None else ""
         if not name:
             continue
-        service = services.get(_normalized(name))
+        service = services.get(_legacy_service_key(name) if legacy else _normalized(name))
+        adjustment = False
         if service is None:
-            raise ImportFormatError(f"{sheet.title}: невідома послуга «{name}»")
+            if not legacy:
+                raise ImportFormatError(f"{sheet.title}: невідома послуга «{name}»")
+            service = _legacy_adjustment_service(session, apartment, services, name, report)
+            adjustment = True
         previous = _decimal_or_warning(
             _value(row, mapping, "previous"),
             sheet=sheet.title,
@@ -347,7 +582,7 @@ def _import_month(
             field_name=f"{name}: поточний показник",
             report=report,
         )
-        tariff = _tariff_or_warning(
+        tariff = ONE if adjustment else _tariff_or_warning(
             _value(row, mapping, "tariff"),
             sheet=sheet.title,
             field_name=f"{name}: тариф",
@@ -356,6 +591,8 @@ def _import_month(
         )
         if tariff is None:
             raise ImportFormatError(f"{sheet.title}: {name}: потрібен додатний тариф")
+        if legacy and not adjustment:
+            _record_legacy_tariff(session, service, period, tariff, report)
         amount = _decimal_or_warning(
             _value(row, mapping, "amount"),
             sheet=sheet.title,
@@ -379,6 +616,37 @@ def _import_month(
                 amount=amount,
             )
         )
+    if legacy and legacy_final_total is not None:
+        target_total = _decimal_or_warning(
+            legacy_final_total,
+            sheet=sheet.title,
+            field_name="разом до оплати",
+            report=report,
+        )
+        if target_total is not None:
+            target_total = target_total.quantize(MONEY, rounding=ROUND_HALF_UP)
+            adjustment_amount = target_total - invoice.rent_amount_uah - utilities_total
+            if legacy_adjustment_name and adjustment_amount != ZERO:
+                adjustment_service = _legacy_adjustment_service(
+                    session,
+                    apartment,
+                    services,
+                    legacy_adjustment_name,
+                    report,
+                )
+                invoice.lines.append(
+                    InvoiceLine(
+                        service=adjustment_service,
+                        service_name=adjustment_service.name,
+                        service_kind="fixed",
+                        prev_reading=None,
+                        curr_reading=None,
+                        consumed=None,
+                        tariff_value=ONE,
+                        amount=adjustment_amount,
+                    )
+                )
+                utilities_total += adjustment_amount
     invoice.utilities_total = utilities_total.quantize(MONEY, rounding=ROUND_HALF_UP)
     invoice.grand_total = (invoice.rent_amount_uah + invoice.utilities_total).quantize(
         MONEY, rounding=ROUND_HALF_UP
@@ -409,8 +677,13 @@ def import_xlsx(
         raise ImportFormatError("Не вдалося прочитати XLSX-файл") from error
     report = ImportReport()
     information_name = _find_information_sheet(workbook.sheetnames)
+    legacy = _is_legacy_export(workbook[information_name])
     serialize_invoice_mutations(session, apartment.id)
-    services = _import_services(session, apartment, workbook[information_name], report)
+    services = (
+        _import_legacy_services(session, apartment, workbook, information_name, report)
+        if legacy
+        else _import_services(session, apartment, workbook[information_name], report)
+    )
     months = sorted(
         (period, workbook[name])
         for name in workbook.sheetnames
@@ -420,7 +693,7 @@ def import_xlsx(
         raise ImportFormatError("Не знайдено вкладок у форматі «<Місяць> <Рік>»")
     _warn_month_gaps([period for period, _ in months], report)
     for period, sheet in months:
-        _import_month(session, apartment, services, sheet, period, report)
+        _import_month(session, apartment, services, sheet, period, report, legacy=legacy)
     if dry_run:
         session.rollback()
     else:
