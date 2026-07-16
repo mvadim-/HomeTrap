@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.main import create_app
-from app.services.storage import attachment_path, save_attachment
+from app.routers import tenants as tenants_router
+from app.services.storage import (
+    attachment_path,
+    pending_tenant_file_deletions,
+    save_attachment,
+)
 
 
 async def _create_client(tmp_path):
@@ -248,6 +253,53 @@ async def test_delete_commit_failure_preserves_metadata_and_files(
 
         assert path.is_file()
         assert (await client.get(f"/api/tenants/{tenant['id']}/attachments")).status_code == 200
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_tenant_delete_cleanup_failure_can_be_retried(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    lifespan, client, settings = await _create_client(tmp_path)
+    try:
+        tenant = await _create_tenant(client)
+        upload = await client.post(
+            f"/api/tenants/{tenant['id']}/attachments",
+            files={"files": ("contract.pdf", b"pdf-content", "application/pdf")},
+        )
+        assert upload.status_code == 201
+        original_delete = tenants_router.delete_staged_tenant_files
+        failed = False
+
+        def fail_once(uploads_dir: Path, staged: Path) -> None:
+            nonlocal failed
+            if not failed:
+                failed = True
+                raise OSError("injected cleanup failure")
+            original_delete(uploads_dir, staged)
+
+        monkeypatch.setattr(
+            tenants_router,
+            "delete_staged_tenant_files",
+            fail_once,
+        )
+        with pytest.raises(OSError, match="injected cleanup failure"):
+            await client.delete(f"/api/tenants/{tenant['id']}")
+
+        pending = pending_tenant_file_deletions(
+            settings.uploads_dir,
+            tenant["id"],
+        )
+        assert len(pending) == 1
+        assert next(pending[0].iterdir()).read_bytes() == b"pdf-content"
+
+        retry = await client.delete(f"/api/tenants/{tenant['id']}")
+        assert retry.status_code == 204
+        assert not pending_tenant_file_deletions(settings.uploads_dir, tenant["id"])
+        assert (
+            await client.get(f"/api/tenants/{tenant['id']}/attachments")
+        ).status_code == 404
     finally:
         await _close_client(lifespan, client)
 

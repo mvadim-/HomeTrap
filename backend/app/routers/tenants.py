@@ -21,8 +21,11 @@ from app.services.storage import (
     MAX_ATTACHMENT_SIZE,
     attachment_path,
     delete_attachment,
-    delete_tenant_files,
+    delete_staged_tenant_files,
+    pending_tenant_file_deletions,
+    restore_staged_tenant_files,
     save_attachment,
+    stage_tenant_files,
     validate_file_type,
 )
 
@@ -212,15 +215,32 @@ def delete_tenant(
     request: Request,
     session: Session = Depends(get_db),
 ) -> Response:
-    tenant = _get_tenant(session, tenant_id)
-    tenant_id_to_delete = tenant.id
+    uploads_dir = request.app.state.settings.uploads_dir
+    pending_deletions = pending_tenant_file_deletions(uploads_dir, tenant_id)
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        if not pending_deletions:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
+        for staged in pending_deletions:
+            delete_staged_tenant_files(uploads_dir, staged)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    staged = stage_tenant_files(uploads_dir, tenant_id)
+    if staged is not None:
+        pending_deletions.append(staged)
     session.delete(tenant)
     try:
         session.commit()
     except Exception:
         session.rollback()
+        if staged is not None:
+            restore_staged_tenant_files(uploads_dir, tenant_id, staged)
         raise
-    delete_tenant_files(request.app.state.settings.uploads_dir, tenant_id_to_delete)
+    for staged in pending_deletions:
+        delete_staged_tenant_files(uploads_dir, staged)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

@@ -72,7 +72,49 @@ def delete_attachment(uploads_dir: Path, tenant_id: int, stored_name: str) -> No
         tenant_dir.rmdir()
 
 
-def delete_tenant_files(uploads_dir: Path, tenant_id: int) -> None:
+def pending_tenant_file_deletions(uploads_dir: Path, tenant_id: int) -> list[Path]:
+    staging_root = _resolve_within(uploads_dir, ".deleting")
+    if not staging_root.is_dir():
+        return []
+    prefix = f"tenant-{tenant_id}-"
+    return sorted(
+        path
+        for path in staging_root.iterdir()
+        if path.is_dir() and path.name.startswith(prefix)
+    )
+
+
+def stage_tenant_files(uploads_dir: Path, tenant_id: int) -> Path | None:
     directory = tenant_directory(uploads_dir, tenant_id)
-    if directory.is_dir():
-        rmtree(directory)
+    if not directory.is_dir():
+        return None
+    staging_root = _resolve_within(uploads_dir, ".deleting")
+    staging_root.mkdir(parents=True, exist_ok=True)
+    staged = _resolve_within(
+        uploads_dir,
+        ".deleting",
+        f"tenant-{tenant_id}-{uuid4().hex}",
+    )
+    directory.replace(staged)
+    return staged
+
+
+def restore_staged_tenant_files(
+    uploads_dir: Path,
+    tenant_id: int,
+    staged: Path,
+) -> None:
+    directory = tenant_directory(uploads_dir, tenant_id)
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    staged.replace(directory)
+    staging_root = _resolve_within(uploads_dir, ".deleting")
+    if staging_root.is_dir() and not any(staging_root.iterdir()):
+        staging_root.rmdir()
+
+
+def delete_staged_tenant_files(uploads_dir: Path, staged: Path) -> None:
+    if staged.is_dir():
+        rmtree(staged)
+    staging_root = _resolve_within(uploads_dir, ".deleting")
+    if staging_root.is_dir() and not any(staging_root.iterdir()):
+        staging_root.rmdir()

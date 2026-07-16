@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-16 15:16] Повторюване видалення файлів орендаря
+
+- `backend/app/services/storage.py`, `backend/app/routers/tenants.py` — файли орендаря
+  перед видаленням метаданих атомарно переміщуються у приватний staging; помилка DB
+  commit відновлює каталог, а помилка filesystem cleanup лишає durable маркер для
+  повторного `DELETE`.
+- `backend/tests/test_attachments.py` — додано регресію помилки cleanup з перевіркою
+  збережених staged-файлів та успішного повторного видалення.
+- Для production потрібно перебудувати й перезапустити контейнер за `docs/deploy.md`;
+  автоматичний деплой не виконувався.
+
 ## [2026-07-16 15:08] Усунення code smells після рев'ю
 
 - `backend/app/services/storage.py`, `backend/tests/test_attachments.py` — запис
