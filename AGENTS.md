@@ -22,6 +22,12 @@ Always USE docker for development and testing.
 
 Always provide deployment instructions for any code that is meant to run in production. If the change is purely local, state that explicitly.
 
+### Frontend Styling Conventions
+
+- Treat `frontend/src/theme.css` as the source of truth for light and dark design
+  tokens. Components should consume those CSS variables instead of duplicating
+  palette colors, card shadows, or chart colors.
+
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
 ## 1. Think Before Coding

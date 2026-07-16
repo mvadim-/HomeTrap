@@ -10,6 +10,7 @@ import {
   getIncomeStats,
 } from "../api/client";
 import { formatUah } from "../utils/format";
+import { utilityKind } from "../utils/utility";
 import "./portal.css";
 
 const CHART_WIDTH = 360;
@@ -36,11 +37,8 @@ function selectedMonthLabel(month: string): string {
 }
 
 function seriesColor(name: string): string {
-  const normalized = name.toLocaleLowerCase("uk-UA");
-  if (normalized.includes("газ")) return "var(--chart-gas)";
-  if (normalized.includes("світ") || normalized.includes("елект")) return "var(--chart-elec)";
-  if (normalized.includes("вод")) return "var(--chart-water)";
-  return "var(--color-primary)";
+  const kind = utilityKind(name);
+  return kind === "other" ? "var(--color-primary)" : `var(--chart-${kind})`;
 }
 
 function MiniLineChart({ series }: { series: ConsumptionSeries }) {
@@ -91,6 +89,7 @@ function MiniLineChart({ series }: { series: ConsumptionSeries }) {
 }
 
 function IncomeChart({ stats }: { stats: IncomeStats }) {
+  const [activeCorrection, setActiveCorrection] = useState<string | null>(null);
   const width = 760;
   const height = 270;
   const padding = { top: 28, right: 18, bottom: 38, left: 56 };
@@ -123,9 +122,12 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
                 points={`${x + barWidth / 2},${baseline - 7} ${x + barWidth / 2 + 7},${baseline} ${x + barWidth / 2},${baseline + 7} ${x + barWidth / 2 - 7},${baseline}`}
                 tabIndex={0}
                 aria-label={`${monthLabel(point.period)}, коригування: оренда ${formatUah(point.rent)}, комунальні ${formatUah(point.utilities)}, разом ${formatUah(point.total)}`}
-              >
-                <title>{monthLabel(point.period)} · Коригування · Оренда: {formatUah(point.rent)} · Комунальні: {formatUah(point.utilities)} · Разом: {formatUah(point.total)}</title>
-              </polygon>
+                aria-describedby={activeCorrection === point.period ? `correction-${index}` : undefined}
+                onBlur={() => setActiveCorrection(null)}
+                onFocus={() => setActiveCorrection(point.period)}
+                onMouseEnter={() => setActiveCorrection(point.period)}
+                onMouseLeave={() => setActiveCorrection(null)}
+              />
             ) : (
               <>
                 <rect className="income-rent" fill="var(--chart-rent)" stroke="var(--color-surface)" strokeWidth="2" x={x} y={baseline - rentHeight} width={barWidth} height={rentHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, оренда: ${formatUah(point.rent)}`}>
@@ -136,6 +138,19 @@ function IncomeChart({ stats }: { stats: IncomeStats }) {
                 </rect>
                 <text className="income-value-label" textAnchor="middle" x={x + barWidth / 2} y={Math.max(13, baseline - rentHeight - utilitiesHeight - 7)}>{compactAmountLabel(total)}</text>
               </>
+            )}
+            {hasNegativeSegment && activeCorrection === point.period && (
+              <g
+                id={`correction-${index}`}
+                className="chart-tooltip"
+                role="tooltip"
+                transform={`translate(${Math.min(Math.max(x + barWidth / 2, 105), width - 105)} ${baseline - 22})`}
+              >
+                <rect x="-100" y="-58" width="200" height="54" rx="6" />
+                <text textAnchor="middle" x="0" y="-42">Оренда: {formatUah(point.rent)}</text>
+                <text textAnchor="middle" x="0" y="-27">Комунальні: {formatUah(point.utilities)}</text>
+                <text textAnchor="middle" x="0" y="-12">Разом: {formatUah(point.total)}</text>
+              </g>
             )}
             <text className="chart-label month-label" textAnchor="middle" x={x + barWidth / 2} y={height - 11}>{monthLabel(point.period)}</text>
           </g>

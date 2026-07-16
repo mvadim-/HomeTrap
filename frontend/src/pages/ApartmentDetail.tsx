@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import {
@@ -16,8 +16,9 @@ import {
   getTariffs,
   updateService,
 } from "../api/client";
-import { TenantSection } from "../components/TenantSection";
-import { formatTariff, formatUah } from "../utils/format";
+import { OccupancyState, TenantSection } from "../components/TenantSection";
+import { formatMonthYear, formatTariff, formatUah } from "../utils/format";
+import { utilityKind } from "../utils/utility";
 import "./portal.css";
 
 const emptyService: ServicePayload = {
@@ -36,25 +37,9 @@ const invoiceStatusLabels = {
   paid: "Сплачений",
 } as const;
 
-function monthLabel(period: string): string {
-  return new Intl.DateTimeFormat("uk-UA", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${period.slice(0, 7)}-01T00:00:00Z`));
-}
-
 function averageUtilities(stats: IncomeStats): string | null {
   if (stats.values.length === 0) return null;
   return formatUah(Number(stats.totals.utilities) / stats.values.length);
-}
-
-function serviceMarker(name: string): "gas" | "elec" | "water" | null {
-  const normalizedName = name.toLocaleLowerCase("uk-UA");
-  if (normalizedName.includes("газ")) return "gas";
-  if (normalizedName.includes("електр") || normalizedName.includes("світл")) return "elec";
-  if (normalizedName.includes("вод")) return "water";
-  return null;
 }
 
 export function ApartmentDetail() {
@@ -70,29 +55,41 @@ export function ApartmentDetail() {
   const [tariffValue, setTariffValue] = useState("");
   const [tariffDate, setTariffDate] = useState("");
   const [averageUtilitiesValue, setAverageUtilitiesValue] = useState<string | null>(null);
-  const [activeTenantStart, setActiveTenantStart] = useState<string | null | undefined>(undefined);
+  const [occupancy, setOccupancy] = useState<OccupancyState>({ status: "unknown" });
   const [error, setError] = useState("");
+  const loadRequestId = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (requestId: number) => {
     const [apartmentData, serviceItems] = await Promise.all([getApartment(id), getServices(id)]);
     const tariffEntries = await Promise.all(
       serviceItems.map(async (service) => [service.id, await getTariffs(service.id)] as const),
     );
+    if (requestId !== loadRequestId.current) return;
     setApartment(apartmentData);
     setServices(serviceItems);
     setTariffs(Object.fromEntries(tariffEntries));
   }, [id]);
 
-  const handleActiveTenantChange = useCallback((tenant: { contract_start: string } | null) => {
-    setActiveTenantStart(tenant?.contract_start ?? null);
-  }, []);
-
   useEffect(() => {
+    const requestId = ++loadRequestId.current;
+    setApartment(null);
+    setServices([]);
+    setTariffs({});
+    setShowServiceForm(false);
+    setEditingServiceId(null);
+    setTariffServiceId(null);
+    setTariffValue("");
+    setTariffDate("");
+    setOccupancy({ status: "unknown" });
+    setError("");
     if (!Number.isInteger(id) || id < 1) {
       setError("Некоректний ідентифікатор квартири.");
       return;
     }
-    load().catch(() => setError("Не вдалося завантажити квартиру."));
+    load(requestId).catch(() => {
+      if (requestId === loadRequestId.current) setError("Не вдалося завантажити квартиру.");
+    });
+    return () => { loadRequestId.current += 1; };
   }, [id, load]);
 
   useEffect(() => {
@@ -128,8 +125,19 @@ export function ApartmentDetail() {
     setError("");
   }
 
+  async function refreshAfterMutation(requestId: number) {
+    try {
+      await load(requestId);
+    } catch {
+      if (requestId === loadRequestId.current) {
+        setError("Зміну збережено, але не вдалося оновити дані. Оновіть сторінку, щоб побачити актуальний стан.");
+      }
+    }
+  }
+
   async function submitService(event: FormEvent) {
     event.preventDefault();
+    const requestId = loadRequestId.current;
     setError("");
     const payload = {
       ...serviceForm,
@@ -139,24 +147,31 @@ export function ApartmentDetail() {
     try {
       if (editingServiceId) await updateService(id, editingServiceId, payload);
       else await createService(id, payload);
+      if (requestId !== loadRequestId.current) return;
       setShowServiceForm(false);
-      await load();
+      await refreshAfterMutation(requestId);
     } catch (requestError) {
-      setError(requestError instanceof ApiError ? requestError.message : "Не вдалося зберегти послугу.");
+      if (requestId === loadRequestId.current) {
+        setError(requestError instanceof ApiError ? requestError.message : "Не вдалося зберегти послугу.");
+      }
     }
   }
 
   async function submitTariff(event: FormEvent, serviceId: number) {
     event.preventDefault();
+    const requestId = loadRequestId.current;
     setError("");
     try {
       await createTariff(serviceId, { value: tariffValue, valid_from: tariffDate });
+      if (requestId !== loadRequestId.current) return;
       setTariffServiceId(null);
       setTariffValue("");
       setTariffDate("");
-      await load();
+      await refreshAfterMutation(requestId);
     } catch (requestError) {
-      setError(requestError instanceof ApiError ? requestError.message : "Не вдалося додати тариф.");
+      if (requestId === loadRequestId.current) {
+        setError(requestError instanceof ApiError ? requestError.message : "Не вдалося додати тариф.");
+      }
     }
   }
 
@@ -166,7 +181,15 @@ export function ApartmentDetail() {
   return (
     <>
       <header className="page-header">
-        <div><Link className="muted-text" to="/apartments">← Квартири</Link><h1>{apartment.name}</h1><p>{apartment.address}</p></div>
+        <div>
+          <Link className="muted-text" to="/apartments">← Квартири</Link>
+          <h1>{apartment.name}</h1>
+          <p>{apartment.address}</p>
+          <div className="apartment-detail-meta">
+            <span className="status-badge">{apartment.is_active ? "Активна" : "Архівна"}</span>
+            <span>{apartment.notes || "Приміток немає"}</span>
+          </div>
+        </div>
         <button className="secondary-button" type="button" disabled title="Функція з'явиться в наступній версії">Посилання орендаря</button>
       </header>
       {error && <p className="error-message">{error}</p>}
@@ -174,12 +197,12 @@ export function ApartmentDetail() {
       <div className="detail-grid">
         <section className="apartment-facts" aria-label="Факти квартири">
           <article className="apartment-fact"><span>Оренда</span><strong>{Number(apartment.rent_amount).toLocaleString("uk-UA", { maximumFractionDigits: 2 })} {apartment.rent_currency === "USD" ? "$" : apartment.rent_currency} / міс</strong></article>
-          <article className="apartment-fact"><span>Останній рахунок</span><strong>{apartment.latest_invoice ? `${monthLabel(apartment.latest_invoice.period)} · ${invoiceStatusLabels[apartment.latest_invoice.status]}` : "—"}</strong></article>
+          <article className="apartment-fact"><span>Останній рахунок</span><strong>{apartment.latest_invoice ? `${formatMonthYear(apartment.latest_invoice.period)} · ${invoiceStatusLabels[apartment.latest_invoice.status]}` : "—"}</strong></article>
           <article className="apartment-fact"><span>Середня комуналка</span><strong>{averageUtilitiesValue ?? "—"}</strong></article>
-          <article className="apartment-fact"><span>Орендар з</span><strong>{activeTenantStart === undefined ? "—" : activeTenantStart ?? "вільна"}</strong></article>
+          <article className="apartment-fact"><span>Орендар з</span><strong>{occupancy.status === "occupied" ? occupancy.contractStart : occupancy.status === "vacant" ? "вільна" : "—"}</strong></article>
         </section>
 
-        <TenantSection apartmentId={id} onActiveTenantChange={handleActiveTenantChange} />
+        <TenantSection apartmentId={id} onOccupancyChange={setOccupancy} />
 
         <section className="section-card services-section">
           <div className="section-heading">
@@ -207,7 +230,8 @@ export function ApartmentDetail() {
                   const serviceTariffs = tariffs[service.id] ?? [];
                   const effectiveTariffs = serviceTariffs.filter((tariff) => tariff.valid_from <= today);
                   const currentTariff = effectiveTariffs.at(-1);
-                  const marker = serviceMarker(service.name);
+                  const kind = utilityKind(service.name);
+                  const marker = kind === "other" ? null : kind;
                   return (
                     <tr key={service.id}>
                       <td><strong className="service-name">{marker && <span aria-hidden="true" className={`service-dot ${marker}`} />}{service.name}</strong><div className="muted-text">{service.kind === "metered" ? `Лічильник${service.unit ? ` · ${service.unit}` : ""}` : "Фіксована"} · {service.is_active ? "активна" : "неактивна"}</div></td>

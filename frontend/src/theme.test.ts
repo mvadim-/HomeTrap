@@ -78,13 +78,17 @@ describe("theme tokens", () => {
     const cardRuleMatch = portalCss.match(
       /\.metric-card,\s*\.section-card,\s*\.apartment-card\s*\{([^}]*)\}/i,
     );
-    const summaryTileRule = ruleBody(portalCss, ".stats-summary-tile");
+    const detailSurfaceRule = portalCss.match(
+      /\.apartment-fact,\s*\.stats-summary-tile\s*\{([^}]*)\}/i,
+    );
 
     expect(cardRuleMatch, "Missing shared portal card rule").not.toBeNull();
     const cardRule = cardRuleMatch?.[1] ?? "";
     expect(cardRule).toMatch(/border:\s*1px\s+solid\s+var\(--color-border\)/i);
     expect(cardRule).toMatch(/box-shadow:\s*var\(--shadow-card\)/i);
-    expect(summaryTileRule).toMatch(/border:\s*1px\s+solid\s+var\(--color-border\)/i);
-    expect(summaryTileRule).toMatch(/box-shadow:\s*var\(--shadow-card\)/i);
+    expect(detailSurfaceRule, "Missing shared detail card rule").not.toBeNull();
+    const detailRule = detailSurfaceRule?.[1] ?? "";
+    expect(detailRule).toMatch(/border:\s*1px\s+solid\s+var\(--color-border\)/i);
+    expect(detailRule).toMatch(/box-shadow:\s*var\(--shadow-card\)/i);
   });
 });

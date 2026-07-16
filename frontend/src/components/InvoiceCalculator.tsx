@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Invoice, InvoiceUpdatePayload } from "../api/client";
+import {
+  amountCents,
+  decimalInput,
+  normalizeDecimalInput,
+  numberValue,
+  productCents,
+  sameNumber,
+  subtractDecimals,
+} from "../utils/decimal";
 import { formatRate, formatReading, formatTariff, formatUah } from "../utils/format";
 import "../pages/portal.css";
 
@@ -8,61 +17,7 @@ interface InvoiceCalculatorProps {
   invoice: Invoice;
   onSave: (payload: InvoiceUpdatePayload) => Promise<void>;
   saving?: boolean;
-  onDraftChange?: (payload: InvoiceUpdatePayload, dirty: boolean) => void;
-}
-
-function numberValue(value: string | null): number | null {
-  if (value === null || value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function inputNumber(value: string, formatter: (input: string) => string): string {
-  return formatter(value).replaceAll("\u00a0", "").replace(",", ".");
-}
-
-function sameNumber(first: string | null, second: string | null): boolean {
-  return numberValue(first) === numberValue(second);
-}
-
-function decimalParts(value: string): { sign: bigint; digits: bigint; scale: number } {
-  const normalized = value.trim().replace(",", ".");
-  const match = normalized.match(/^([+-]?)(\d*)(?:\.(\d*))?$/);
-  if (!match || (!match[2] && !match[3])) return { sign: 1n, digits: 0n, scale: 0 };
-  const fraction = match[3] ?? "";
-  return {
-    sign: match[1] === "-" ? -1n : 1n,
-    digits: BigInt(`${match[2] || "0"}${fraction}`),
-    scale: fraction.length,
-  };
-}
-
-function productCents(first: string, second: string): bigint {
-  const left = decimalParts(first);
-  const right = decimalParts(second);
-  const sign = left.sign * right.sign;
-  const product = left.digits * right.digits;
-  const scale = left.scale + right.scale;
-  if (scale <= 2) return sign * product * (10n ** BigInt(2 - scale));
-  const divisor = 10n ** BigInt(scale - 2);
-  const rounded = product / divisor + (product % divisor * 2n >= divisor ? 1n : 0n);
-  return sign * rounded;
-}
-
-function amountCents(value: string): bigint {
-  return productCents(value, "1");
-}
-
-function subtractDecimals(first: string, second: string): string {
-  const left = decimalParts(first);
-  const right = decimalParts(second);
-  const scale = Math.max(left.scale, right.scale);
-  const leftValue = left.sign * left.digits * (10n ** BigInt(scale - left.scale));
-  const rightValue = right.sign * right.digits * (10n ** BigInt(scale - right.scale));
-  const result = leftValue - rightValue;
-  const sign = result < 0n ? "-" : "";
-  const digits = (result < 0n ? -result : result).toString().padStart(scale + 1, "0");
-  return scale ? `${sign}${digits.slice(0, -scale)}.${digits.slice(-scale)}` : `${sign}${digits}`;
+  onDraftChange?: (payload: InvoiceUpdatePayload | null, dirty: boolean) => void;
 }
 
 export function InvoiceCalculator({
@@ -71,21 +26,25 @@ export function InvoiceCalculator({
   saving = false,
   onDraftChange,
 }: InvoiceCalculatorProps) {
-  const [exchangeRate, setExchangeRate] = useState(
-    inputNumber(invoice.exchange_rate, formatRate),
-  );
+  const [exchangeRate, setExchangeRate] = useState({
+    display: formatRate(invoice.exchange_rate),
+    exact: invoice.exchange_rate,
+  });
   const [readings, setReadings] = useState<Record<number, string>>(
     Object.fromEntries(invoice.lines.map((line) => [
       line.id,
-      line.curr_reading === null ? "" : inputNumber(line.curr_reading, formatReading),
+      line.curr_reading === null ? "" : formatReading(line.curr_reading),
     ])),
   );
 
   useEffect(() => {
-    setExchangeRate(inputNumber(invoice.exchange_rate, formatRate));
+    setExchangeRate({
+      display: formatRate(invoice.exchange_rate),
+      exact: invoice.exchange_rate,
+    });
     setReadings(Object.fromEntries(invoice.lines.map((line) => [
       line.id,
-      line.curr_reading === null ? "" : inputNumber(line.curr_reading, formatReading),
+      line.curr_reading === null ? "" : formatReading(line.curr_reading),
     ])));
   }, [invoice]);
 
@@ -104,24 +63,38 @@ export function InvoiceCalculator({
         calculatedConsumed: consumed,
       };
     });
-    const rent = productCents(invoice.rent_amount_usd, exchangeRate);
+    const rent = productCents(invoice.rent_amount_usd, exchangeRate.exact);
     const utilities = lines.reduce((sum, line) => sum + line.calculatedAmount, 0n);
     return { lines, rent, utilities, total: rent + utilities };
-  }, [exchangeRate, invoice, readings]);
+  }, [exchangeRate.exact, invoice, readings]);
 
   const payload: InvoiceUpdatePayload = useMemo(() => ({
-    exchange_rate: exchangeRate,
+    exchange_rate: sameNumber(exchangeRate.exact, invoice.exchange_rate)
+      ? invoice.exchange_rate
+      : normalizeDecimalInput(exchangeRate.exact),
     lines: invoice.lines
       .filter((line) => line.service_kind === "metered")
-      .map((line) => ({ id: line.id, curr_reading: readings[line.id] || null })),
-  }), [exchangeRate, invoice.lines, readings]);
-  const dirty = !sameNumber(exchangeRate, invoice.exchange_rate) || invoice.lines.some(
+      .map((line) => {
+        const reading = decimalInput(readings[line.id] || null);
+        return {
+          id: line.id,
+          curr_reading: sameNumber(readings[line.id] || null, line.curr_reading)
+            ? line.curr_reading
+            : reading.normalized,
+        };
+      }),
+  }), [exchangeRate.exact, invoice.exchange_rate, invoice.lines, readings]);
+  const dirty = !sameNumber(exchangeRate.exact, invoice.exchange_rate) || invoice.lines.some(
     (line) => line.service_kind === "metered" && !sameNumber(readings[line.id] || null, line.curr_reading),
   );
+  const readingsValid = invoice.lines.every(
+    (line) => line.service_kind !== "metered" || decimalInput(readings[line.id] || null).valid,
+  );
+  const draftValid = Boolean(numberValue(exchangeRate.exact)) && readingsValid;
 
   useEffect(() => {
-    onDraftChange?.(payload, dirty);
-  }, [dirty, onDraftChange, payload]);
+    onDraftChange?.(draftValid ? payload : null, dirty);
+  }, [dirty, draftValid, onDraftChange, payload]);
 
   const localWarnings = calculated.lines.flatMap((line) => {
     if (line.calculatedConsumed === null || line.calculatedConsumed >= 0) return [];
@@ -143,6 +116,7 @@ export function InvoiceCalculator({
   });
 
   async function save() {
+    if (!draftValid) return;
     await onSave(payload);
   }
 
@@ -155,12 +129,14 @@ export function InvoiceCalculator({
           <input
             aria-label="Курс USD"
             disabled={invoice.status !== "draft"}
-            min="0.000001"
-            step="0.000001"
-            type="number"
-            value={exchangeRate}
-            placeholder={inputNumber(invoice.exchange_rate, formatRate)}
-            onChange={(event) => setExchangeRate(event.target.value)}
+            inputMode="decimal"
+            type="text"
+            value={exchangeRate.display}
+            placeholder={formatRate(invoice.exchange_rate)}
+            onChange={(event) => setExchangeRate({
+              display: event.target.value,
+              exact: normalizeDecimalInput(event.target.value),
+            })}
           />
         </label>
       </div>
@@ -181,8 +157,8 @@ export function InvoiceCalculator({
                       <input
                         aria-label={`Поточний показник ${line.service_name}`}
                         disabled={invoice.status !== "draft"}
-                        step="0.001"
-                        type="number"
+                        inputMode="decimal"
+                        type="text"
                         value={readings[line.id] ?? ""}
                         onChange={(event) => setReadings({ ...readings, [line.id]: event.target.value })}
                       />
@@ -210,7 +186,7 @@ export function InvoiceCalculator({
         <span>Комунальні <strong>{formatUah(Number(calculated.utilities) / 100)}</strong></span>
         <span className="grand-total">Разом <strong>{formatUah(Number(calculated.total) / 100)}</strong></span>
       </div>
-      {invoice.status === "draft" && <button className="button" type="button" disabled={saving || !numberValue(exchangeRate)} onClick={save}>{saving ? "Зберігаємо…" : "Зберегти чернетку"}</button>}
+      {invoice.status === "draft" && <button className="button" type="button" disabled={saving || !draftValid} onClick={save}>{saving ? "Зберігаємо…" : "Зберегти чернетку"}</button>}
     </section>
   );
 }

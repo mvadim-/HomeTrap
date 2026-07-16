@@ -81,6 +81,7 @@ describe("Stats", () => {
   });
 
   it("renders a correction marker instead of bars for a month with a negative segment", async () => {
+    const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
     vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
     vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
@@ -100,9 +101,14 @@ describe("Stats", () => {
     const chart = await screen.findByRole("img", { name: "Стековий графік доходу" });
     const marker = screen.getByLabelText(/вер, коригування:/i);
     expect(marker).toHaveClass("income-adjustment-marker");
-    expect(marker).toHaveTextContent(/Оренда: 0,00 ₴/);
-    expect(marker).toHaveTextContent(/Комунальні: -10.?740,93 ₴/);
-    expect(marker).toHaveTextContent(/Разом: -10.?740,93 ₴/);
+    expect(marker).toHaveAccessibleName(/оренда 0,00 ₴.*комунальні -10.?740,93 ₴.*разом -10.?740,93 ₴/i);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    await user.hover(marker);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/Комунальні: -10.?740,93 ₴/);
+    await user.unhover(marker);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.focus(marker);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/Разом: -10.?740,93 ₴/);
     expect(screen.queryByLabelText(/вер, оренда:/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/вер, комунальні:/i)).not.toBeInTheDocument();
     expect(chart.querySelectorAll(".income-rent")).toHaveLength(1);

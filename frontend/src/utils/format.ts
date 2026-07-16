@@ -44,6 +44,15 @@ export function formatRateSummary(value: string | number): string {
   return RATE_SUMMARY_FORMATTER.format(Number(value));
 }
 
+export function formatMonthYear(value: string): string {
+  const [year, month] = value.slice(0, 7).split("-").map(Number);
+  return new Intl.DateTimeFormat("uk-UA", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
 export function formatTenantRent(
   tenantName: string | null,
   rentAmount: string,

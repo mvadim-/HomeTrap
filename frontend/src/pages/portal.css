@@ -396,6 +396,16 @@
   gap: 20px;
 }
 
+.apartment-detail-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
 .apartment-facts {
   display: grid;
   grid-column: 1 / -1;
@@ -403,14 +413,18 @@
   gap: 12px;
 }
 
-.apartment-fact {
+.apartment-fact,
+.stats-summary-tile {
   display: grid;
-  gap: 7px;
-  padding: 16px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   box-shadow: var(--shadow-card);
+}
+
+.apartment-fact {
+  gap: 7px;
+  padding: 16px;
 }
 
 .apartment-fact span {
@@ -863,9 +877,9 @@
 }
 
 .period-switch button.active {
-  border-color: #71836b;
-  color: var(--color-surface);
-  background: #71836b;
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+  background: var(--color-primary);
 }
 
 .custom-period-fields label {
@@ -896,13 +910,8 @@
 }
 
 .stats-summary-tile {
-  display: grid;
   gap: 6px;
   padding: 18px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-card);
 }
 
 .stats-summary-tile span,
@@ -933,8 +942,18 @@
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--color-bg);
+}
+
+.chart-tooltip rect {
+  fill: var(--color-text);
+  stroke: var(--color-border);
+}
+
+.chart-tooltip text {
+  fill: var(--color-surface);
+  font-size: 10px;
 }
 
 .chart-card-heading,

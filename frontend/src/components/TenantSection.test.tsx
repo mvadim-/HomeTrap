@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -90,6 +90,27 @@ describe("TenantSection", () => {
     expect(await screen.findByText(/вже є активний орендар/i)).toBeInTheDocument();
   });
 
+  it("reports refresh failure separately after a tenant was created successfully", async () => {
+    vi.mocked(apiClient.getTenants)
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new apiClient.ApiError(503, "Tenants unavailable"));
+    vi.spyOn(apiClient, "createTenant").mockResolvedValue({
+      ...activeTenant,
+      full_name: "Марія Сидоренко",
+    });
+    const user = userEvent.setup();
+    render(<TenantSection apartmentId={1} />);
+
+    await user.click(await screen.findByRole("button", { name: "Новий орендар" }));
+    await user.type(screen.getByLabelText("ПІБ"), "Марія Сидоренко");
+    await user.click(screen.getByRole("button", { name: "Додати орендаря" }));
+
+    expect(await screen.findByText(/Зміну збережено, але не вдалося оновити дані/)).toBeInTheDocument();
+    expect(apiClient.createTenant).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Додати орендаря" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Не вдалося зберегти орендаря.")).not.toBeInTheDocument();
+  });
+
   it("shows an explicit empty state when the active tenant has no files", async () => {
     vi.mocked(apiClient.getTenants).mockResolvedValue([activeTenant]);
     vi.mocked(apiClient.getTenantAttachments).mockResolvedValue([]);
@@ -125,12 +146,42 @@ describe("TenantSection", () => {
   });
 
   it("reports the active tenant to the apartment facts", async () => {
-    const onActiveTenantChange = vi.fn();
+    const onOccupancyChange = vi.fn();
 
-    render(<TenantSection apartmentId={1} onActiveTenantChange={onActiveTenantChange} />);
+    render(<TenantSection apartmentId={1} onOccupancyChange={onOccupancyChange} />);
 
     await screen.findByText("Оксана Коваль");
-    expect(onActiveTenantChange).toHaveBeenCalledWith(activeTenant);
+    expect(onOccupancyChange).toHaveBeenCalledWith({
+      status: "occupied",
+      contractStart: activeTenant.contract_start,
+    });
+  });
+
+  it("keeps the active tenant when loading attachments fails", async () => {
+    const onOccupancyChange = vi.fn();
+    vi.mocked(apiClient.getTenantAttachments).mockRejectedValue(new apiClient.ApiError(503, "Attachments unavailable"));
+
+    render(<TenantSection apartmentId={1} onOccupancyChange={onOccupancyChange} />);
+
+    expect(await screen.findByText("Оксана Коваль")).toBeInTheDocument();
+    expect(screen.getByText("Attachments unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Активного орендаря немає.")).not.toBeInTheDocument();
+    expect(onOccupancyChange).toHaveBeenCalledWith({
+      status: "occupied",
+      contractStart: activeTenant.contract_start,
+    });
+  });
+
+  it("keeps tenant occupancy unknown when the tenant list fails", async () => {
+    const onOccupancyChange = vi.fn();
+    vi.mocked(apiClient.getTenants).mockRejectedValue(new apiClient.ApiError(503, "Tenants unavailable"));
+
+    render(<TenantSection apartmentId={1} onOccupancyChange={onOccupancyChange} />);
+
+    expect(await screen.findByText("Tenants unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Активного орендаря немає.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Новий орендар" })).not.toBeInTheDocument();
+    expect(onOccupancyChange).toHaveBeenLastCalledWith({ status: "unknown" });
   });
 
   it("uses a fresh local date whenever a tenant form is opened", async () => {
@@ -171,10 +222,75 @@ describe("TenantSection", () => {
 
     expect(await screen.findByText("Марія Сидоренко")).toBeInTheDocument();
     resolveFirst([activeTenant]);
-    await waitFor(() => expect(apiClient.getTenantAttachments).toHaveBeenCalledWith(activeTenant.id));
+    await waitFor(() => expect(apiClient.getTenantAttachments).not.toHaveBeenCalledWith(activeTenant.id));
 
     expect(screen.getByText("Марія Сидоренко")).toBeInTheDocument();
     expect(screen.queryByText("Оксана Коваль")).not.toBeInTheDocument();
+  });
+
+  it("clears tenant forms and selected files when the apartment changes", async () => {
+    const secondTenant = { ...activeTenant, id: 18, apartment_id: 2, full_name: "Марія Сидоренко" };
+    vi.mocked(apiClient.getTenants).mockImplementation(async (apartmentId) => (
+      apartmentId === 1 ? [activeTenant] : [secondTenant]
+    ));
+    vi.mocked(apiClient.getTenantAttachments).mockResolvedValue([]);
+    const user = userEvent.setup();
+    const { rerender } = render(<TenantSection apartmentId={1} />);
+
+    await user.click(await screen.findByRole("button", { name: "Редагувати" }));
+    await user.clear(screen.getByLabelText("ПІБ"));
+    await user.type(screen.getByLabelText("ПІБ"), "Чернетка квартири 1");
+    await user.click(screen.getByRole("button", { name: "Завершити контракт" }));
+    const fileInput = screen.getByLabelText("Файли контракту");
+    await user.upload(fileInput, new File(["pdf"], "private-contract.pdf", { type: "application/pdf" }));
+    expect(screen.getByText("private-contract.pdf")).toBeInTheDocument();
+
+    rerender(<TenantSection apartmentId={2} />);
+
+    expect(await screen.findByText("Марія Сидоренко")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Чернетка квартири 1")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Дата завершення контракту")).not.toBeInTheDocument();
+    expect(screen.queryByText("private-contract.pdf")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Файли контракту")).toHaveValue("");
+  });
+
+  it("ignores a tenant mutation that completes after the apartment changes", async () => {
+    let resolveCreate!: (tenant: apiClient.Tenant) => void;
+    const createRequest = new Promise<apiClient.Tenant>((resolve) => { resolveCreate = resolve; });
+    const secondTenant = { ...activeTenant, id: 18, apartment_id: 2, full_name: "Марія Сидоренко" };
+    const requestedApartments: number[] = [];
+    vi.mocked(apiClient.getTenants).mockImplementation(async (apartmentId) => {
+      requestedApartments.push(apartmentId);
+      return apartmentId === 1 ? [] : [secondTenant];
+    });
+    vi.mocked(apiClient.getTenantAttachments).mockResolvedValue([]);
+    vi.spyOn(apiClient, "createTenant").mockReturnValue(createRequest);
+    const onOccupancyChange = vi.fn();
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <TenantSection apartmentId={1} onOccupancyChange={onOccupancyChange} />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Новий орендар" }));
+    await user.type(screen.getByLabelText("ПІБ"), "Чернетка квартири 1");
+    await user.click(screen.getByRole("button", { name: "Додати орендаря" }));
+    expect(apiClient.createTenant).toHaveBeenCalledTimes(1);
+
+    rerender(<TenantSection apartmentId={2} onOccupancyChange={onOccupancyChange} />);
+    expect(await screen.findByText("Марія Сидоренко")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveCreate({ ...activeTenant, full_name: "Чернетка квартири 1" });
+      await createRequest;
+    });
+
+    expect(requestedApartments).toEqual([1, 2]);
+    expect(screen.getByText("Марія Сидоренко")).toBeInTheDocument();
+    expect(screen.queryByText("Чернетка квартири 1")).not.toBeInTheDocument();
+    expect(onOccupancyChange).toHaveBeenLastCalledWith({
+      status: "occupied",
+      contractStart: secondTenant.contract_start,
+    });
   });
 
   it("uses the current local date when the end-contract form opens", async () => {

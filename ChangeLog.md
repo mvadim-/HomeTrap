@@ -1,5 +1,127 @@
 # ChangeLog
 
+## [2026-07-16 18:58] Безпечне оновлення після збереження послуг і тарифів
+
+- `frontend/src/pages/ApartmentDetail.tsx` — помилка refresh після успішного створення
+  чи редагування послуги або створення тарифу тепер повідомляє, що зміну вже
+  збережено, замість помилково пропонувати повторити мутацію з ризиком дублювання.
+- `frontend/src/pages/ApartmentDetail.test.tsx` — додано регресійні перевірки окремої
+  семантики mutation-success/refresh-error для створення послуги й тарифу.
+- У Docker пройшли 101 frontend-тест, production build, 83 backend-тести та Ruff.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
+## [2026-07-16 18:49] Усунення frontend code smells після рев’ю
+
+- `frontend/src/components/TenantSection.tsx`, `frontend/src/pages/ApartmentDetail.tsx` —
+  покоління квартири тепер змінюється в effect, без ref-мутації під час render; callback
+  occupancy отримав явний discriminated state і передає лише дату початку контракту.
+- `frontend/src/utils/decimal.ts`, `frontend/src/components/InvoiceCalculator.tsx` — точну
+  десяткову арифметику винесено з UI-компонента в окремий domain utility.
+- `frontend/src/utils/format.ts`, `frontend/src/pages/Invoices.tsx`,
+  `frontend/src/pages/InvoiceEdit.tsx`, `frontend/src/pages/ApartmentDetail.tsx` — додано
+  спільне форматування місяця для API-періодів `YYYY-MM` і `YYYY-MM-DD`.
+- `frontend/src/pages/portal.css` — картки фактів квартири й summary статистики
+  використовують спільний selector для border, surface, radius і shadow токенів.
+- `frontend/src/utils/decimal.test.ts`, `frontend/src/utils/format.test.ts`,
+  `frontend/src/components/TenantSection.test.tsx`, `frontend/src/theme.test.ts` — додано
+  прямі unit/regression-перевірки нових контрактів. У Docker пройшли 99 frontend-тестів,
+  production build, 83 backend-тести та Ruff.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
+## [2026-07-16 18:36] Безпечна навігація рахунків і валідація показників
+
+- `frontend/src/pages/InvoiceEdit.tsx` — стан рахунку й чернетки очищається при зміні
+  route; асинхронні load/mutation-відповіді прив'язано до покоління маршруту, а save,
+  status і delete завжди спрямовано на id фактично відображеного рахунку.
+- `frontend/src/components/InvoiceCalculator.tsx` — preview, payload, dirty-state та
+  доступність save/issue використовують одну строгу десяткову граматику; exponent-
+  нотація на кшталт `1e3` у показниках більше не може потрапити до backend.
+- `frontend/src/pages/InvoiceEdit.test.tsx`,
+  `frontend/src/components/InvoiceCalculator.test.tsx` — додано regression-перевірки
+  stale route response, безпечного target id та узгодженої відмови від exponent-
+  показників. У Docker пройшли 94 frontend-тести, production build, 83 backend-тести
+  та Ruff.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
+## [2026-07-16 18:26] Точність рахунку й безпечне оновлення орендаря
+
+- `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/pages/InvoiceEdit.tsx` —
+  локалізоване представлення курсу й показників відокремлено від точних API-рядків:
+  незмінені шестизначні значення не стають dirty і не втрачають точність у payload;
+  exponent-нотація відхиляється однаково для preview, save та issue.
+- `frontend/src/components/TenantSection.tsx` — помилка refresh після успішної tenant-
+  мутації тепер повідомляє, що зміну вже збережено, і не маскується як помилка самої
+  мутації, яка могла спровокувати небезпечний повтор запиту.
+- `frontend/src/components/InvoiceCalculator.test.tsx`,
+  `frontend/src/pages/InvoiceEdit.test.tsx`, `frontend/src/components/TenantSection.test.tsx` —
+  додано regression-перевірки точного курсу `44.791749`, заборони `1e3`,
+  presentation `9583.500 → 9 583,5` зі збереженням raw payload та успішної мутації
+  з невдалим наступним refresh.
+- У Docker пройшли 92 frontend-тести, production build, 83 backend-тести та Ruff.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
+## [2026-07-16 18:17] Ізоляція tenant-мутацій і точне поле курсу
+
+- `frontend/src/components/TenantSection.tsx`, `frontend/src/pages/ApartmentDetail.tsx` —
+  tenant-load і всі мутації прив’язано до покоління поточної квартири; завершення
+  старого запиту після навігації більше не запускає load і не змінює стан нового
+  маршруту. Помилка списку орендарів зберігає невідомий occupancy замість хибного
+  стану «вільна».
+- `frontend/src/components/InvoiceCalculator.tsx` — редактор курсу показує API-курс
+  без хвостових нулів у локальному форматі (`44,7917`), але незмінена чернетка й
+  save payload зберігають початковий точний рядок (`44.791700`).
+- `frontend/src/components/TenantSection.test.tsx`,
+  `frontend/src/components/InvoiceCalculator.test.tsx`,
+  `frontend/src/pages/ApartmentDetail.test.tsx`, `frontend/src/pages/InvoiceEdit.test.tsx` —
+  додано regression-перевірки завершення мутації після зміни маршруту, unknown
+  occupancy при tenant-list error і display-нормалізації зі збереженням raw payload.
+- У Docker пройшли 88 frontend-тестів, production build, 83 backend-тести та Ruff.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
+## [2026-07-16 18:07] Ізоляція стану картки квартири та орендаря
+
+- `frontend/src/components/TenantSection.tsx` — помилка завантаження вкладень більше
+  не приховує активного орендаря; при зміні квартири очищаються tenant-форми,
+  ідентифікатор редагування, форма завершення контракту та вибрані файли.
+- `frontend/src/pages/ApartmentDetail.tsx` — route-load отримав request token;
+  попередні квартира, послуги, тарифи й форми очищаються одразу, а застарілі
+  відповіді та помилки мутацій не змінюють стан нового маршруту.
+- `frontend/src/components/TenantSection.test.tsx`,
+  `frontend/src/pages/ApartmentDetail.test.tsx` — додано regression-перевірки
+  attachment-помилки, очищення приватного file draft, stale response та невдалого
+  завантаження наступної квартири.
+- У Docker пройшли 86 frontend-тестів, production build, 83 backend-тести та Ruff.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
+## [2026-07-16 17:57] Виправлення знахідок комплексного рев’ю
+
+- `frontend/src/components/InvoiceCalculator.tsx` — editable-курс і показники більше
+  не проходять через locale formatter: шестизначна точність API зберігається у
+  draft/save payload, форматування лишається тільки у представленні.
+- `frontend/src/pages/ApartmentDetail.tsx`, `frontend/src/components/TenantSection.tsx` —
+  дата контракту очищається при зміні квартири та помилці tenant/attachment load;
+  у detail-header знову показуються статус і примітки квартири.
+- `frontend/src/utils/utility.ts`, `frontend/src/pages/Stats.tsx`,
+  `frontend/src/pages/portal.css` — класифікацію комунальних послуг уніфіковано,
+  negative-marker отримав поведінковий hover/focus tooltip, а статистичні поверхні
+  використовують theme-токени primary/on-primary та радіус 12px.
+- `frontend/src/components/InvoiceCalculator.test.tsx`,
+  `frontend/src/pages/ApartmentDetail.test.tsx`, `frontend/src/pages/Stats.test.tsx` —
+  додано regression-перевірки точного payload, route reuse, метаданих квартири й
+  інтерактивного tooltip; у Docker пройшли 82 frontend-тести, production build,
+  83 backend-тести та Ruff.
+- `AGENTS.md`, `docs/plans/20260716-mockup-style-alignment.md` — додано frontend-
+  styling convention, ручний side-by-side review лишено відкритим owner-критерієм,
+  а Post-Completion нотатку приведено до поточного стану.
+- Зміни зачіпають production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 17:42] Завершення циклу вирівнювання стилів
 
 - `CLAUDE.md` — зафіксовано стабільне правило frontend-стилів: `theme.css` є

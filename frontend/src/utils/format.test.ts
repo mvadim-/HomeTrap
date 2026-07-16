@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRate, formatRateSummary, formatReading, formatTariff } from "./format";
+import { formatMonthYear, formatRate, formatRateSummary, formatReading, formatTariff } from "./format";
 
 describe("number formatters", () => {
   it.each([
@@ -35,5 +35,10 @@ describe("number formatters", () => {
 
   it("rounds summary rates to exactly two decimal places", () => {
     expect(formatRateSummary("44.748000")).toBe("44,75");
+  });
+
+  it("normalizes month and date API periods to one month-year label", () => {
+    expect(formatMonthYear("2026-07")).toBe("липень 2026 р.");
+    expect(formatMonthYear("2026-07-01")).toBe("липень 2026 р.");
   });
 });

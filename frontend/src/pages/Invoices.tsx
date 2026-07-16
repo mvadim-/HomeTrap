@@ -14,13 +14,8 @@ import {
   INVOICE_STATUS_OPTIONS,
   InvoiceStatusBadge,
 } from "../components/InvoiceStatusBadge";
-import { formatUah } from "../utils/format";
+import { formatMonthYear, formatUah } from "../utils/format";
 import "./portal.css";
-
-function periodLabel(period: string): string {
-  return new Intl.DateTimeFormat("uk-UA", { month: "long", year: "numeric", timeZone: "UTC" })
-    .format(new Date(`${period}T00:00:00Z`));
-}
 
 function isOverdue(invoice: InvoiceListItem): boolean {
   if (invoice.status !== "issued") return false;
@@ -106,7 +101,7 @@ export function Invoices() {
                 const overdue = isOverdue(invoice);
                 return (
                   <tr key={invoice.id}>
-                    <td><strong>{periodLabel(invoice.period)}</strong></td>
+                    <td><strong>{formatMonthYear(invoice.period)}</strong></td>
                     <td>{apartmentNames[invoice.apartment_id] ?? `Квартира #${invoice.apartment_id}`}</td>
                     <td><InvoiceStatusBadge status={invoice.status} overdue={overdue} /></td>
                     <td>{formatUah(invoice.rent_amount_uah)}</td>

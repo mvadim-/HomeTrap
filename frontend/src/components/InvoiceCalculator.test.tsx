@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
@@ -32,8 +32,8 @@ describe("InvoiceCalculator", () => {
     expect(screen.getByText("14 796,05 ₴")).toBeInTheDocument();
     expect(screen.getByText("100")).toBeInTheDocument();
     expect(screen.getByText("7,95689 ₴")).toBeInTheDocument();
-    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue(122);
-    expect(screen.getByLabelText("Курс USD")).toHaveValue(44.68);
+    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue("122");
+    expect(screen.getByLabelText("Курс USD")).toHaveValue("44,68");
 
     const reading = screen.getByLabelText("Поточний показник Газ");
     await user.clear(reading);
@@ -70,20 +70,77 @@ describe("InvoiceCalculator", () => {
     expect(screen.getAllByText("10,08 ₴").length).toBeGreaterThan(0);
   });
 
-  it("trims the editable rate to four decimal places without making the draft dirty", () => {
+  it("preserves the API rate precision in the draft and save payload", async () => {
+    const user = userEvent.setup();
     const onDraftChange = vi.fn();
+    const onSave = vi.fn().mockResolvedValue(undefined);
     render(
       <InvoiceCalculator
-        invoice={{ ...invoice, exchange_rate: "44.791700" }}
-        onSave={vi.fn()}
+        invoice={{ ...invoice, exchange_rate: "44.791749" }}
+        onSave={onSave}
         onDraftChange={onDraftChange}
       />,
     );
 
-    expect(screen.getByLabelText("Курс USD")).toHaveValue(44.7917);
+    expect(screen.getByLabelText("Курс USD")).toHaveValue("44,7917");
     expect(onDraftChange).toHaveBeenLastCalledWith(
-      expect.objectContaining({ exchange_rate: "44.7917" }),
+      expect.objectContaining({ exchange_rate: "44.791749" }),
       false,
     );
+    await user.click(screen.getByRole("button", { name: "Зберегти чернетку" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ exchange_rate: "44.791749" }));
+  });
+
+  it("rejects exponent notation consistently in preview and save flows", async () => {
+    const user = userEvent.setup();
+    const onDraftChange = vi.fn();
+    const onSave = vi.fn();
+    render(<InvoiceCalculator invoice={invoice} onSave={onSave} onDraftChange={onDraftChange} />);
+
+    const rate = screen.getByLabelText("Курс USD");
+    await user.clear(rate);
+    await user.type(rate, "1e3");
+
+    expect(rate).toHaveValue("1e3");
+    expect(screen.getByRole("button", { name: "Зберегти чернетку" })).toBeDisabled();
+    expect(onDraftChange).toHaveBeenLastCalledWith(null, true);
+    await user.click(screen.getByRole("button", { name: "Зберегти чернетку" }));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("rejects exponent notation in readings across preview and save flows", async () => {
+    const user = userEvent.setup();
+    const onDraftChange = vi.fn();
+    const onSave = vi.fn();
+    render(<InvoiceCalculator invoice={invoice} onSave={onSave} onDraftChange={onDraftChange} />);
+
+    const reading = screen.getByLabelText("Поточний показник Газ");
+    await user.clear(reading);
+    await user.type(reading, "1e3");
+
+    expect(reading).toHaveValue("1e3");
+    expect(within(reading.closest("tr") as HTMLElement).getByText("0,00 ₴")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Зберегти чернетку" })).toBeDisabled();
+    expect(onDraftChange).toHaveBeenLastCalledWith(null, true);
+    await user.click(screen.getByRole("button", { name: "Зберегти чернетку" }));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("trims displayed reading zeroes while preserving the API payload", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const readingInvoice: Invoice = {
+      ...invoice,
+      lines: [{ ...invoice.lines[0], curr_reading: "9583.500", prev_reading: "9500.000" }],
+    };
+    render(<InvoiceCalculator invoice={readingInvoice} onSave={onSave} />);
+
+    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue("9\u00a0583,5");
+    expect(screen.getByText("83,5")).toBeInTheDocument();
+    expect(screen.getAllByText("664,40 ₴")).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Зберегти чернетку" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      lines: [{ id: 10, curr_reading: "9583.500" }],
+    }));
   });
 });

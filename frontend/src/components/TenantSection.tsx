@@ -67,15 +67,21 @@ function readableError(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
 
+export type OccupancyState =
+  | { status: "unknown" }
+  | { status: "vacant" }
+  | { status: "occupied"; contractStart: string };
+
 interface TenantSectionProps {
   apartmentId: number;
-  onActiveTenantChange?: (tenant: Tenant | null) => void;
+  onOccupancyChange?: (occupancy: OccupancyState) => void;
 }
 
-export function TenantSection({ apartmentId, onActiveTenantChange }: TenantSectionProps) {
+export function TenantSection({ apartmentId, onOccupancyChange }: TenantSectionProps) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [attachments, setAttachments] = useState<TenantAttachment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tenantOccupancyKnown, setTenantOccupancyKnown] = useState(false);
   const [error, setError] = useState("");
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [editingTenantId, setEditingTenantId] = useState<number | null>(null);
@@ -84,38 +90,105 @@ export function TenantSection({ apartmentId, onActiveTenantChange }: TenantSecti
   const [contractEnd, setContractEnd] = useState(localToday);
   const [files, setFiles] = useState<File[]>([]);
   const loadRequestId = useRef(0);
+  const apartmentScope = useRef({ apartmentId: 0, generation: 0 });
+  const mounted = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const load = useCallback(async (manageLoading = false) => {
+  function isCurrentApartment(targetApartmentId: number, generation: number): boolean {
+    return mounted.current
+      && apartmentScope.current.apartmentId === targetApartmentId
+      && apartmentScope.current.generation === generation;
+  }
+
+  const load = useCallback(async (targetApartmentId: number, generation: number, manageLoading = false) => {
+    if (!isCurrentApartment(targetApartmentId, generation)) return;
     const requestId = ++loadRequestId.current;
+    const isCurrentRequest = () => (
+      isCurrentApartment(targetApartmentId, generation) && requestId === loadRequestId.current
+    );
     if (manageLoading) {
       setLoading(true);
+      setTenantOccupancyKnown(false);
       setError("");
+      setTenants([]);
+      setAttachments([]);
+      onOccupancyChange?.({ status: "unknown" });
     }
     try {
-      const tenantItems = await getTenants(apartmentId);
+      let tenantItems: Tenant[];
+      try {
+        tenantItems = await getTenants(targetApartmentId);
+      } catch (requestError) {
+        if (!isCurrentRequest()) return;
+        if (!manageLoading) throw requestError;
+        setTenants([]);
+        setAttachments([]);
+        setTenantOccupancyKnown(false);
+        onOccupancyChange?.({ status: "unknown" });
+        setError(readableError(requestError, "Не вдалося завантажити орендарів."));
+        return;
+      }
+      if (!isCurrentRequest()) return;
       const active = tenantItems.find((tenant) => tenant.contract_end === null);
-      const activeAttachments = active ? await getTenantAttachments(active.id) : [];
-      if (requestId !== loadRequestId.current) return;
+      let activeAttachments: TenantAttachment[];
+      try {
+        activeAttachments = active ? await getTenantAttachments(active.id) : [];
+      } catch (requestError) {
+        if (!isCurrentRequest()) return;
+        setTenants(tenantItems);
+        setAttachments([]);
+        setTenantOccupancyKnown(true);
+        onOccupancyChange?.(active
+          ? { status: "occupied", contractStart: active.contract_start }
+          : { status: "vacant" });
+        if (!manageLoading) throw requestError;
+        setError(readableError(requestError, "Не вдалося завантажити файли орендаря."));
+        return;
+      }
+      if (!isCurrentRequest()) return;
       setTenants(tenantItems);
       setAttachments(activeAttachments);
-      onActiveTenantChange?.(active ?? null);
-    } catch (requestError) {
-      if (requestId !== loadRequestId.current) return;
-      if (!manageLoading) throw requestError;
-      setError(readableError(requestError, "Не вдалося завантажити орендарів."));
+      setTenantOccupancyKnown(true);
+      onOccupancyChange?.(active
+        ? { status: "occupied", contractStart: active.contract_start }
+        : { status: "vacant" });
     } finally {
-      if (manageLoading && requestId === loadRequestId.current) setLoading(false);
+      if (manageLoading && isCurrentRequest()) setLoading(false);
     }
-  }, [apartmentId, onActiveTenantChange]);
+  }, [onOccupancyChange]);
 
   useEffect(() => {
-    void load(true);
-    return () => { loadRequestId.current += 1; };
-  }, [load]);
+    const generation = apartmentScope.current.generation + 1;
+    apartmentScope.current = { apartmentId, generation };
+    mounted.current = true;
+    setShowTenantForm(false);
+    setEditingTenantId(null);
+    setDraft(emptyTenant());
+    setShowEndForm(false);
+    setContractEnd(localToday());
+    setFiles([]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    void load(apartmentId, generation, true);
+    return () => {
+      if (apartmentScope.current.generation === generation) {
+        mounted.current = false;
+        loadRequestId.current += 1;
+      }
+    };
+  }, [apartmentId, load]);
 
   const activeTenant = tenants.find((tenant) => tenant.contract_end === null);
   const formerTenants = tenants.filter((tenant) => tenant.contract_end !== null);
+
+  async function refreshAfterMutation(targetApartmentId: number, generation: number) {
+    try {
+      await load(targetApartmentId, generation);
+    } catch {
+      if (isCurrentApartment(targetApartmentId, generation)) {
+        setError("Зміну збережено, але не вдалося оновити дані. Оновіть сторінку, щоб побачити актуальний стан.");
+      }
+    }
+  }
 
   function beginCreate() {
     setEditingTenantId(null);
@@ -140,6 +213,7 @@ export function TenantSection({ apartmentId, onActiveTenantChange }: TenantSecti
 
   async function submitTenant(event: FormEvent) {
     event.preventDefault();
+    const mutationGeneration = apartmentScope.current.generation;
     setError("");
     try {
       if (editingTenantId) {
@@ -147,52 +221,67 @@ export function TenantSection({ apartmentId, onActiveTenantChange }: TenantSecti
       } else {
         await createTenant(apartmentId, normalizedPayload(draft));
       }
+      if (!isCurrentApartment(apartmentId, mutationGeneration)) return;
       setShowTenantForm(false);
       setEditingTenantId(null);
-      await load();
+      await refreshAfterMutation(apartmentId, mutationGeneration);
     } catch (requestError) {
-      setError(readableError(requestError, "Не вдалося зберегти орендаря."));
+      if (isCurrentApartment(apartmentId, mutationGeneration)) {
+        setError(readableError(requestError, "Не вдалося зберегти орендаря."));
+      }
     }
   }
 
   async function submitContractEnd(event: FormEvent) {
     event.preventDefault();
     if (!activeTenant || !window.confirm(`Завершити контракт орендаря ${activeTenant.full_name} ${contractEnd}?`)) return;
+    const mutationGeneration = apartmentScope.current.generation;
     setError("");
     try {
       await endTenantContract(activeTenant.id, contractEnd);
+      if (!isCurrentApartment(apartmentId, mutationGeneration)) return;
       setShowEndForm(false);
       setShowTenantForm(true);
       setEditingTenantId(null);
       setDraft(emptyTenant(nextDay(contractEnd)));
-      await load();
+      await refreshAfterMutation(apartmentId, mutationGeneration);
     } catch (requestError) {
-      setError(readableError(requestError, "Не вдалося завершити контракт."));
+      if (isCurrentApartment(apartmentId, mutationGeneration)) {
+        setError(readableError(requestError, "Не вдалося завершити контракт."));
+      }
     }
   }
 
   async function submitAttachments(event: FormEvent) {
     event.preventDefault();
     if (!activeTenant || files.length === 0) return;
+    const mutationGeneration = apartmentScope.current.generation;
     setError("");
     try {
       await uploadTenantAttachments(activeTenant.id, files);
+      if (!isCurrentApartment(apartmentId, mutationGeneration)) return;
       setFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      await load();
+      await refreshAfterMutation(apartmentId, mutationGeneration);
     } catch (requestError) {
-      setError(readableError(requestError, "Не вдалося завантажити файли."));
+      if (isCurrentApartment(apartmentId, mutationGeneration)) {
+        setError(readableError(requestError, "Не вдалося завантажити файли."));
+      }
     }
   }
 
   async function removeAttachment(attachment: TenantAttachment) {
     if (!window.confirm(`Видалити файл «${attachment.original_name}»?`)) return;
+    const mutationGeneration = apartmentScope.current.generation;
     setError("");
     try {
       await deleteTenantAttachment(attachment.id);
-      await load();
+      if (!isCurrentApartment(apartmentId, mutationGeneration)) return;
+      await refreshAfterMutation(apartmentId, mutationGeneration);
     } catch (requestError) {
-      setError(readableError(requestError, "Не вдалося видалити файл."));
+      if (isCurrentApartment(apartmentId, mutationGeneration)) {
+        setError(readableError(requestError, "Не вдалося видалити файл."));
+      }
     }
   }
 
@@ -200,7 +289,7 @@ export function TenantSection({ apartmentId, onActiveTenantChange }: TenantSecti
     <section className="section-card tenant-section">
       <div className="section-heading">
         <div><h2>Орендар</h2><p>Контакти, контракт і прикріплені файли</p></div>
-        {!activeTenant && !showTenantForm && (
+        {tenantOccupancyKnown && !activeTenant && !showTenantForm && (
           <button className="button" type="button" onClick={beginCreate}>Новий орендар</button>
         )}
       </div>
@@ -252,7 +341,7 @@ export function TenantSection({ apartmentId, onActiveTenantChange }: TenantSecti
         </div>
       )}
 
-      {!loading && !activeTenant && !showTenantForm && <p className="muted-text">Активного орендаря немає.</p>}
+      {!loading && tenantOccupancyKnown && !activeTenant && !showTenantForm && <p className="muted-text">Активного орендаря немає.</p>}
 
       {showTenantForm && (!activeTenant || editingTenantId === activeTenant.id) && (
         <form className="inline-form tenant-form" onSubmit={submitTenant}>

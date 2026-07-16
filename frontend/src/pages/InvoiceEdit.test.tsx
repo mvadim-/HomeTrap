@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
@@ -61,9 +61,30 @@ describe("InvoiceEdit", () => {
     );
 
     expect(await screen.findByText(/9.?582/)).toBeInTheDocument();
-    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue(9583.5);
+    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue("9\u00a0583,5");
     expect(screen.getByText("197,91 ₴")).toBeInTheDocument();
-    expect(screen.getByLabelText("Курс USD")).toHaveValue(44.7917);
+    expect(screen.getByLabelText("Курс USD")).toHaveValue("44,7917");
+  });
+
+  it("does not issue a draft with an invalid exponent rate", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getInvoice").mockResolvedValue(draft);
+    const update = vi.spyOn(apiClient, "updateInvoice").mockResolvedValue(draft);
+    const transition = vi.spyOn(apiClient, "transitionInvoice").mockResolvedValue(draft);
+    render(
+      <MemoryRouter initialEntries={["/invoices/7"]}>
+        <Routes><Route path="/invoices/:invoiceId" element={<InvoiceEdit />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    const rate = await screen.findByLabelText("Курс USD");
+    await user.clear(rate);
+    await user.type(rate, "1e3");
+
+    expect(screen.getByRole("button", { name: "Зберегти й виставити" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Зберегти чернетку" })).toBeDisabled();
+    expect(update).not.toHaveBeenCalled();
+    expect(transition).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -118,5 +139,43 @@ describe("InvoiceEdit", () => {
 
     expect(window.confirm).toHaveBeenCalledOnce();
     expect(remove).toHaveBeenCalledWith(7);
+  });
+
+  it("ignores stale route loads and mutates only the current invoice", async () => {
+    const user = userEvent.setup();
+    let resolveFirstRequest: (invoice: apiClient.Invoice) => void = () => undefined;
+    const firstRequest = new Promise<apiClient.Invoice>((resolve) => {
+      resolveFirstRequest = resolve;
+    });
+    const currentInvoice: apiClient.Invoice = {
+      ...draft,
+      id: 8,
+      period: "2026-08-01",
+      lines: [{ ...draft.lines[0], id: 20, curr_reading: "208.000" }],
+    };
+    vi.spyOn(apiClient, "getInvoice").mockImplementation((invoiceId) => (
+      invoiceId === 7 ? firstRequest : Promise.resolve(currentInvoice)
+    ));
+    const update = vi.spyOn(apiClient, "updateInvoice").mockResolvedValue(currentInvoice);
+    const transition = vi.spyOn(apiClient, "transitionInvoice").mockResolvedValue({
+      ...currentInvoice,
+      status: "issued",
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/invoices/7"]}>
+        <Link to="/invoices/8">Наступний рахунок</Link>
+        <Routes><Route path="/invoices/:invoiceId" element={<InvoiceEdit />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("link", { name: "Наступний рахунок" }));
+    expect(await screen.findByLabelText("Поточний показник Газ")).toHaveValue("208");
+    await act(async () => resolveFirstRequest(draft));
+    expect(screen.getByLabelText("Поточний показник Газ")).toHaveValue("208");
+
+    await user.click(screen.getByRole("button", { name: "Виставити" }));
+    expect(update).toHaveBeenCalledWith(8, expect.any(Object));
+    expect(transition).toHaveBeenCalledWith(8, "issue");
   });
 });
