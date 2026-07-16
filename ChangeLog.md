@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-16 22:48] Історичні суми завершених рахунків
+
+- `frontend/src/components/InvoiceCalculator.tsx` — read-only вигляд виставлених і
+  оплачених рахунків показує збережені snapshot-суми рядків та підсумків замість
+  повторного обчислення за показниками й тарифом.
+- `frontend/src/components/InvoiceCalculator.test.tsx` — додано регресійну перевірку
+  історичної суми, яка навмисно відрізняється від поточного добутку показника й
+  тарифу; targeted Vitest і browser-перевірка пройшли в Docker.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 22:32] Перехід із пікової статті до рахунку
 
 - `frontend/src/pages/Stats.tsx`, `frontend/src/pages/portal.css` — плитка «Найбільша

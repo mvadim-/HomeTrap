@@ -66,6 +66,12 @@ describe("InvoiceCalculator", () => {
         invoice={{
           ...invoice,
           status: "paid",
+          utilities_total: "300.00",
+          grand_total: "14821.00",
+          lines: [
+            { ...invoice.lines[0], amount: "200.00" },
+            invoice.lines[1],
+          ],
           warnings: [{
             code: "consumption_anomaly",
             message: "Anomalous consumption",
@@ -80,6 +86,10 @@ describe("InvoiceCalculator", () => {
     expect(screen.getByText("44,68")).toHaveClass("invoice-readonly-value");
     expect(within(screen.getByText("Газ").closest("tr") as HTMLElement).getByText("122"))
       .toHaveClass("invoice-readonly-value");
+    expect(within(screen.getByText("Газ").closest("tr") as HTMLElement).getByText("200,00 ₴"))
+      .toBeInTheDocument();
+    expect(screen.getByText("300,00 ₴")).toBeInTheDocument();
+    expect(screen.getByText("14 821,00 ₴")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByText("Перевірте показники")).not.toBeInTheDocument();
   });

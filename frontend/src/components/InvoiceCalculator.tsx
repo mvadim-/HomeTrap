@@ -51,6 +51,13 @@ export function InvoiceCalculator({
 
   const calculated = useMemo(() => {
     const lines = invoice.lines.map((line) => {
+      if (!isDraft) {
+        return {
+          ...line,
+          calculatedAmount: amountCents(line.amount),
+          calculatedConsumed: numberValue(line.consumed),
+        };
+      }
       if (line.service_kind !== "metered") return { ...line, calculatedAmount: amountCents(line.amount), calculatedConsumed: null };
       const previous = numberValue(line.prev_reading);
       const current = numberValue(readings[line.id] ?? "");
@@ -64,10 +71,15 @@ export function InvoiceCalculator({
         calculatedConsumed: consumed,
       };
     });
-    const rent = productCents(invoice.rent_amount_usd, exchangeRate.exact);
-    const utilities = lines.reduce((sum, line) => sum + line.calculatedAmount, 0n);
-    return { lines, rent, utilities, total: rent + utilities };
-  }, [exchangeRate.exact, invoice, readings]);
+    const rent = isDraft
+      ? productCents(invoice.rent_amount_usd, exchangeRate.exact)
+      : amountCents(invoice.rent_amount_uah);
+    const utilities = isDraft
+      ? lines.reduce((sum, line) => sum + line.calculatedAmount, 0n)
+      : amountCents(invoice.utilities_total);
+    const total = isDraft ? rent + utilities : amountCents(invoice.grand_total);
+    return { lines, rent, utilities, total };
+  }, [exchangeRate.exact, invoice, isDraft, readings]);
 
   const payload: InvoiceUpdatePayload = useMemo(() => ({
     exchange_rate: sameNumber(exchangeRate.exact, invoice.exchange_rate)
