@@ -14,6 +14,7 @@ describe("Invoices", () => {
     vi.spyOn(apiClient, "getApartments").mockResolvedValue([{
       id: 1, name: "Квартира на Подолі", address: "Київ", rent_amount: "325.00",
       rent_currency: "USD", notes: null, is_active: true, latest_invoice: null,
+      current_tenant_name: null,
     }]);
     const getInvoices = vi.spyOn(apiClient, "getInvoices").mockResolvedValue([{
       id: 7, apartment_id: 1, period: "2026-06-01", status: "issued",

@@ -24,6 +24,7 @@ describe("ApartmentDetail", () => {
       notes: "Код домофона 42",
       is_active: true,
       latest_invoice: null,
+      current_tenant_name: null,
     });
     vi.spyOn(apiClient, "getServices").mockResolvedValue([{
       id: 5,
@@ -62,6 +63,7 @@ describe("ApartmentDetail", () => {
     vi.spyOn(apiClient, "getApartment").mockResolvedValue({
       id: 1, name: "Квартира", address: "Адреса", rent_amount: "300.00",
       rent_currency: "USD", notes: null, is_active: true, latest_invoice: null,
+      current_tenant_name: null,
     });
     vi.spyOn(apiClient, "getServices").mockResolvedValue([{
       id: 5, apartment_id: 1, name: "Газ", kind: "metered", unit: "м³",

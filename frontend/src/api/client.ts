@@ -71,6 +71,7 @@ export interface Apartment {
   notes: string | null;
   is_active: boolean;
   latest_invoice: InvoiceSummary | null;
+  current_tenant_name: string | null;
 }
 
 export interface ApartmentPayload {

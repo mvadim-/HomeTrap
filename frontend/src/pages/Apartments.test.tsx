@@ -8,12 +8,24 @@ import { Apartments } from "./Apartments";
 
 const apartment: apiClient.Apartment = {
   id: 1, name: "Поділ", address: "Київ", rent_amount: "325.00", rent_currency: "USD",
-  notes: null, is_active: true, latest_invoice: null,
+  notes: null, is_active: true, latest_invoice: null, current_tenant_name: "Оксана Коваль",
 };
 
 afterEach(() => vi.restoreAllMocks());
 
 describe("Apartments", () => {
+  it("shows tenant rent summary and vacant apartment state", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue([
+      apartment,
+      { ...apartment, id: 2, name: "Центр", current_tenant_name: null },
+    ]);
+
+    render(<MemoryRouter><Apartments /></MemoryRouter>);
+
+    expect(await screen.findByText("Оксана К. · оренда 325 $")).toBeInTheDocument();
+    expect(screen.getByText("Квартира вільна")).toBeInTheDocument();
+  });
+
   it("creates, edits and archives apartments", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue([apartment]);

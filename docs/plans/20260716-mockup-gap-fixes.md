@@ -178,10 +178,10 @@ API:
 - Modify: `frontend/src/pages/Apartments.tsx`, `frontend/src/pages/Dashboard.tsx`, `frontend/src/api/client.ts`
 - Modify: `frontend/src/pages/Apartments.test.tsx`, `frontend/src/pages/Dashboard.test.tsx`
 
-- [ ] показ `current_tenant_name` у рядку квартири (як у макеті: «Оксана К. · оренда 325 $»); без орендаря — «квартира вільна»
-- [ ] те саме в списку квартир на дашборді
-- [ ] тести: рядок з орендарем і без
-- [ ] прогнати frontend-тести — мають пройти перед таском 7
+- [x] показ `current_tenant_name` у рядку квартири (як у макеті: «Оксана К. · оренда 325 $»); без орендаря — «квартира вільна»
+- [x] те саме в списку квартир на дашборді
+- [x] тести: рядок з орендарем і без
+- [x] прогнати frontend-тести — мають пройти перед таском 7
 
 ### Task 7: Frontend — Статистика: діапазон і саммарі-тайли
 

@@ -11,6 +11,7 @@ import {
   updateApartment,
 } from "../api/client";
 import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
+import { formatTenantRent } from "../utils/format";
 import "./portal.css";
 
 const emptyApartment: ApartmentPayload = {
@@ -99,7 +100,7 @@ export function Apartments() {
                 <InvoiceStatusBadge status={apartment.latest_invoice?.status ?? null} />
               </header>
               <p className="apartment-address">{apartment.address}</p>
-              <div className="card-row"><span>Оренда</span><strong>{apartment.rent_amount} {apartment.rent_currency}</strong></div>
+              <div className="card-row"><span>{formatTenantRent(apartment.current_tenant_name, apartment.rent_amount, apartment.rent_currency)}</span></div>
               <div className="card-row"><span>Стан</span><strong>{apartment.is_active ? "Активна" : "Архівна"}</strong></div>
               <div className="form-actions">
                 <button className="table-action" type="button" onClick={() => beginEdit(apartment)}>Редагувати</button>

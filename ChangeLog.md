@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-16 14:22] Орендарі у списках квартир
+
+- `frontend/src/pages/Apartments.tsx`, `frontend/src/pages/Dashboard.tsx`,
+  `frontend/src/utils/format.ts` — у картках квартир показано скорочене ім'я активного
+  орендаря із сумою оренди або стан «Квартира вільна».
+- `frontend/src/api/client.ts`, frontend fixtures — додано обов'язкове поле
+  `current_tenant_name` до типізованого контракту квартири.
+- `frontend/src/pages/Apartments.test.tsx`, `frontend/src/pages/Dashboard.test.tsx` —
+  перевірено картки з активним орендарем і без нього на обох сторінках.
+- `docs/plans/20260716-mockup-gap-fixes.md` — Task 6 позначено виконаним після 45
+  frontend-тестів і production build у Docker. Для production потрібно перебудувати
+  й перезапустити контейнер за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-16 14:18] Картка орендаря у квартирі
 
 - `frontend/src/components/TenantSection.tsx`, `frontend/src/pages/ApartmentDetail.tsx`,

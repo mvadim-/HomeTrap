@@ -32,6 +32,7 @@ const apartments: apiClient.Apartment[] = [{
   notes: null,
   is_active: true,
   latest_invoice: null,
+  current_tenant_name: null,
 }];
 
 afterEach(() => vi.restoreAllMocks());

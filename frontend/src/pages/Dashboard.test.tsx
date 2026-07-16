@@ -32,12 +32,23 @@ describe("Dashboard", () => {
       rent_currency: "USD",
       notes: null,
       is_active: true,
+      current_tenant_name: "Оксана Коваль",
       latest_invoice: {
         id: 7,
         period: "2026-07-01",
         status: "issued",
         grand_total: "16731.51",
       },
+    }, {
+      id: 2,
+      name: "Вільна квартира",
+      address: "Київ, вул. Січових Стрільців, 20",
+      rent_amount: "450.00",
+      rent_currency: "USD",
+      notes: null,
+      is_active: true,
+      current_tenant_name: null,
+      latest_invoice: null,
     }]);
     vi.spyOn(apiClient, "getCurrentRate").mockResolvedValue({
       requested_date: "2026-07-14",
@@ -56,5 +67,7 @@ describe("Dashboard", () => {
     expect(screen.getAllByText("Квартира на Подолі")).toHaveLength(2);
     expect(screen.getByText("Виставлений")).toBeInTheDocument();
     expect(screen.getByText("Очікує оплати")).toBeInTheDocument();
+    expect(screen.getByText("Оксана К. · оренда 325 $")).toBeInTheDocument();
+    expect(screen.getByText("Квартира вільна")).toBeInTheDocument();
   });
 });

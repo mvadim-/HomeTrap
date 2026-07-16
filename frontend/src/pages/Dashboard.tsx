@@ -10,7 +10,7 @@ import {
   getDashboard,
 } from "../api/client";
 import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
-import { formatUah } from "../utils/format";
+import { formatTenantRent, formatUah } from "../utils/format";
 import "./portal.css";
 
 export function Dashboard() {
@@ -68,7 +68,7 @@ export function Dashboard() {
                   <InvoiceStatusBadge status={apartment.latest_invoice?.status ?? null} />
                 </header>
                 <p className="apartment-address">{apartment.address}</p>
-                <div className="card-row"><span>Оренда</span><strong>{apartment.rent_amount} {apartment.rent_currency}</strong></div>
+                <div className="card-row"><span>{formatTenantRent(apartment.current_tenant_name, apartment.rent_amount, apartment.rent_currency)}</span></div>
                 {apartment.latest_invoice && <div className="card-row"><span>Останній рахунок</span><strong>{formatUah(apartment.latest_invoice.grand_total)}</strong></div>}
               </Link>
             ))}
