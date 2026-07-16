@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-16 22:50] Acceptance-перевірка фінального полірування
+
+- `docs/plans/20260716-review-polish.md` — Task 10 позначено виконаним після
+  browser walkthrough усіх 12 знахідок у light/dark темах; локальні стани без
+  чернеток, боргів та архівної квартири додатково підтверджені компонентними тестами.
+- У живому Docker-середовищі перевірено theme persistence після reload, read-only
+  paid-рахунок, 404, dashboard, management-картку, локалізовані дати, графіки з
+  гріделями й порожнім жовтнем, file-button flow та перехід із пікової статті.
+- Повний Docker suite пройшов: 123 frontend Vitest, production build, 83 backend
+  pytest і Ruff; acceptance виявила й окремим комітом виправила історичні суми
+  завершених рахунків.
+- Зміни цього циклу призначені для production frontend; для застосування потрібні
+  rebuild і restart контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 22:48] Історичні суми завершених рахунків
 
 - `frontend/src/components/InvoiceCalculator.tsx` — read-only вигляд виставлених і
