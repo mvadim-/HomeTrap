@@ -11,7 +11,7 @@ import {
   updateApartment,
 } from "../api/client";
 import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
-import { formatTenantRent } from "../utils/format";
+import { formatTenantRent, formatUah } from "../utils/format";
 import "./portal.css";
 
 const emptyApartment: ApartmentPayload = {
@@ -95,14 +95,23 @@ export function Apartments() {
         <div className="apartments-grid apartment-management-grid">
           {apartments.map((apartment) => (
             <article className="apartment-card apartment-management-card" key={apartment.id}>
-              <header>
-                <h2><Link to={`/apartments/${apartment.id}`}>{apartment.name}</Link></h2>
+              <span className="apartment-avatar" aria-hidden="true">{apartment.name.trim().charAt(0)}</span>
+              <div className="apartment-details">
+                <div className="apartment-title-row">
+                  <h2><Link to={`/apartments/${apartment.id}`}>{apartment.name}</Link></h2>
+                  <span className={`apartment-state-badge ${apartment.is_active ? "active" : "archived"}`}>
+                    {apartment.is_active ? "Активна" : "Архівна"}
+                  </span>
+                </div>
+                <p className="apartment-address">{apartment.address}</p>
+                <span className="apartment-rent">{formatTenantRent(apartment.current_tenant_name, apartment.rent_amount, apartment.rent_currency)}</span>
+              </div>
+              <div className="apartment-summary">
+                <small>останній рахунок</small>
+                <strong>{apartment.latest_invoice ? formatUah(apartment.latest_invoice.grand_total) : "—"}</strong>
                 <InvoiceStatusBadge status={apartment.latest_invoice?.status ?? null} />
-              </header>
-              <p className="apartment-address">{apartment.address}</p>
-              <div className="card-row"><span>{formatTenantRent(apartment.current_tenant_name, apartment.rent_amount, apartment.rent_currency)}</span></div>
-              <div className="card-row"><span>Стан</span><strong>{apartment.is_active ? "Активна" : "Архівна"}</strong></div>
-              <div className="form-actions">
+              </div>
+              <div className="form-actions apartment-management-actions">
                 <button className="table-action" type="button" onClick={() => beginEdit(apartment)}>Редагувати</button>
                 {apartment.is_active && <button className="table-action" type="button" onClick={() => archive(apartment.id)}>Архівувати</button>}
               </div>

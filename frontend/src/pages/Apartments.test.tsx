@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, vi } from "vitest";
@@ -14,19 +14,35 @@ const apartment: apiClient.Apartment = {
 afterEach(() => vi.restoreAllMocks());
 
 describe("Apartments", () => {
-  it("shows tenant rent summary and vacant apartment state", async () => {
+  it("renders active and archived management cards with avatars and invoice summaries", async () => {
     vi.spyOn(apiClient, "getApartments").mockResolvedValue([
-      apartment,
-      { ...apartment, id: 2, name: "Центр", current_tenant_name: null },
+      {
+        ...apartment,
+        latest_invoice: { id: 7, period: "2026-07-01", status: "issued", grand_total: "16731.51" },
+      },
+      { ...apartment, id: 2, name: "Центр", is_active: false, current_tenant_name: null },
     ]);
 
     render(<MemoryRouter><Apartments /></MemoryRouter>);
 
-    expect(await screen.findByText("Оксана К. · оренда 325 $")).toBeInTheDocument();
-    expect(screen.getByText("Квартира вільна")).toBeInTheDocument();
-    const card = screen.getByRole("heading", { name: "Поділ" }).closest("article");
-    expect(card).toHaveClass("apartment-management-card");
-    expect(card?.parentElement).toHaveClass("apartment-management-grid");
+    const activeCard = (await screen.findByRole("heading", { name: "Поділ" })).closest("article");
+    const archivedCard = screen.getByRole("heading", { name: "Центр" }).closest("article");
+    expect(activeCard).toHaveClass("apartment-management-card");
+    expect(activeCard?.parentElement).toHaveClass("apartment-management-grid");
+    expect(within(activeCard!).getByText("Активна")).toHaveClass("apartment-state-badge", "active");
+    expect(within(activeCard!).getByText("Оксана К. · оренда 325 $")).toBeInTheDocument();
+    expect(within(activeCard!).getByText("П")).toHaveClass("apartment-avatar");
+    expect(within(activeCard!).getByText("останній рахунок")).toBeInTheDocument();
+    expect(within(activeCard!).getByText(/16.?731,51 ₴/)).toBeInTheDocument();
+    expect(within(activeCard!).getByText("Виставлений")).toBeInTheDocument();
+
+    expect(within(archivedCard!).getByText("Архівна")).toHaveClass("apartment-state-badge", "archived");
+    expect(within(archivedCard!).getByText("Квартира вільна")).toBeInTheDocument();
+    expect(within(archivedCard!).getByText("Ц")).toHaveClass("apartment-avatar");
+    expect(within(archivedCard!).getByText("Без рахунків")).toBeInTheDocument();
+    expect(within(archivedCard!).queryByRole("button", { name: "Архівувати" })).not.toBeInTheDocument();
+
+    expect(screen.queryByText("Стан")).not.toBeInTheDocument();
   });
 
   it("creates, edits and archives apartments", async () => {
