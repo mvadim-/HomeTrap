@@ -13,9 +13,24 @@ const navigation = [
   { to: "/settings", label: "Налаштування" },
 ];
 
+type Theme = "light" | "dark";
+
+function getInitialTheme(): Theme {
+  const storedTheme = window.localStorage.getItem("theme");
+  if (storedTheme === "light" || storedTheme === "dark") {
+    return storedTheme;
+  }
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 export function Layout() {
   const navigate = useNavigate();
   const [rate, setRate] = useState<ExchangeRate | null>(null);
+  const [theme, setTheme] = useState<Theme>(() => {
+    const initialTheme = getInitialTheme();
+    document.documentElement.dataset.theme = initialTheme;
+    return initialTheme;
+  });
 
   useEffect(() => {
     let active = true;
@@ -33,10 +48,10 @@ export function Layout() {
   }
 
   function toggleTheme() {
-    const root = document.documentElement;
-    const current = root.dataset.theme ??
-      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-    root.dataset.theme = current === "dark" ? "light" : "dark";
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    window.localStorage.setItem("theme", nextTheme);
+    document.documentElement.dataset.theme = nextTheme;
+    setTheme(nextTheme);
   }
 
   const formattedRate = rate ? formatRateSummary(rate.rate) : null;

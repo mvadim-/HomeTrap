@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
 
@@ -11,8 +12,12 @@ vi.mock("../api/client", () => ({
 }));
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   vi.mocked(apiClient.getCurrentRate).mockReset();
+  vi.mocked(apiClient.getCurrentRate).mockImplementation(() => new Promise(() => undefined));
   vi.mocked(apiClient.logout).mockReset();
+  window.localStorage.clear();
+  delete document.documentElement.dataset.theme;
 });
 
 describe("Layout", () => {
@@ -39,5 +44,47 @@ describe("Layout", () => {
     render(<MemoryRouter><Layout /></MemoryRouter>);
 
     expect(await screen.findByText("Курс НБУ —")).toBeInTheDocument();
+  });
+
+  it("restores the stored theme after remounting", () => {
+    window.localStorage.setItem("theme", "dark");
+
+    const view = render(<MemoryRouter><Layout /></MemoryRouter>);
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+
+    view.unmount();
+    document.documentElement.dataset.theme = "light";
+    render(<MemoryRouter><Layout /></MemoryRouter>);
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  });
+
+  it("uses the system preference when no theme is stored", () => {
+    vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: query === "(prefers-color-scheme: dark)",
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+
+    render(<MemoryRouter><Layout /></MemoryRouter>);
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(window.localStorage.getItem("theme")).toBeNull();
+  });
+
+  it("stores and applies the selected theme", async () => {
+    const user = userEvent.setup();
+    render(<MemoryRouter><Layout /></MemoryRouter>);
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    await user.click(screen.getByRole("button", { name: "Змінити тему" }));
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(window.localStorage.getItem("theme")).toBe("dark");
   });
 });

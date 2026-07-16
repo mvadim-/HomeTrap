@@ -129,10 +129,10 @@ light + dark, порівняння з макетом) підтвердило: б
 - Modify: `frontend/src/components/Layout.tsx`
 - Modify: `frontend/src/components/Layout.test.tsx`
 
-- [ ] ініціалізація теми: `localStorage.theme` → `prefers-color-scheme: dark` → light; застосування на `<html data-theme>` до першого рендера (без «блимання»)
-- [ ] перемикач зберігає вибір у localStorage і оновлює атрибут
-- [ ] тести: збережений вибір відновлюється після перемонтування; без збереженого — виводиться з matchMedia (mock); toggle пише в localStorage
-- [ ] прогнати frontend-тести — мають пройти перед таском 2
+- [x] ініціалізація теми: `localStorage.theme` → `prefers-color-scheme: dark` → light; застосування на `<html data-theme>` до першого рендера (без «блимання»)
+- [x] перемикач зберігає вибір у localStorage і оновлює атрибут
+- [x] тести: збережений вибір відновлюється після перемонтування; без збереженого — виводиться з matchMedia (mock); toggle пише в localStorage
+- [x] прогнати frontend-тести — мають пройти перед таском 2
 
 ### Task 2: Read-only вигляд виставлених/оплачених рахунків
 
