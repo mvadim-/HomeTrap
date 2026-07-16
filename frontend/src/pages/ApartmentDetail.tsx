@@ -4,18 +4,20 @@ import { Link, useParams } from "react-router-dom";
 import {
   ApiError,
   Apartment,
+  IncomeStats,
   Service,
   ServicePayload,
   Tariff,
   createService,
   createTariff,
   getApartment,
+  getIncomeStats,
   getServices,
   getTariffs,
   updateService,
 } from "../api/client";
 import { TenantSection } from "../components/TenantSection";
-import { formatTariff } from "../utils/format";
+import { formatTariff, formatUah } from "../utils/format";
 import "./portal.css";
 
 const emptyService: ServicePayload = {
@@ -27,6 +29,33 @@ const emptyService: ServicePayload = {
 };
 
 const today = new Date().toISOString().slice(0, 10);
+
+const invoiceStatusLabels = {
+  draft: "Чернетка",
+  issued: "Виставлений",
+  paid: "Сплачений",
+} as const;
+
+function monthLabel(period: string): string {
+  return new Intl.DateTimeFormat("uk-UA", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${period}-01T00:00:00Z`));
+}
+
+function averageUtilities(stats: IncomeStats): string | null {
+  if (stats.values.length === 0) return null;
+  return formatUah(Number(stats.totals.utilities) / stats.values.length);
+}
+
+function serviceMarker(name: string): "gas" | "elec" | "water" | null {
+  const normalizedName = name.toLocaleLowerCase("uk-UA");
+  if (normalizedName.includes("газ")) return "gas";
+  if (normalizedName.includes("електр") || normalizedName.includes("світл")) return "elec";
+  if (normalizedName.includes("вод")) return "water";
+  return null;
+}
 
 export function ApartmentDetail() {
   const { apartmentId } = useParams();
@@ -40,6 +69,8 @@ export function ApartmentDetail() {
   const [tariffServiceId, setTariffServiceId] = useState<number | null>(null);
   const [tariffValue, setTariffValue] = useState("");
   const [tariffDate, setTariffDate] = useState("");
+  const [averageUtilitiesValue, setAverageUtilitiesValue] = useState<string | null>(null);
+  const [activeTenantStart, setActiveTenantStart] = useState<string | null | undefined>(undefined);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -52,6 +83,10 @@ export function ApartmentDetail() {
     setTariffs(Object.fromEntries(tariffEntries));
   }, [id]);
 
+  const handleActiveTenantChange = useCallback((tenant: { contract_start: string } | null) => {
+    setActiveTenantStart(tenant?.contract_start ?? null);
+  }, []);
+
   useEffect(() => {
     if (!Number.isInteger(id) || id < 1) {
       setError("Некоректний ідентифікатор квартири.");
@@ -59,6 +94,20 @@ export function ApartmentDetail() {
     }
     load().catch(() => setError("Не вдалося завантажити квартиру."));
   }, [id, load]);
+
+  useEffect(() => {
+    if (!Number.isInteger(id) || id < 1) return;
+    let cancelled = false;
+    setAverageUtilitiesValue(null);
+    getIncomeStats(id, { months: 12 })
+      .then((stats) => {
+        if (!cancelled) setAverageUtilitiesValue(averageUtilities(stats));
+      })
+      .catch(() => {
+        if (!cancelled) setAverageUtilitiesValue(null);
+      });
+    return () => { cancelled = true; };
+  }, [id]);
 
   function beginServiceEdit(service?: Service) {
     if (service) {
@@ -123,16 +172,14 @@ export function ApartmentDetail() {
       {error && <p className="error-message">{error}</p>}
 
       <div className="detail-grid">
-        <section className="section-card">
-          <h2>Реквізити</h2>
-          <dl className="details-list">
-            <dt>Оренда</dt><dd>{apartment.rent_amount} {apartment.rent_currency}</dd>
-            <dt>Статус</dt><dd>{apartment.is_active ? "Активна" : "Архівна"}</dd>
-            <dt>Примітки</dt><dd>{apartment.notes || "—"}</dd>
-          </dl>
+        <section className="apartment-facts" aria-label="Факти квартири">
+          <article className="apartment-fact"><span>Оренда</span><strong>{Number(apartment.rent_amount).toLocaleString("uk-UA", { maximumFractionDigits: 2 })} {apartment.rent_currency === "USD" ? "$" : apartment.rent_currency} / міс</strong></article>
+          <article className="apartment-fact"><span>Останній рахунок</span><strong>{apartment.latest_invoice ? `${monthLabel(apartment.latest_invoice.period)} · ${invoiceStatusLabels[apartment.latest_invoice.status]}` : "—"}</strong></article>
+          <article className="apartment-fact"><span>Середня комуналка</span><strong>{averageUtilitiesValue ?? "—"}</strong></article>
+          <article className="apartment-fact"><span>Орендар з</span><strong>{activeTenantStart === undefined ? "—" : activeTenantStart ?? "вільна"}</strong></article>
         </section>
 
-        <TenantSection apartmentId={id} />
+        <TenantSection apartmentId={id} onActiveTenantChange={handleActiveTenantChange} />
 
         <section className="section-card services-section">
           <div className="section-heading">
@@ -160,9 +207,10 @@ export function ApartmentDetail() {
                   const serviceTariffs = tariffs[service.id] ?? [];
                   const effectiveTariffs = serviceTariffs.filter((tariff) => tariff.valid_from <= today);
                   const currentTariff = effectiveTariffs.at(-1);
+                  const marker = serviceMarker(service.name);
                   return (
                     <tr key={service.id}>
-                      <td><strong>{service.name}</strong><div className="muted-text">{service.kind === "metered" ? `Лічильник${service.unit ? ` · ${service.unit}` : ""}` : "Фіксована"} · {service.is_active ? "активна" : "неактивна"}</div></td>
+                      <td><strong className="service-name">{marker && <span aria-hidden="true" className={`service-dot ${marker}`} />}{service.name}</strong><div className="muted-text">{service.kind === "metered" ? `Лічильник${service.unit ? ` · ${service.unit}` : ""}` : "Фіксована"} · {service.is_active ? "активна" : "неактивна"}</div></td>
                       <td>{service.provider_account || "—"}</td>
                       <td>{currentTariff ? `${formatTariff(currentTariff.value)} ₴` : "—"}</td>
                       <td>{currentTariff?.valid_from ?? "—"}</td>

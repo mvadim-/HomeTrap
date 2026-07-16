@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -47,6 +47,8 @@ describe("TenantSection", () => {
 
     expect(await screen.findByText("Оксана Коваль")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "+380501112233" })).toHaveAttribute("href", "tel:+380501112233");
+    expect(screen.getByRole("link", { name: "+380501112233" })).toHaveClass("tenant-contact-link");
+    expect(screen.getByRole("link", { name: "oksana@example.com" })).toHaveClass("tenant-contact-link");
     expect(screen.getByRole("link", { name: "contract.pdf" })).toHaveAttribute("href", "/api/attachments/12");
     expect(screen.getByText("Колишні орендарі (1)")).toBeInTheDocument();
     expect(screen.getByText("Іван Петренко")).toBeInTheDocument();
@@ -96,6 +98,8 @@ describe("TenantSection", () => {
 
     expect(await screen.findByText("Оксана Коваль")).toBeInTheDocument();
     expect(screen.getByText("Файлів ще немає.")).toBeInTheDocument();
+    expect(screen.getByText("Додати файли").closest("label")).toHaveClass("attachment-picker");
+    expect(screen.getByLabelText("Файли контракту")).toHaveClass("file-input");
     expect(screen.getByRole("button", { name: "Завантажити" })).toBeDisabled();
   });
 
@@ -110,11 +114,23 @@ describe("TenantSection", () => {
 
     const input = await screen.findByLabelText("Файли контракту");
     await user.upload(input, files);
+    const selectedFiles = screen.getByRole("list", { name: "Вибрані файли" });
+    expect(within(selectedFiles).getByText("contract.jpg")).toBeInTheDocument();
+    expect(within(selectedFiles).getByText("contract.pdf")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Завантажити" }));
 
     await waitFor(() => expect(apiClient.uploadTenantAttachments).toHaveBeenCalledWith(8, files));
     expect(input).toHaveValue("");
     expect(screen.getByRole("button", { name: "Завантажити" })).toBeDisabled();
+  });
+
+  it("reports the active tenant to the apartment facts", async () => {
+    const onActiveTenantChange = vi.fn();
+
+    render(<TenantSection apartmentId={1} onActiveTenantChange={onActiveTenantChange} />);
+
+    await screen.findByText("Оксана Коваль");
+    expect(onActiveTenantChange).toHaveBeenCalledWith(activeTenant);
   });
 
   it("uses a fresh local date whenever a tenant form is opened", async () => {

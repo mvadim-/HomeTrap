@@ -69,9 +69,10 @@ function readableError(error: unknown, fallback: string): string {
 
 interface TenantSectionProps {
   apartmentId: number;
+  onActiveTenantChange?: (tenant: Tenant | null) => void;
 }
 
-export function TenantSection({ apartmentId }: TenantSectionProps) {
+export function TenantSection({ apartmentId, onActiveTenantChange }: TenantSectionProps) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [attachments, setAttachments] = useState<TenantAttachment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,6 +99,7 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
       if (requestId !== loadRequestId.current) return;
       setTenants(tenantItems);
       setAttachments(activeAttachments);
+      onActiveTenantChange?.(active ?? null);
     } catch (requestError) {
       if (requestId !== loadRequestId.current) return;
       if (!manageLoading) throw requestError;
@@ -105,7 +107,7 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
     } finally {
       if (manageLoading && requestId === loadRequestId.current) setLoading(false);
     }
-  }, [apartmentId]);
+  }, [apartmentId, onActiveTenantChange]);
 
   useEffect(() => {
     void load(true);
@@ -213,8 +215,8 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
             <button className="table-action" type="button" onClick={() => beginEdit(activeTenant)}>Редагувати</button>
           </div>
           <dl className="details-list tenant-details">
-            <dt>Телефон</dt><dd>{activeTenant.phone ? <a href={`tel:${activeTenant.phone}`}>{activeTenant.phone}</a> : "—"}</dd>
-            <dt>Email</dt><dd>{activeTenant.email ? <a href={`mailto:${activeTenant.email}`}>{activeTenant.email}</a> : "—"}</dd>
+            <dt>Телефон</dt><dd>{activeTenant.phone ? <a className="tenant-contact-link" href={`tel:${activeTenant.phone}`}>{activeTenant.phone}</a> : "—"}</dd>
+            <dt>Email</dt><dd>{activeTenant.email ? <a className="tenant-contact-link" href={`mailto:${activeTenant.email}`}>{activeTenant.email}</a> : "—"}</dd>
             <dt>Примітки</dt><dd>{activeTenant.notes || "—"}</dd>
           </dl>
 
@@ -240,9 +242,12 @@ export function TenantSection({ apartmentId }: TenantSectionProps) {
             </ul>
             {attachments.length === 0 && <p className="muted-text">Файлів ще немає.</p>}
             <form className="attachment-form" onSubmit={submitAttachments}>
-              <input ref={fileInputRef} aria-label="Файли контракту" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple type="file" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+              <label className="secondary-button attachment-picker">Додати файли
+                <input ref={fileInputRef} className="file-input" aria-label="Файли контракту" accept=".jpg,.jpeg,.png,.webp,.pdf" multiple type="file" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} />
+              </label>
               <button className="button" disabled={files.length === 0} type="submit">Завантажити</button>
             </form>
+            {files.length > 0 && <ul className="selected-files" aria-label="Вибрані файли">{files.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}</ul>}
           </div>
         </div>
       )}

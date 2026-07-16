@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-16 17:08] Картка квартири за затвердженим макетом
+
+- `frontend/src/pages/ApartmentDetail.tsx`, `frontend/src/pages/portal.css` — вузькі
+  реквізити замінено повноширинною сіткою оренди, останнього рахунку, середньої
+  комуналки за 12 місяців і початку оренди; помилка чи порожня статистика дає «—».
+- Таблиця послуг отримала маркери газу, електроенергії та води з токенів графіків;
+  інші послуги лишаються без маркера.
+- `frontend/src/components/TenantSection.tsx` — контакти переведено на accent-лінки,
+  нативний file input приховано за ghost-label «Додати файли», а вибрані назви
+  показуються перед завантаженням.
+- `frontend/src/pages/ApartmentDetail.test.tsx`,
+  `frontend/src/components/TenantSection.test.tsx` — перевірено факти з даними,
+  порожню історію та помилку статистики, стилізований picker, accent-контакти й
+  маркери послуг; у Docker пройшли 79 frontend-тестів і production-збірка.
+- `docs/plans/20260716-mockup-style-alignment.md` — Task 5 позначено виконаним.
+- Зміна суто frontend; для production потрібні rebuild і restart контейнера за
+  `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 17:00] Плитки й дашборд за затвердженим макетом
 
 - `frontend/src/pages/Dashboard.tsx`, `frontend/src/pages/portal.css` — плитки отримали

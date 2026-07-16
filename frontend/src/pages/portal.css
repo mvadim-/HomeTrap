@@ -396,6 +396,31 @@
   gap: 20px;
 }
 
+.apartment-facts {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.apartment-fact {
+  display: grid;
+  gap: 7px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.apartment-fact span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
 .tenant-section {
   grid-column: 1 / -1;
 }
@@ -465,13 +490,21 @@
 }
 
 .tenant-end-form input,
-.attachment-form input,
 .tenant-form textarea {
   padding: 9px 10px;
   border: 1px solid var(--color-border);
   border-radius: 8px;
   color: var(--color-text);
   background: var(--color-surface);
+}
+
+.tenant-contact-link {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.tenant-contact-link:hover {
+  text-decoration: underline;
 }
 
 .tenant-files {
@@ -494,6 +527,37 @@
 .tenant-files li {
   justify-content: space-between;
   padding: 7px 0;
+}
+
+.attachment-picker {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.tenant-files .selected-files {
+  margin-top: 10px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.tenant-files .selected-files li {
+  display: list-item;
+  margin-left: 18px;
+  padding: 2px 0;
+  list-style: disc;
 }
 
 .tenant-form .tenant-notes {
@@ -557,6 +621,31 @@
   color: var(--color-text-muted);
   font-size: 0.78rem;
   text-transform: uppercase;
+}
+
+.service-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.service-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.service-dot.gas {
+  background: var(--chart-gas);
+}
+
+.service-dot.elec {
+  background: var(--chart-elec);
+}
+
+.service-dot.water {
+  background: var(--chart-water);
 }
 
 .table-action {
