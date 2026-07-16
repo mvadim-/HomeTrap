@@ -1,5 +1,15 @@
 # ChangeLog
 
+## [2026-07-16 23:22] Усунення блимання теми до завантаження застосунку
+
+- `frontend/index.html`, `frontend/src/main.tsx` — збережена або системна тема тепер
+  синхронно застосовується inline-скриптом у `<head>` до завантаження CSS і React;
+  запізнілу повторну ініціалізацію з module entry прибрано.
+- `frontend/src/main.test.tsx` — bootstrap-тест виконує inline-скрипт із HTML та
+  перевіряє, що він розташований перед application module і монтуванням React.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і restart
+  контейнера за `docs/deploy.md`. Автоматичний деплой не виконувався.
+
 ## [2026-07-16 23:16] Виправлення знахідок комплексного review
 
 - `frontend/src/theme.ts`, `frontend/src/main.tsx`, `frontend/src/components/Layout.tsx` —

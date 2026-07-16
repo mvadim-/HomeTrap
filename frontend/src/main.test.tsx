@@ -1,5 +1,7 @@
 import { beforeEach, vi } from "vitest";
 
+import indexHtml from "../index.html?raw";
+
 const reactRoot = vi.hoisted(() => ({
   createRoot: vi.fn(),
   render: vi.fn(),
@@ -19,8 +21,21 @@ beforeEach(() => {
 });
 
 describe("application bootstrap", () => {
-  it("applies the stored theme before React mounts", async () => {
+  it("runs the inline theme bootstrap before loading the application module", async () => {
+    const bootstrapMatch = indexHtml.match(
+      /<script data-theme-bootstrap>([\s\S]*?)<\/script>/,
+    );
+    expect(bootstrapMatch).not.toBeNull();
+
+    const bootstrapStart = indexHtml.indexOf("<script data-theme-bootstrap>");
+    const headEnd = indexHtml.indexOf("</head>");
+    const applicationStart = indexHtml.indexOf('<script type="module" src="/src/main.tsx">');
+    expect(bootstrapStart).toBeLessThan(headEnd);
+    expect(bootstrapStart).toBeLessThan(applicationStart);
+
     window.localStorage.setItem("theme", "dark");
+    Function(bootstrapMatch![1])();
+
     reactRoot.createRoot.mockImplementation(() => {
       expect(document.documentElement).toHaveAttribute("data-theme", "dark");
       return { render: reactRoot.render };
