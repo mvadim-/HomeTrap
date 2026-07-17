@@ -350,6 +350,93 @@ describe("Stats", () => {
     expect(vacancyTile).not.toHaveTextContent(/\d+ міс/);
   });
 
+  it("waits for both all-time statistics responses before showing vacancy", async () => {
+    const consumptionRequest = deferred<apiClient.ConsumptionStats>();
+    const incomeRequest = deferred<apiClient.IncomeStats>();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockReturnValue(consumptionRequest.promise);
+    vi.spyOn(apiClient, "getIncomeStats").mockReturnValue(incomeRequest.promise);
+
+    renderStats("/stats?apartment=1&scope=apartment&period=all");
+
+    const vacancyTile = (await screen.findByText("Простій")).closest("article");
+    await waitFor(() => expect(vacancyTile).toHaveTextContent("завантажуємо статистику за весь час"));
+    expect(vacancyTile).toHaveTextContent("—");
+
+    await act(async () => consumptionRequest.resolve({
+      apartment_id: 1,
+      months: null,
+      series: [{
+        service_id: 1,
+        service_name: "Газ",
+        unit: "м³",
+        values: [{ period: "2026-01-01", consumed: "10" }],
+      }],
+    }));
+
+    expect(vacancyTile).toHaveTextContent("—");
+    expect(vacancyTile).toHaveTextContent("завантажуємо статистику за весь час");
+
+    await act(async () => incomeRequest.resolve({
+      ...incomeStats(1),
+      months: null,
+      values: [{ period: "2026-03-01", rent: "100.00", utilities: "20.00", total: "120.00" }],
+    }));
+
+    await waitFor(() => expect(vacancyTile).toHaveTextContent("3 міс"));
+    expect(vacancyTile).toHaveTextContent("без орендаря за період");
+  });
+
+  it("marks all-time vacancy unavailable when one statistics request fails", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: null,
+      series: [{
+        service_id: 1,
+        service_name: "Газ",
+        unit: "м³",
+        values: [{ period: "2026-01-01", consumed: "10" }],
+      }],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockRejectedValue(new Error("offline"));
+
+    renderStats("/stats?apartment=1&scope=apartment&period=all");
+
+    const vacancyTile = (await screen.findByText("Простій")).closest("article");
+    await waitFor(() => expect(vacancyTile).toHaveTextContent("статистика за весь час недоступна"));
+    expect(vacancyTile).toHaveTextContent("—");
+    expect(vacancyTile).not.toHaveTextContent(/\d+ міс/);
+  });
+
+  it("marks vacancy as unavailable for an incomplete custom range", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+
+    renderStats("/stats?apartment=1&scope=apartment&period=custom");
+
+    const vacancyTile = (await screen.findByText("Простій")).closest("article");
+    await waitFor(() => expect(vacancyTile).toHaveTextContent("оберіть коректний період"));
+    expect(vacancyTile).toHaveTextContent("—");
+    expect(vacancyTile).not.toHaveTextContent(/\d+ міс/);
+  });
+
+  it("marks vacancy as unavailable for an invalid custom range", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats(1));
+
+    renderStats("/stats?apartment=1&scope=apartment&period=custom&from=2026-01&to=2026-03");
+
+    const vacancyTile = (await screen.findByText("Простій")).closest("article");
+    await waitFor(() => expect(vacancyTile).toHaveTextContent("3 міс"));
+    fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2026-04" } });
+
+    expect(await screen.findByText("Початок періоду не може бути пізніше завершення.")).toBeInTheDocument();
+    expect(vacancyTile).toHaveTextContent("—");
+    expect(vacancyTile).toHaveTextContent("оберіть коректний період");
+    expect(vacancyTile).not.toHaveTextContent(/\d+ міс/);
+  });
+
   it("renders a correction marker instead of bars for a month with a negative segment", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);

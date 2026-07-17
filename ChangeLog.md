@@ -1,5 +1,35 @@
 # ChangeLog
 
+## [2026-07-17 15:27] Достовірність простою за весь час
+
+- `frontend/src/pages/Stats.tsx` — плитка «Простій» не показує часткове або
+  хибне число для «Весь час», доки обидва статистичні запити не
+  завершаться успішно; loading і partial failure мають окремі недоступні
+  стани.
+- `frontend/src/pages/Stats.test.tsx` — додано регресії очікування обох all-time
+  відповідей і збою одного stats API після успіху іншого.
+- Docker-перевірка: frontend — 18 файлів і 150 тестів, backend — 83 тести;
+  production build frontend успішний (45 модулів).
+- Зміна зачіпає production frontend. Для розгортання на Synology потрібно
+  виконати rebuild і restart за `docs/deploy.md`: з локальним `.env` запустити
+  `docker compose --env-file .env -f docker/docker-compose.yml up -d --build`,
+  потім `docker compose --env-file .env -f docker/docker-compose.yml ps`.
+  Автоматичний деплой не виконувався.
+
+## [2026-07-17 15:12] Недоступність простою без валідного періоду
+
+- `frontend/src/pages/Stats.tsx` — плитка «Простій» показує тире замість
+  хибних `0 міс`, доки довільний період неповний або невалідний.
+- `frontend/src/pages/Stats.test.tsx` — додано регресії для неповного та
+  зворотного custom-діапазонів у масштабі квартири.
+- Docker-перевірка: frontend — 18 файлів і 148 тестів, backend — 83 тести;
+  production build frontend успішний (45 модулів).
+- Зміна зачіпає production frontend. Для розгортання на Synology потрібно
+  виконати rebuild і restart за `docs/deploy.md`: з локальним `.env` запустити
+  `docker compose --env-file .env -f docker/docker-compose.yml up -d --build`,
+  потім `docker compose --env-file .env -f docker/docker-compose.yml ps`.
+  Автоматичний деплой не виконувався.
+
 ## [2026-07-17 14:58] Спрощення фільтрів статистики
 
 - `frontend/src/pages/Stats.tsx` — URL-синхронізацію та завантаження орендарів

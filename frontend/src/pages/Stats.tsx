@@ -561,6 +561,25 @@ export function Stats() {
     }))
     : [];
   const vacancyMonths = vacancyMonthCount(chartPeriods, tenants);
+  const allTimeStatsFailed = periodMode === "all" && Boolean(consumptionError || incomeError);
+  const allTimeStatsPending = periodMode === "all"
+    && !allTimeStatsFailed
+    && (consumptionLoading || incomeLoading || consumption === null || income === null);
+  const vacancyAvailable = tenantsStatus === "success"
+    && statsPeriod !== null
+    && !allTimeStatsFailed
+    && !allTimeStatsPending;
+  const vacancyStatusText = tenantsStatus === "error"
+    ? "дані орендарів недоступні"
+    : tenantsStatus !== "success"
+      ? "завантажуємо дані орендарів"
+      : statsPeriod === null
+        ? "оберіть коректний період"
+        : allTimeStatsFailed
+          ? "статистика за весь час недоступна"
+          : allTimeStatsPending
+            ? "завантажуємо статистику за весь час"
+            : "без орендаря за період";
 
   useEffect(() => {
     let active = true;
@@ -750,8 +769,8 @@ export function Stats() {
         {scope === "apartment" && (
           <article className="stats-summary-tile">
             <span>Простій</span>
-            <strong>{tenantsStatus === "success" ? `${vacancyMonths} міс` : "—"}</strong>
-            <small>{tenantsStatus === "error" ? "дані орендарів недоступні" : tenantsStatus === "success" ? "без орендаря за період" : "завантажуємо дані орендарів"}</small>
+            <strong>{vacancyAvailable ? `${vacancyMonths} міс` : "—"}</strong>
+            <small>{vacancyStatusText}</small>
           </article>
         )}
       </section>
