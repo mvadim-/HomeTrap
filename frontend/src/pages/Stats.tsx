@@ -6,10 +6,12 @@ import {
   ConsumptionSeries,
   IncomeStats,
   StatsPeriod,
+  Tenant,
   getApartments,
   getConsumptionStats,
   getIncomeStats,
   getInvoices,
+  getTenants,
 } from "../api/client";
 import { formatUah } from "../utils/format";
 import { niceScale } from "../utils/ticks";
@@ -271,6 +273,7 @@ function IncomeChart({ stats, periods }: { stats: IncomeStats; periods: string[]
 export function Stats() {
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [apartmentId, setApartmentId] = useState<number | null>(null);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [scope, setScope] = useState<"portfolio" | "apartment">("portfolio");
   const [consumption, setConsumption] = useState<ConsumptionSeries[] | null>(null);
   const [consumptionLoading, setConsumptionLoading] = useState(false);
@@ -320,6 +323,16 @@ export function Stats() {
       .catch(() => active && setError("Не вдалося завантажити квартири."));
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    setTenants([]);
+    if (apartmentId === null) return;
+    let active = true;
+    getTenants(apartmentId)
+      .then((items) => active && setTenants(items))
+      .catch(() => active && setTenants([]));
+    return () => { active = false; };
+  }, [apartmentId]);
 
   useEffect(() => {
     if (apartmentId === null) return;
@@ -399,17 +412,45 @@ export function Stats() {
     && topServiceInvoice.peakPeriod === income.top_service.peak_period
     ? topServiceInvoice.id
     : null;
+  const selectTenant = (tenantId: number) => {
+    const tenant = tenants.find((item) => item.id === tenantId);
+    if (!tenant) return;
+    const today = new Date();
+    setPeriodMode("custom");
+    setDateFrom(tenant.contract_start.slice(0, 7));
+    setDateTo(tenant.contract_end?.slice(0, 7)
+      ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
+  };
 
   return (
     <>
       <header className="page-header stats-header">
         <div><h1>Статистика</h1><p>{periodDescription}</p></div>
         {apartments.length > 0 && (
-          <label className="stats-apartment-select">Квартира
-            <select aria-label="Квартира для статистики" value={apartmentId ?? ""} onChange={(event) => setApartmentId(Number(event.target.value))}>
-              {apartments.map((apartment) => <option key={apartment.id} value={apartment.id}>{apartment.name}</option>)}
-            </select>
-          </label>
+          <>
+            <label className="stats-apartment-select">Квартира
+              <select aria-label="Квартира для статистики" value={apartmentId ?? ""} onChange={(event) => setApartmentId(Number(event.target.value))}>
+                {apartments.map((apartment) => <option key={apartment.id} value={apartment.id}>{apartment.name}</option>)}
+              </select>
+            </label>
+            {tenants.length > 0 && (
+              <label className="stats-apartment-select">Орендар
+                <select
+                  key={apartmentId}
+                  aria-label="Орендар для статистики"
+                  defaultValue=""
+                  onChange={(event) => selectTenant(Number(event.target.value))}
+                >
+                  <option value="">—</option>
+                  {tenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.full_name}{tenant.contract_end === null ? " (поточний)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </>
         )}
       </header>
       {error && <p className="error-message">{error}</p>}
