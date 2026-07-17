@@ -153,16 +153,16 @@
 - Modify: `frontend/src/pages/Stats.tsx`
 - Modify: `frontend/src/pages/Stats.test.tsx`
 
-- [ ] додати токен `--chart-tenant-marker` в усі три блоки токенів
+- [x] додати токен `--chart-tenant-marker` в усі три блоки токенів
   `theme.css`: `:root`, `:root[data-theme="dark"]` та
   `@media (prefers-color-scheme: dark) :root:not([data-theme="light"])`
-- [ ] передавати в `IncomeChart` місяці початку договорів (лише при
+- [x] передавати в `IncomeChart` місяці початку договорів (лише при
   `scope="apartment"`) і малювати вертикальні пунктирні лінії на лівому краю
   відповідних слотів з `<title>`/`aria-label`
-- [ ] write tests: маркер з aria-label «Початок договору: …» присутній у
+- [x] write tests: маркер з aria-label «Початок договору: …» присутній у
   scope="apartment" і відсутній у portfolio; місяць поза діапазоном → маркера
   немає
-- [ ] run tests — must pass before task 4
+- [x] run tests — must pass before task 4
 
 ### Task 4: Плитка простою
 

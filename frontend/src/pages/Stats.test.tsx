@@ -181,6 +181,54 @@ describe("Stats", () => {
     });
   });
 
+  it("shows tenant start markers only for visible apartment months", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 17));
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockResolvedValue([
+      {
+        id: 11,
+        apartment_id: 1,
+        full_name: "Іван Петренко",
+        phone: null,
+        email: null,
+        contract_start: "2026-05-15",
+        contract_end: null,
+        notes: null,
+      },
+      {
+        id: 12,
+        apartment_id: 1,
+        full_name: "Олена Коваль",
+        phone: null,
+        email: null,
+        contract_start: "2025-07-01",
+        contract_end: "2026-04-30",
+        notes: null,
+      },
+    ]);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => (
+      Promise.resolve(incomeStats(apartmentId))
+    ));
+
+    renderStats();
+
+    expect(await screen.findByRole("img", { name: "Стековий графік доходу" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Початок договору: Іван Петренко, травень 2026")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+    await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(1, { months: 12 }));
+
+    const visibleMarker = await screen.findByLabelText("Початок договору: Іван Петренко, травень 2026");
+    expect(visibleMarker).toHaveClass("income-tenant-marker");
+    expect(visibleMarker).toHaveAttribute("stroke", "var(--chart-tenant-marker)");
+    expect(visibleMarker).toHaveAttribute("stroke-dasharray", "5 5");
+    expect(visibleMarker.querySelector("title")).toHaveTextContent("Початок договору: Іван Петренко, травень 2026");
+    expect(screen.queryByLabelText("Початок договору: Олена Коваль, липень 2025")).not.toBeInTheDocument();
+  });
+
   it("renders a correction marker instead of bars for a month with a negative segment", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);

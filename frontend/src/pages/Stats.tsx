@@ -63,6 +63,10 @@ function contractDateLabel(date: string): string {
   return `${day}.${month}.${year}`;
 }
 
+function contractStartMonthLabel(date: string): string {
+  return selectedMonthLabel(date.slice(0, 7)).replace(/\s+р\.$/, "");
+}
+
 function tenantPeriod(tenant: Tenant): { from: string; to: string } {
   const today = new Date();
   return {
@@ -196,7 +200,17 @@ function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods
   );
 }
 
-function IncomeChart({ stats, periods }: { stats: IncomeStats; periods: string[] }) {
+type TenantStartMarker = {
+  tenantId: number;
+  tenantName: string;
+  period: string;
+};
+
+function IncomeChart({ stats, periods, tenantStarts }: {
+  stats: IncomeStats;
+  periods: string[];
+  tenantStarts: TenantStartMarker[];
+}) {
   const [activeCorrection, setActiveCorrection] = useState<string | null>(null);
   const width = 760;
   const height = 270;
@@ -204,6 +218,7 @@ function IncomeChart({ stats, periods }: { stats: IncomeStats; periods: string[]
   const plotWidth = width - padding.left - padding.right;
   const plotHeight = height - padding.top - padding.bottom;
   const pointsByPeriod = new Map(stats.values.map((point) => [point.period.slice(0, 7), point]));
+  const periodIndexes = new Map(periods.map((period, index) => [period.slice(0, 7), index]));
   const scale = niceScale(Math.max(...stats.values.map((point) => Math.max(Number(point.total), 0)), 1));
   const ticks = scaleTicks(scale.max, scale.step);
   const slotWidth = plotWidth / Math.max(periods.length, 1);
@@ -221,6 +236,29 @@ function IncomeChart({ stats, periods }: { stats: IncomeStats; periods: string[]
       ))}
       <line className="chart-axis" x1={padding.left} x2={width - padding.right} y1={padding.top + plotHeight} y2={padding.top + plotHeight} />
       <text className="chart-label" x="37" y={padding.top + plotHeight + 4}>0</text>
+      {tenantStarts.map((tenantStart) => {
+        const index = periodIndexes.get(tenantStart.period);
+        if (index === undefined) return null;
+        const x = padding.left + slotWidth * index;
+        const label = `Початок договору: ${tenantStart.tenantName}, ${contractStartMonthLabel(tenantStart.period)}`;
+        return (
+          <line
+            key={tenantStart.tenantId}
+            className="income-tenant-marker"
+            x1={x}
+            x2={x}
+            y1={padding.top}
+            y2={padding.top + plotHeight}
+            stroke="var(--chart-tenant-marker)"
+            strokeDasharray="5 5"
+            strokeWidth="2"
+            tabIndex={0}
+            aria-label={label}
+          >
+            <title>{label}</title>
+          </line>
+        );
+      })}
       {periods.map((period, index) => {
         const x = padding.left + slotWidth * index + (slotWidth - barWidth) / 2;
         const point = pointsByPeriod.get(period.slice(0, 7));
@@ -331,6 +369,13 @@ export function Stats() {
     ...(consumption?.flatMap((series) => series.values.map((point) => point.period)) ?? []),
     ...(income?.values.map((point) => point.period) ?? []),
   ]);
+  const tenantStarts: TenantStartMarker[] = scope === "apartment"
+    ? tenants.map((tenant) => ({
+      tenantId: tenant.id,
+      tenantName: tenant.full_name,
+      period: tenant.contract_start.slice(0, 7),
+    }))
+    : [];
 
   useEffect(() => {
     let active = true;
@@ -544,7 +589,7 @@ export function Stats() {
         ) : income.values.length > 0 ? (
           <>
             <div className="chart-legend"><span><i className="rent-swatch" />Оренда</span><span><i className="utilities-swatch" />Комунальні</span><strong>Разом: {formatUah(income.totals.total)}</strong></div>
-            <IncomeChart stats={income} periods={chartPeriods} />
+            <IncomeChart stats={income} periods={chartPeriods} tenantStarts={tenantStarts} />
           </>
         ) : (
           <p className="empty-state">Ще немає історії доходу за вибраний період.</p>

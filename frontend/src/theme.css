@@ -20,6 +20,7 @@
   --chart-water: #2a78d6;
   --chart-rent: #1baf7a;
   --chart-util: #4a3aa7;
+  --chart-tenant-marker: #9c6644;
   --radius-sm: 10px;
   --radius-md: 12px;
   --radius-lg: 24px;
@@ -45,6 +46,7 @@
   --chart-water: #3987e5;
   --chart-rent: #199e70;
   --chart-util: #9085e9;
+  --chart-tenant-marker: #d6a36f;
   --shadow-card: none;
 }
 
@@ -68,6 +70,7 @@
     --chart-water: #3987e5;
     --chart-rent: #199e70;
     --chart-util: #9085e9;
+    --chart-tenant-marker: #d6a36f;
     --shadow-card: none;
   }
 }
