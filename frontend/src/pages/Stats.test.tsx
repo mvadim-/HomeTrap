@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
@@ -32,11 +32,15 @@ const januaryInvoice: apiClient.InvoiceListItem = {
   grand_total: "15860.51",
 };
 
-function renderStats() {
+function LocationProbe() {
+  return <output data-testid="location-search">{useLocation().search}</output>;
+}
+
+function renderStats(initialEntry = "/stats") {
   return render(
-    <MemoryRouter initialEntries={["/stats"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/stats" element={<Stats />} />
+        <Route path="/stats" element={<><Stats /><LocationProbe /></>} />
         <Route path="/invoices/:invoiceId" element={<h1>Рахунок відкрито</h1>} />
       </Routes>
     </MemoryRouter>,
@@ -423,6 +427,123 @@ describe("Stats", () => {
     expect(await screen.findByText("Початок періоду не може бути пізніше завершення.")).toBeInTheDocument();
     expect(getConsumptionStats).toHaveBeenCalledTimes(consumptionCalls);
     expect(getIncomeStats).toHaveBeenCalledTimes(incomeCalls);
+  });
+
+  it("restores filters and the matching tenant from URL parameters", async () => {
+    const allApartments = [
+      apartments[0],
+      { ...apartments[0], id: 2, name: "Квартира на Печерську", is_active: false },
+    ];
+    const tenant: apiClient.Tenant = {
+      id: 21,
+      apartment_id: 2,
+      full_name: "Іван Петренко",
+      phone: null,
+      email: null,
+      contract_start: "2024-03-15",
+      contract_end: "2025-02-28",
+      notes: null,
+    };
+    const period = { date_from: "2024-03-01", date_to: "2025-02-01" };
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(allApartments);
+    vi.spyOn(apiClient, "getTenants").mockImplementation((apartmentId) => (
+      Promise.resolve(apartmentId === 2 ? [tenant] : [])
+    ));
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockImplementation((apartmentId) => (
+      Promise.resolve({ apartment_id: apartmentId, months: null, series: [] })
+    ));
+    const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => (
+      Promise.resolve(incomeStats(apartmentId))
+    ));
+
+    renderStats("/stats?apartment=2&scope=apartment&period=custom&from=2024-03&to=2025-02");
+
+    expect(await screen.findByLabelText("Квартира для статистики")).toHaveValue("2");
+    expect(await screen.findByLabelText("Орендар для статистики")).toHaveValue("21");
+    expect(screen.getByRole("button", { name: "Квартира" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Довільний період" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Період від")).toHaveValue("2024-03");
+    expect(screen.getByLabelText("Період до")).toHaveValue("2025-02");
+    expect(screen.getByText("Договір: 15.03.2024 — 28.02.2025 · завершений")).toBeInTheDocument();
+    await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(2, period));
+    await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(2, period));
+  });
+
+  it("writes filter changes to the URL and removes custom dates for a preset", async () => {
+    const user = userEvent.setup();
+    const allApartments = [
+      apartments[0],
+      { ...apartments[0], id: 2, name: "Квартира на Печерську", is_active: false },
+    ];
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(allApartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockImplementation((apartmentId) => (
+      Promise.resolve({ apartment_id: apartmentId, months: null, series: [] })
+    ));
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
+
+    renderStats();
+
+    const apartmentSelect = await screen.findByLabelText("Квартира для статистики");
+    await user.selectOptions(apartmentSelect, "2");
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+    await user.click(screen.getByRole("button", { name: "Довільний період" }));
+    fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2025-01" } });
+    fireEvent.change(screen.getByLabelText("Період до"), { target: { value: "2025-03" } });
+
+    await waitFor(() => {
+      const current = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
+      expect(Object.fromEntries(current)).toEqual({
+        apartment: "2",
+        scope: "apartment",
+        period: "custom",
+        from: "2025-01",
+        to: "2025-03",
+      });
+    });
+
+    await user.click(screen.getByRole("button", { name: "6 міс" }));
+    await waitFor(() => {
+      const current = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
+      expect(Object.fromEntries(current)).toEqual({ apartment: "2", scope: "apartment", period: "6" });
+    });
+  });
+
+  it("normalizes an unknown apartment, scope and period to defaults", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats("/stats?apartment=999&scope=unknown&period=42&from=2025-01&to=2025-02&extra=value");
+
+    expect(await screen.findByLabelText("Квартира для статистики")).toHaveValue("1");
+    expect(screen.getByRole("button", { name: "Портфель" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "12 міс" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByLabelText("Період від")).not.toBeInTheDocument();
+    await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, { months: 12 }));
+    await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, { months: 12 }));
+    await waitFor(() => {
+      const current = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
+      expect(Object.fromEntries(current)).toEqual({ apartment: "1", scope: "portfolio", period: "12" });
+    });
+  });
+
+  it("clears an incomplete custom range restored from the URL", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats");
+    const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats");
+
+    renderStats("/stats?apartment=1&scope=portfolio&period=custom&from=2025-01");
+
+    expect(await screen.findByLabelText("Період від")).toHaveValue("");
+    expect(screen.getByLabelText("Період до")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Довільний період" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getAllByText("Оберіть початок і завершення періоду.")).toHaveLength(2);
+    expect(getConsumptionStats).not.toHaveBeenCalled();
+    expect(getIncomeStats).not.toHaveBeenCalled();
+    await waitFor(() => {
+      const current = new URLSearchParams(screen.getByTestId("location-search").textContent ?? "");
+      expect(Object.fromEntries(current)).toEqual({ apartment: "1", scope: "portfolio", period: "custom" });
+    });
   });
 
   it("derives the selected tenant and contract details from the custom period", async () => {

@@ -184,15 +184,15 @@
 - Modify: `frontend/src/pages/Stats.tsx`
 - Modify: `frontend/src/pages/Stats.test.tsx`
 
-- [ ] ініціалізація стану з `useSearchParams` (apartment, scope, period,
+- [x] ініціалізація стану з `useSearchParams` (apartment, scope, period,
   from/to) з валідацією: неіснуюча квартира → дефолт, невалідний період →
   «12», неповна пара from/to → порожні поля
-- [ ] запис актуальних фільтрів в URL при зміні стану через
+- [x] запис актуальних фільтрів в URL при зміні стану через
   `setSearchParams(..., { replace: true })`
-- [ ] write tests: старт із query-параметрами відновлює стан (зокрема
+- [x] write tests: старт із query-параметрами відновлює стан (зокрема
   підсвітку орендаря через збіг дат); зміна фільтрів оновлює URL;
   невалідні параметри → дефолти
-- [ ] run tests — must pass before task 6
+- [x] run tests — must pass before task 6
 
 ### Task 6: Verify acceptance criteria
 

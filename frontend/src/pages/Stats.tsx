@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import {
   Apartment,
@@ -35,6 +35,35 @@ const INVOICE_MONTH_FORMATTER = new Intl.DateTimeFormat("uk-UA", {
 const NUMBER_FORMATTERS = [0, 1, 2].map((maximumFractionDigits) => (
   new Intl.NumberFormat("uk-UA", { maximumFractionDigits })
 ));
+const PERIOD_MODES = ["6", "12", "24", "all", "custom"] as const;
+type PeriodMode = typeof PERIOD_MODES[number];
+
+function initialStatsFilters(searchParams: URLSearchParams): {
+  apartmentId: number | null;
+  scope: "portfolio" | "apartment";
+  periodMode: PeriodMode;
+  dateFrom: string;
+  dateTo: string;
+} {
+  const apartmentParam = searchParams.get("apartment") ?? "";
+  const parsedApartmentId = /^\d+$/.test(apartmentParam) ? Number(apartmentParam) : null;
+  const scopeParam = searchParams.get("scope");
+  const periodParam = searchParams.get("period");
+  const periodMode = PERIOD_MODES.includes(periodParam as PeriodMode) ? periodParam as PeriodMode : "12";
+  const fromParam = searchParams.get("from") ?? "";
+  const toParam = searchParams.get("to") ?? "";
+  const hasCustomRange = periodMode === "custom"
+    && /^\d{4}-(0[1-9]|1[0-2])$/.test(fromParam)
+    && /^\d{4}-(0[1-9]|1[0-2])$/.test(toParam);
+
+  return {
+    apartmentId: parsedApartmentId !== null && parsedApartmentId > 0 ? parsedApartmentId : null,
+    scope: scopeParam === "apartment" ? "apartment" : "portfolio",
+    periodMode,
+    dateFrom: hasCustomRange ? fromParam : "",
+    dateTo: hasCustomRange ? toParam : "",
+  };
+}
 
 function monthLabel(period: string): string {
   return MONTH_FORMATTER.format(new Date(`${period}T00:00:00Z`))
@@ -335,10 +364,13 @@ function IncomeChart({ stats, periods, tenantStarts }: {
 }
 
 export function Stats() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [initialFilters] = useState(() => initialStatsFilters(searchParams));
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [apartmentId, setApartmentId] = useState<number | null>(null);
+  const [apartmentsLoaded, setApartmentsLoaded] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [scope, setScope] = useState<"portfolio" | "apartment">("portfolio");
+  const [scope, setScope] = useState<"portfolio" | "apartment">(initialFilters.scope);
   const [consumption, setConsumption] = useState<ConsumptionSeries[] | null>(null);
   const [consumptionLoading, setConsumptionLoading] = useState(false);
   const [consumptionError, setConsumptionError] = useState("");
@@ -351,9 +383,9 @@ export function Stats() {
     peakPeriod: string;
   } | null>(null);
   const [error, setError] = useState("");
-  const [periodMode, setPeriodMode] = useState<"6" | "12" | "24" | "all" | "custom">("12");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [periodMode, setPeriodMode] = useState<PeriodMode>(initialFilters.periodMode);
+  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom);
+  const [dateTo, setDateTo] = useState(initialFilters.dateTo);
 
   const customRangeInvalid = periodMode === "custom" && dateFrom !== "" && dateTo !== "" && dateFrom > dateTo;
   const statsPeriod = useMemo<StatsPeriod | null>(() => {
@@ -396,11 +428,34 @@ export function Stats() {
       .then((items) => {
         if (!active) return;
         setApartments(items);
-        setApartmentId(items.find((item) => item.is_active)?.id ?? items[0]?.id ?? null);
+        setApartmentId(
+          items.find((item) => item.id === initialFilters.apartmentId)?.id
+          ?? items.find((item) => item.is_active)?.id
+          ?? items[0]?.id
+          ?? null,
+        );
+        setApartmentsLoaded(true);
       })
-      .catch(() => active && setError("Не вдалося завантажити квартири."));
+      .catch(() => {
+        if (!active) return;
+        setError("Не вдалося завантажити квартири.");
+        setApartmentsLoaded(true);
+      });
     return () => { active = false; };
-  }, []);
+  }, [initialFilters.apartmentId]);
+
+  useEffect(() => {
+    if (!apartmentsLoaded) return;
+    const nextSearchParams = new URLSearchParams();
+    if (apartmentId !== null) nextSearchParams.set("apartment", String(apartmentId));
+    nextSearchParams.set("scope", scope);
+    nextSearchParams.set("period", periodMode);
+    if (periodMode === "custom") {
+      if (dateFrom) nextSearchParams.set("from", dateFrom);
+      if (dateTo) nextSearchParams.set("to", dateTo);
+    }
+    setSearchParams(nextSearchParams, { replace: true });
+  }, [apartmentId, apartmentsLoaded, dateFrom, dateTo, periodMode, scope, setSearchParams]);
 
   useEffect(() => {
     setTenants([]);
