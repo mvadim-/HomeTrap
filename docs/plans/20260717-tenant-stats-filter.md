@@ -196,16 +196,16 @@
 
 ### Task 6: Verify acceptance criteria
 
-- [ ] verify all requirements from Overview are implemented
-- [ ] verify edge cases are handled (два договори в одному місяці → перший
+- [x] verify all requirements from Overview are implemented
+- [x] verify edge cases are handled (два договори в одному місяці → перший
   збіг; майбутні місяці custom-діапазону; порожній список орендарів;
   прийнятий trade-off: URL з періодом активного орендаря, відкритий у
   наступному місяці, не підсвітить орендаря — `dateTo` застаріє)
-- [ ] run full test suite: `docker compose -f docker/docker-compose.dev.yml
+- [x] run full test suite: `docker compose -f docker/docker-compose.dev.yml
   run --rm frontend npm test`
-- [ ] run backend suite незмінним для регресії: `docker compose -f
+- [x] run backend suite незмінним для регресії: `docker compose -f
   docker/docker-compose.dev.yml run --rm backend pytest`
-- [ ] verify frontend build: `docker compose -f docker/docker-compose.dev.yml
+- [x] verify frontend build: `docker compose -f docker/docker-compose.dev.yml
   run --rm frontend npm run build`
 
 ### Task 7: [Final] Update documentation

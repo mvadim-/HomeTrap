@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-17 14:19] Acceptance-перевірка фільтра статистики
+
+- `frontend/src/pages/Stats.test.tsx` — додано прямі acceptance-тести
+  майбутнього custom-діапазону, першого збігу двох договорів в
+  одному місяці та прийнятої відсутності підсвітки активного
+  орендаря для застарілого URL в наступному місяці.
+- `docs/plans/20260717-tenant-stats-filter.md` — Task 6 позначено
+  виконаним після успішних Docker-перевірок: 140 frontend-тестів,
+  83 backend-тести та production build frontend.
+- Зміна зачіпає production frontend; для застосування потрібні rebuild і
+  restart контейнера за `docs/deploy.md`. Автоматичний деплой не
+  виконувався.
+
 ## [2026-07-17 14:14] Стан фільтрів статистики в URL
 
 - `frontend/src/pages/Stats.tsx` — додано відновлення квартири, масштабу й

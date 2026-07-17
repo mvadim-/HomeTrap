@@ -429,6 +429,41 @@ describe("Stats", () => {
     expect(getIncomeStats).toHaveBeenCalledTimes(incomeCalls);
   });
 
+  it("supports future months in a custom range", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: null,
+      series: [{ service_id: 1, service_name: "Газ", unit: "м³", values: [{ period: "2027-02-01", consumed: "12" }] }],
+    });
+    const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve({
+      ...incomeStats(apartmentId),
+      months: null,
+      values: [{ period: "2027-02-01", rent: "100.00", utilities: "20.00", total: "120.00" }],
+      totals: { rent: "100.00", utilities: "20.00", total: "120.00" },
+      top_service: null,
+    }));
+
+    renderStats();
+    await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    await user.click(screen.getByRole("button", { name: "Довільний період" }));
+    fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2027-01" } });
+    fireEvent.change(screen.getByLabelText("Період до"), { target: { value: "2027-03" } });
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+
+    const period = { date_from: "2027-01-01", date_to: "2027-03-01" };
+    await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, period));
+    await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(1, period));
+    const consumptionChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    const incomeChart = await screen.findByRole("img", { name: "Стековий графік доходу" });
+    for (const chart of [consumptionChart, incomeChart]) {
+      expect(chart.querySelector('[data-period="2027-01-01"]')).toHaveClass("chart-month-slot-empty");
+      expect(chart.querySelector('[data-period="2027-03-01"]')).toHaveClass("chart-month-slot-empty");
+    }
+    expect(screen.getByText("Простій").closest("article")).toHaveTextContent("3 міс");
+  });
+
   it("restores filters and the matching tenant from URL parameters", async () => {
     const allApartments = [
       apartments[0],
@@ -616,6 +651,65 @@ describe("Stats", () => {
     await user.selectOptions(tenantSelect, "12");
     expect(tenantSelect).toHaveValue("12");
     expect(screen.getByText("Договір: 01.03.2025 — досі · активний")).toBeInTheDocument();
+  });
+
+  it("uses the first tenant when contract month ranges match", async () => {
+    const matchingTenants: apiClient.Tenant[] = [
+      {
+        id: 11,
+        apartment_id: 1,
+        full_name: "Перший орендар",
+        phone: null,
+        email: null,
+        contract_start: "2025-04-01",
+        contract_end: "2025-04-14",
+        notes: null,
+      },
+      {
+        id: 12,
+        apartment_id: 1,
+        full_name: "Другий орендар",
+        phone: null,
+        email: null,
+        contract_start: "2025-04-15",
+        contract_end: "2025-04-30",
+        notes: null,
+      },
+    ];
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockResolvedValue(matchingTenants);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats("/stats?apartment=1&scope=portfolio&period=custom&from=2025-04&to=2025-04");
+
+    expect(await screen.findByLabelText("Орендар для статистики")).toHaveValue("11");
+    expect(screen.getByText("Договір: 01.04.2025 — 14.04.2025 · завершений")).toBeInTheDocument();
+    expect(screen.queryByText("Договір: 15.04.2025 — 30.04.2025 · завершений")).not.toBeInTheDocument();
+  });
+
+  it("does not match an active tenant from a stale URL in the next month", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 7, 1));
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockResolvedValue([{
+      id: 11,
+      apartment_id: 1,
+      full_name: "Поточний орендар",
+      phone: null,
+      email: null,
+      contract_start: "2025-03-01",
+      contract_end: null,
+      notes: null,
+    }]);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats("/stats?apartment=1&scope=portfolio&period=custom&from=2025-03&to=2026-07");
+
+    expect(await screen.findByLabelText("Орендар для статистики")).toHaveValue("");
+    expect(screen.queryByText(/Договір:/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Період до")).toHaveValue("2026-07");
   });
 
   it("refreshes tenants when the apartment changes and hides an empty list", async () => {
