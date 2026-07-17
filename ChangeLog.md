@@ -1,5 +1,24 @@
 # ChangeLog
 
+## [2026-07-17 14:23] Завершення фільтра статистики за орендарем
+
+- `frontend/src/pages/Stats.tsx`, `frontend/src/theme.css` — завершено суто
+  frontend-фільтр статистики за договором орендаря: похідний custom-період,
+  інфо-рядок договору, маркери початку договорів, плитку простою та
+  синхронізацію фільтрів з URL.
+- `frontend/src/pages/Stats.test.tsx` — фінальна Docker-перевірка підтвердила
+  140 frontend-тестів; регресійна backend-перевірка — 83 тести; production
+  build frontend також успішний.
+- `docs/plans/20260717-tenant-stats-filter.md` — Task 7 завершено; `README.md`
+  не потребує змін, бо нових команд немає, а `CLAUDE.md` — бо нових
+  повторно використовуваних патернів не виявлено. Фізичне переміщення плану
+  до `docs/plans/completed/` відкладено до фінальних фаз оркестратора.
+- Зміни зачіпають production frontend. Для розгортання на Synology потрібно
+  виконати rebuild і restart за `docs/deploy.md`: з локальним `.env` запустити
+  `docker compose --env-file .env -f docker/docker-compose.yml up -d --build`,
+  потім перевірити стан через `docker compose --env-file .env -f
+  docker/docker-compose.yml ps`. Автоматичний деплой не виконувався.
+
 ## [2026-07-17 14:19] Acceptance-перевірка фільтра статистики
 
 - `frontend/src/pages/Stats.test.tsx` — додано прямі acceptance-тести

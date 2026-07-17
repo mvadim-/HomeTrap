@@ -210,12 +210,14 @@
 
 ### Task 7: [Final] Update documentation
 
-- [ ] додати запис у `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, зачеплені
+- [x] додати запис у `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, зачеплені
   файли, поведінка, примітка про деплой)
-- [ ] update README.md if needed (нових команд не очікується)
-- [ ] update CLAUDE.md if new patterns discovered
-- [ ] створити окремий git-коміт циклу з коротким імперативним заголовком
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update README.md if needed — оновлення не потрібне: нових команд немає
+- [x] update CLAUDE.md if new patterns discovered — оновлення не потрібне:
+  нових повторно використовуваних патернів не виявлено
+- [x] створити окремий git-коміт циклу з коротким імперативним заголовком
+- [x] move this plan to `docs/plans/completed/` — фізичне переміщення
+  відкладено до завершальних review/finalize/stats фаз оркестратора
 
 ## Post-Completion
 *Ручні дії та зовнішні системи — інформаційно, без checkboxes*
