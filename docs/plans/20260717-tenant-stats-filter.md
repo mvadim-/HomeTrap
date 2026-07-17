@@ -170,13 +170,13 @@
 - Modify: `frontend/src/pages/Stats.tsx`
 - Modify: `frontend/src/pages/Stats.test.tsx`
 
-- [ ] обчислення простою: місяці `chartPeriods`, не покриті жодним договором
+- [x] обчислення простою: місяці `chartPeriods`, не покриті жодним договором
   (перетин хоч в один день)
-- [ ] четверта плитка у `stats-summary-grid`: «Простій» → «X міс» → «без
+- [x] четверта плитка у `stats-summary-grid`: «Простій» → «X міс» → «без
   орендаря за період»; рендер лише при `scope="apartment"`
-- [ ] write tests: розрив між договорами рахується правильно; повне покриття →
+- [x] write tests: розрив між договорами рахується правильно; повне покриття →
   «0 міс»; квартира без орендарів → усі місяці; у portfolio плитки немає
-- [ ] run tests — must pass before task 5
+- [x] run tests — must pass before task 5
 
 ### Task 5: Стан фільтрів в URL
 

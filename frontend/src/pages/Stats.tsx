@@ -117,6 +117,18 @@ function chartMonthPeriods(statsPeriod: StatsPeriod | null, dataPeriods: string[
   return fullMonthPeriods(dataPeriods);
 }
 
+function vacancyMonthCount(periods: string[], tenants: Tenant[]): number {
+  return periods.filter((period) => {
+    const [year, month] = period.slice(0, 7).split("-").map(Number);
+    const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+    const monthEnd = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+    return !tenants.some((tenant) => (
+      tenant.contract_start <= monthEnd
+      && (tenant.contract_end === null || tenant.contract_end >= monthStart)
+    ));
+  }).length;
+}
+
 function scaleTicks(max: number, step: number): number[] {
   return Array.from({ length: Math.round(max / step) + 1 }, (_, index) => index * step);
 }
@@ -376,6 +388,7 @@ export function Stats() {
       period: tenant.contract_start.slice(0, 7),
     }))
     : [];
+  const vacancyMonths = vacancyMonthCount(chartPeriods, tenants);
 
   useEffect(() => {
     let active = true;
@@ -568,6 +581,9 @@ export function Stats() {
             {topServiceContent}
           </Link>
         ) : <article className="stats-summary-tile">{topServiceContent}</article>}
+        {scope === "apartment" && (
+          <article className="stats-summary-tile"><span>Простій</span><strong>{vacancyMonths} міс</strong><small>без орендаря за період</small></article>
+        )}
       </section>
 
       <section className="section-card stats-section">

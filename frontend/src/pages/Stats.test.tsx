@@ -229,6 +229,87 @@ describe("Stats", () => {
     expect(screen.queryByLabelText("Початок договору: Олена Коваль, липень 2025")).not.toBeInTheDocument();
   });
 
+  it("counts uncovered months between contracts only for the apartment scope", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockResolvedValue([
+      {
+        id: 11,
+        apartment_id: 1,
+        full_name: "Іван Петренко",
+        phone: null,
+        email: null,
+        contract_start: "2026-01-31",
+        contract_end: "2026-01-31",
+        notes: null,
+      },
+      {
+        id: 12,
+        apartment_id: 1,
+        full_name: "Олена Коваль",
+        phone: null,
+        email: null,
+        contract_start: "2026-03-15",
+        contract_end: null,
+        notes: null,
+      },
+    ]);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
+
+    renderStats();
+
+    await screen.findByLabelText("Орендар для статистики");
+    await user.click(screen.getByRole("button", { name: "Довільний період" }));
+    fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2026-01" } });
+    fireEvent.change(screen.getByLabelText("Період до"), { target: { value: "2026-03" } });
+    expect(screen.queryByText("Простій")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+
+    const vacancyTile = (await screen.findByText("Простій")).closest("article");
+    expect(vacancyTile).toHaveTextContent("1 міс");
+    expect(vacancyTile).toHaveTextContent("без орендаря за період");
+  });
+
+  it("shows zero vacancy for full coverage and all months without tenants", async () => {
+    const user = userEvent.setup();
+    const secondApartment = { ...apartments[0], id: 2, name: "Квартира на Печерську" };
+    const coveringTenant: apiClient.Tenant = {
+      id: 11,
+      apartment_id: 1,
+      full_name: "Іван Петренко",
+      phone: null,
+      email: null,
+      contract_start: "2025-12-15",
+      contract_end: "2026-03-01",
+      notes: null,
+    };
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue([...apartments, secondApartment]);
+    vi.spyOn(apiClient, "getTenants").mockImplementation((apartmentId) => (
+      Promise.resolve(apartmentId === 1 ? [coveringTenant] : [])
+    ));
+    vi.spyOn(apiClient, "getConsumptionStats").mockImplementation((apartmentId) => (
+      Promise.resolve({ apartment_id: apartmentId, months: null, series: [] })
+    ));
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
+
+    renderStats();
+
+    await screen.findByLabelText("Орендар для статистики");
+    await user.click(screen.getByRole("button", { name: "Довільний період" }));
+    fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2026-01" } });
+    fireEvent.change(screen.getByLabelText("Період до"), { target: { value: "2026-03" } });
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+
+    expect((await screen.findByText("Простій")).closest("article")).toHaveTextContent("0 міс");
+
+    await user.selectOptions(screen.getByLabelText("Квартира для статистики"), "2");
+
+    await waitFor(() => expect(screen.queryByLabelText("Орендар для статистики")).not.toBeInTheDocument());
+    expect(screen.getByText("Простій").closest("article")).toHaveTextContent("3 міс");
+  });
+
   it("renders a correction marker instead of bars for a month with a negative segment", async () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
