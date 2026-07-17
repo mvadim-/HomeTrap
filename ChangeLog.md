@@ -1,5 +1,22 @@
 # ChangeLog
 
+## [2026-07-17 14:58] Спрощення фільтрів статистики
+
+- `frontend/src/pages/Stats.tsx` — URL-синхронізацію та завантаження орендарів
+  винесено в локальні hooks; tenant-state тепер прив’язаний до квартири, а
+  політику вибору квартири зведено до одного helper. Форматер поточного місяця
+  Києва повторно використовується, а місяць обчислюється один раз на render.
+- `frontend/src/pages/Stats.test.tsx` — додано регресію від показу орендарів
+  попередньої квартири під час нового запиту та прибрано невикористаний reject
+  із deferred helper.
+- Docker-перевірка: frontend — 18 файлів і 146 тестів, backend — 83 тести;
+  production build frontend успішний (45 модулів).
+- Зміни зачіпають production frontend. Для розгортання на Synology потрібно
+  виконати rebuild і restart за `docs/deploy.md`: з локальним `.env` запустити
+  `docker compose --env-file .env -f docker/docker-compose.yml up -d --build`,
+  потім `docker compose --env-file .env -f docker/docker-compose.yml ps`.
+  Автоматичний деплой не виконувався.
+
 ## [2026-07-17 14:38] Виправлення review фільтра статистики
 
 - `frontend/src/pages/Stats.tsx` — числовий простій тепер з’являється лише після

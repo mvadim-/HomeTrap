@@ -70,12 +70,10 @@ function tenant(overrides: Partial<apiClient.Tenant> = {}): apiClient.Tenant {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+  const promise = new Promise<T>((resolvePromise) => {
     resolve = resolvePromise;
-    reject = rejectPromise;
   });
-  return { promise, resolve, reject };
+  return { promise, resolve };
 }
 
 function incomeStats(apartmentId?: number): apiClient.IncomeStats {
@@ -784,6 +782,38 @@ describe("Stats", () => {
     expect(await screen.findByLabelText("Орендар для статистики")).toHaveValue("");
     expect(screen.queryByText(/Договір:/)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Період до")).toHaveValue("2026-07");
+  });
+
+  it("does not expose tenants from the previous apartment while the next request is pending", async () => {
+    const user = userEvent.setup();
+    const allApartments = [
+      apartments[0],
+      { ...apartments[0], id: 2, name: "Квартира на Печерську" },
+    ];
+    const firstRequest = deferred<apiClient.Tenant[]>();
+    const secondRequest = deferred<apiClient.Tenant[]>();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(allApartments);
+    vi.spyOn(apiClient, "getTenants").mockImplementation((apartmentId) => (
+      apartmentId === 1 ? firstRequest.promise : secondRequest.promise
+    ));
+    vi.spyOn(apiClient, "getConsumptionStats").mockImplementation((apartmentId) => Promise.resolve({ apartment_id: apartmentId, months: 12, series: [] }));
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+
+    const apartmentSelect = await screen.findByLabelText("Квартира для статистики");
+    await act(async () => firstRequest.resolve([tenant()]));
+    expect(await screen.findByRole("option", { name: "Іван Петренко" })).toBeInTheDocument();
+
+    await user.selectOptions(apartmentSelect, "2");
+
+    expect(screen.queryByLabelText("Орендар для статистики")).not.toBeInTheDocument();
+    await act(async () => secondRequest.resolve([tenant({
+      id: 21,
+      apartment_id: 2,
+      full_name: "Олена Коваль",
+    })]));
+    expect(await screen.findByRole("option", { name: "Олена Коваль" })).toBeInTheDocument();
   });
 
   it("refreshes tenants when the apartment changes and hides an empty list", async () => {
