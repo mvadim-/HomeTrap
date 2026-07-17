@@ -296,7 +296,7 @@ describe("Stats", () => {
     expect(getIncomeStats).toHaveBeenCalledTimes(incomeCalls);
   });
 
-  it("uses tenant contracts as custom period presets", async () => {
+  it("derives the selected tenant and contract details from the custom period", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(2026, 6, 17));
     const user = userEvent.setup();
@@ -343,6 +343,8 @@ describe("Stats", () => {
     expect(screen.getByRole("button", { name: "Довільний період" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("Період від")).toHaveValue("2024-03");
     expect(screen.getByLabelText("Період до")).toHaveValue("2025-02");
+    expect(tenantSelect).toHaveValue("11");
+    expect(screen.getByText("Договір: 15.03.2024 — 28.02.2025 · завершений")).toBeInTheDocument();
     const endedPeriod = { date_from: "2024-03-01", date_to: "2025-02-01" };
     await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, endedPeriod));
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, endedPeriod));
@@ -350,9 +352,20 @@ describe("Stats", () => {
     await user.selectOptions(tenantSelect, "12");
     expect(screen.getByLabelText("Період від")).toHaveValue("2025-03");
     expect(screen.getByLabelText("Період до")).toHaveValue("2026-07");
+    expect(tenantSelect).toHaveValue("12");
+    expect(screen.getByText("Договір: 01.03.2025 — досі · активний")).toBeInTheDocument();
     const activePeriod = { date_from: "2025-03-01", date_to: "2026-07-01" };
     await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, activePeriod));
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, activePeriod));
+
+    await user.clear(screen.getByLabelText("Період від"));
+    await user.type(screen.getByLabelText("Період від"), "2025-04");
+    expect(tenantSelect).toHaveValue("");
+    expect(screen.queryByText(/Договір:/)).not.toBeInTheDocument();
+
+    await user.selectOptions(tenantSelect, "12");
+    expect(tenantSelect).toHaveValue("12");
+    expect(screen.getByText("Договір: 01.03.2025 — досі · активний")).toBeInTheDocument();
   });
 
   it("refreshes tenants when the apartment changes and hides an empty list", async () => {

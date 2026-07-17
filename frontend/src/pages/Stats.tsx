@@ -58,6 +58,20 @@ function invoiceMonthLabel(period: string): string {
     .replace(/^\d+\s+/, "");
 }
 
+function contractDateLabel(date: string): string {
+  const [year, month, day] = date.split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function tenantPeriod(tenant: Tenant): { from: string; to: string } {
+  const today = new Date();
+  return {
+    from: tenant.contract_start.slice(0, 7),
+    to: tenant.contract_end?.slice(0, 7)
+      ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`,
+  };
+}
+
 function seriesColor(name: string): string {
   const kind = utilityKind(name);
   return kind === "other" ? "var(--color-primary)" : `var(--chart-${kind})`;
@@ -307,6 +321,12 @@ export function Stats() {
       : periodMode === "custom"
         ? "Споживання та дохід за довільний період"
         : `Споживання та дохід за останні ${periodMode} місяців`;
+  const selectedTenant = periodMode === "custom"
+    ? tenants.find((tenant) => {
+      const period = tenantPeriod(tenant);
+      return period.from === dateFrom && period.to === dateTo;
+    }) ?? null
+    : null;
   const chartPeriods = chartMonthPeriods(statsPeriod, [
     ...(consumption?.flatMap((series) => series.values.map((point) => point.period)) ?? []),
     ...(income?.values.map((point) => point.period) ?? []),
@@ -415,11 +435,10 @@ export function Stats() {
   const selectTenant = (tenantId: number) => {
     const tenant = tenants.find((item) => item.id === tenantId);
     if (!tenant) return;
-    const today = new Date();
+    const period = tenantPeriod(tenant);
     setPeriodMode("custom");
-    setDateFrom(tenant.contract_start.slice(0, 7));
-    setDateTo(tenant.contract_end?.slice(0, 7)
-      ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
+    setDateFrom(period.from);
+    setDateTo(period.to);
   };
 
   return (
@@ -438,7 +457,7 @@ export function Stats() {
                 <select
                   key={apartmentId}
                   aria-label="Орендар для статистики"
-                  defaultValue=""
+                  value={selectedTenant?.id ?? ""}
                   onChange={(event) => selectTenant(Number(event.target.value))}
                 >
                   <option value="">—</option>
@@ -470,6 +489,11 @@ export function Stats() {
           </div>
         )}
         {customRangeInvalid && <p className="error-message">Початок періоду не може бути пізніше завершення.</p>}
+        {selectedTenant && (
+          <p className="muted-text">
+            Договір: {contractDateLabel(selectedTenant.contract_start)} — {selectedTenant.contract_end ? contractDateLabel(selectedTenant.contract_end) : "досі"} · {selectedTenant.contract_end ? "завершений" : "активний"}
+          </p>
+        )}
       </section>
 
       <section className="section-card stats-section">
