@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-17 14:38] Виправлення review фільтра статистики
+
+- `frontend/src/pages/Stats.tsx` — числовий простій тепер з’являється лише після
+  успішного завантаження орендарів; активні договори використовують поточний
+  місяць `Europe/Kyiv`, а майбутні договори формують валідний одномісячний
+  діапазон. Фільтри відновлюються при Back/Forward без циклів запису URL.
+- `frontend/src/pages/Stats.test.tsx` — додано регресії для loading/error,
+  майбутнього договору, межі Kyiv-місяця, history-навігації та застарілої
+  відповіді `getTenants`; повторювані Tenant-фікстури замінено фабрикою.
+- `README.md`, `docs/plans/20260717-tenant-stats-filter.md` — задокументовано
+  поведінку сторінки статистики, обробку недоступних даних та статус ручної
+  перевірки перед релізом.
+- Зміни зачіпають production frontend. Для розгортання на Synology потрібно
+  виконати rebuild і restart за `docs/deploy.md`: з локальним `.env` запустити
+  `docker compose --env-file .env -f docker/docker-compose.yml up -d --build`,
+  потім `docker compose --env-file .env -f docker/docker-compose.yml ps`.
+  Автоматичний деплой не виконувався.
+
 ## [2026-07-17 14:23] Завершення фільтра статистики за орендарем
 
 - `frontend/src/pages/Stats.tsx`, `frontend/src/theme.css` — завершено суто

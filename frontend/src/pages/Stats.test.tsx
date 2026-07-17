@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
@@ -33,18 +33,49 @@ const januaryInvoice: apiClient.InvoiceListItem = {
 };
 
 function LocationProbe() {
-  return <output data-testid="location-search">{useLocation().search}</output>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <output data-testid="location-search">{useLocation().search}</output>
+      <button type="button" onClick={() => navigate(-1)}>Назад в історії</button>
+      <button type="button" onClick={() => navigate(1)}>Вперед в історії</button>
+    </>
+  );
 }
 
-function renderStats(initialEntry = "/stats") {
+function renderStats(initialEntry: string | string[] = "/stats", initialIndex?: number) {
   return render(
-    <MemoryRouter initialEntries={[initialEntry]}>
+    <MemoryRouter initialEntries={typeof initialEntry === "string" ? [initialEntry] : initialEntry} initialIndex={initialIndex}>
       <Routes>
         <Route path="/stats" element={<><Stats /><LocationProbe /></>} />
         <Route path="/invoices/:invoiceId" element={<h1>Рахунок відкрито</h1>} />
       </Routes>
     </MemoryRouter>,
   );
+}
+
+function tenant(overrides: Partial<apiClient.Tenant> = {}): apiClient.Tenant {
+  return {
+    id: 11,
+    apartment_id: 1,
+    full_name: "Іван Петренко",
+    phone: null,
+    email: null,
+    contract_start: "2024-03-15",
+    contract_end: "2025-02-28",
+    notes: null,
+    ...overrides,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 function incomeStats(apartmentId?: number): apiClient.IncomeStats {
@@ -191,26 +222,16 @@ describe("Stats", () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
     vi.spyOn(apiClient, "getTenants").mockResolvedValue([
-      {
-        id: 11,
-        apartment_id: 1,
-        full_name: "Іван Петренко",
-        phone: null,
-        email: null,
+      tenant({
         contract_start: "2026-05-15",
         contract_end: null,
-        notes: null,
-      },
-      {
+      }),
+      tenant({
         id: 12,
-        apartment_id: 1,
         full_name: "Олена Коваль",
-        phone: null,
-        email: null,
         contract_start: "2025-07-01",
         contract_end: "2026-04-30",
-        notes: null,
-      },
+      }),
     ]);
     vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
     const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => (
@@ -237,26 +258,16 @@ describe("Stats", () => {
     const user = userEvent.setup();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
     vi.spyOn(apiClient, "getTenants").mockResolvedValue([
-      {
-        id: 11,
-        apartment_id: 1,
-        full_name: "Іван Петренко",
-        phone: null,
-        email: null,
+      tenant({
         contract_start: "2026-01-31",
         contract_end: "2026-01-31",
-        notes: null,
-      },
-      {
+      }),
+      tenant({
         id: 12,
-        apartment_id: 1,
         full_name: "Олена Коваль",
-        phone: null,
-        email: null,
         contract_start: "2026-03-15",
         contract_end: null,
-        notes: null,
-      },
+      }),
     ]);
     vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
     vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
@@ -279,16 +290,10 @@ describe("Stats", () => {
   it("shows zero vacancy for full coverage and all months without tenants", async () => {
     const user = userEvent.setup();
     const secondApartment = { ...apartments[0], id: 2, name: "Квартира на Печерську" };
-    const coveringTenant: apiClient.Tenant = {
-      id: 11,
-      apartment_id: 1,
-      full_name: "Іван Петренко",
-      phone: null,
-      email: null,
+    const coveringTenant = tenant({
       contract_start: "2025-12-15",
       contract_end: "2026-03-01",
-      notes: null,
-    };
+    });
     vi.spyOn(apiClient, "getApartments").mockResolvedValue([...apartments, secondApartment]);
     vi.spyOn(apiClient, "getTenants").mockImplementation((apartmentId) => (
       Promise.resolve(apartmentId === 1 ? [coveringTenant] : [])
@@ -312,6 +317,39 @@ describe("Stats", () => {
 
     await waitFor(() => expect(screen.queryByLabelText("Орендар для статистики")).not.toBeInTheDocument());
     expect(screen.getByText("Простій").closest("article")).toHaveTextContent("3 міс");
+  });
+
+  it("waits for tenant data before showing a vacancy count", async () => {
+    const tenantsRequest = deferred<apiClient.Tenant[]>();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockReturnValue(tenantsRequest.promise);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats(1));
+
+    renderStats("/stats?apartment=1&scope=apartment&period=custom&from=2026-01&to=2026-03");
+
+    const vacancyTile = (await screen.findByText("Простій")).closest("article");
+    expect(vacancyTile).toHaveTextContent("—");
+    expect(vacancyTile).toHaveTextContent("завантажуємо дані орендарів");
+
+    await act(async () => tenantsRequest.resolve([]));
+
+    expect(vacancyTile).toHaveTextContent("3 міс");
+    expect(vacancyTile).toHaveTextContent("без орендаря за період");
+  });
+
+  it("marks vacancy as unavailable when tenant loading fails", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockRejectedValue(new Error("offline"));
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats(1));
+
+    renderStats("/stats?apartment=1&scope=apartment&period=custom&from=2026-01&to=2026-03");
+
+    const vacancyTile = (await screen.findByText("Простій")).closest("article");
+    await waitFor(() => expect(vacancyTile).toHaveTextContent("дані орендарів недоступні"));
+    expect(vacancyTile).toHaveTextContent("—");
+    expect(vacancyTile).not.toHaveTextContent(/\d+ міс/);
   });
 
   it("renders a correction marker instead of bars for a month with a negative segment", async () => {
@@ -469,20 +507,16 @@ describe("Stats", () => {
       apartments[0],
       { ...apartments[0], id: 2, name: "Квартира на Печерську", is_active: false },
     ];
-    const tenant: apiClient.Tenant = {
+    const matchingTenant = tenant({
       id: 21,
       apartment_id: 2,
-      full_name: "Іван Петренко",
-      phone: null,
-      email: null,
       contract_start: "2024-03-15",
       contract_end: "2025-02-28",
-      notes: null,
-    };
+    });
     const period = { date_from: "2024-03-01", date_to: "2025-02-01" };
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(allApartments);
     vi.spyOn(apiClient, "getTenants").mockImplementation((apartmentId) => (
-      Promise.resolve(apartmentId === 2 ? [tenant] : [])
+      Promise.resolve(apartmentId === 2 ? [matchingTenant] : [])
     ));
     const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockImplementation((apartmentId) => (
       Promise.resolve({ apartment_id: apartmentId, months: null, series: [] })
@@ -543,6 +577,33 @@ describe("Stats", () => {
     });
   });
 
+  it("restores filters after browser history navigation", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats(1));
+
+    renderStats([
+      "/stats?apartment=1&scope=portfolio&period=6",
+      "/stats?apartment=1&scope=apartment&period=custom&from=2025-01&to=2025-03",
+    ], 1);
+
+    expect(await screen.findByLabelText("Період від")).toHaveValue("2025-01");
+    expect(screen.getByRole("button", { name: "Квартира" })).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(screen.getByRole("button", { name: "Назад в історії" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "6 міс" })).toHaveAttribute("aria-pressed", "true"));
+    expect(screen.getByRole("button", { name: "Портфель" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByLabelText("Період від")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Вперед в історії" }));
+
+    expect(await screen.findByLabelText("Період від")).toHaveValue("2025-01");
+    expect(screen.getByLabelText("Період до")).toHaveValue("2025-03");
+    expect(screen.getByRole("button", { name: "Квартира" })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("normalizes an unknown apartment, scope and period to defaults", async () => {
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
     const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
@@ -586,26 +647,13 @@ describe("Stats", () => {
     vi.setSystemTime(new Date(2026, 6, 17));
     const user = userEvent.setup();
     const tenants: apiClient.Tenant[] = [
-      {
-        id: 11,
-        apartment_id: 1,
-        full_name: "Іван Петренко",
-        phone: null,
-        email: null,
-        contract_start: "2024-03-15",
-        contract_end: "2025-02-28",
-        notes: null,
-      },
-      {
+      tenant(),
+      tenant({
         id: 12,
-        apartment_id: 1,
         full_name: "Олена Коваль",
-        phone: null,
-        email: null,
         contract_start: "2025-03-01",
         contract_end: null,
-        notes: null,
-      },
+      }),
     ];
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
     vi.spyOn(apiClient, "getTenants").mockResolvedValue(tenants);
@@ -622,6 +670,7 @@ describe("Stats", () => {
     renderStats();
 
     const tenantSelect = await screen.findByLabelText("Орендар для статистики");
+    expect(screen.getByRole("option", { name: "—" })).toBeDisabled();
     expect(screen.getByRole("option", { name: "Олена Коваль (поточний)" })).toBeInTheDocument();
     await user.selectOptions(tenantSelect, "11");
 
@@ -653,28 +702,58 @@ describe("Stats", () => {
     expect(screen.getByText("Договір: 01.03.2025 — досі · активний")).toBeInTheDocument();
   });
 
+  it("uses the Kyiv current month for an active tenant", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-07-31T21:30:00Z"));
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockResolvedValue([tenant({ contract_start: "2026-01-01", contract_end: null })]);
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+    await user.selectOptions(await screen.findByLabelText("Орендар для статистики"), "11");
+
+    expect(screen.getByLabelText("Період до")).toHaveValue("2026-08");
+    await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, {
+      date_from: "2026-01-01",
+      date_to: "2026-08-01",
+    }));
+  });
+
+  it("uses the contract start month for a future active tenant", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-07-17T12:00:00Z"));
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getTenants").mockResolvedValue([tenant({ contract_start: "2026-09-15", contract_end: null })]);
+    const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
+    const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+    await user.selectOptions(await screen.findByLabelText("Орендар для статистики"), "11");
+
+    expect(screen.getByLabelText("Період від")).toHaveValue("2026-09");
+    expect(screen.getByLabelText("Період до")).toHaveValue("2026-09");
+    expect(screen.queryByText("Початок періоду не може бути пізніше завершення.")).not.toBeInTheDocument();
+    const period = { date_from: "2026-09-01", date_to: "2026-09-01" };
+    await waitFor(() => expect(getConsumptionStats).toHaveBeenLastCalledWith(1, period));
+    await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(undefined, period));
+  });
+
   it("uses the first tenant when contract month ranges match", async () => {
     const matchingTenants: apiClient.Tenant[] = [
-      {
-        id: 11,
-        apartment_id: 1,
+      tenant({
         full_name: "Перший орендар",
-        phone: null,
-        email: null,
         contract_start: "2025-04-01",
         contract_end: "2025-04-14",
-        notes: null,
-      },
-      {
+      }),
+      tenant({
         id: 12,
-        apartment_id: 1,
         full_name: "Другий орендар",
-        phone: null,
-        email: null,
         contract_start: "2025-04-15",
         contract_end: "2025-04-30",
-        notes: null,
-      },
+      }),
     ];
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
     vi.spyOn(apiClient, "getTenants").mockResolvedValue(matchingTenants);
@@ -692,16 +771,11 @@ describe("Stats", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(2026, 7, 1));
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
-    vi.spyOn(apiClient, "getTenants").mockResolvedValue([{
-      id: 11,
-      apartment_id: 1,
+    vi.spyOn(apiClient, "getTenants").mockResolvedValue([tenant({
       full_name: "Поточний орендар",
-      phone: null,
-      email: null,
       contract_start: "2025-03-01",
       contract_end: null,
-      notes: null,
-    }]);
+    })]);
     vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: null, series: [] });
     vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
 
@@ -719,32 +793,33 @@ describe("Stats", () => {
       { ...apartments[0], id: 2, name: "Квартира на Печерську" },
       { ...apartments[0], id: 3, name: "Квартира на Липках" },
     ];
-    const firstTenant: apiClient.Tenant = {
-      id: 11,
-      apartment_id: 1,
-      full_name: "Іван Петренко",
-      phone: null,
-      email: null,
-      contract_start: "2024-03-15",
-      contract_end: "2025-02-28",
-      notes: null,
-    };
+    const firstTenant = tenant();
     const secondTenant = { ...firstTenant, id: 21, apartment_id: 2, full_name: "Олена Коваль" };
+    const tenantRequests = new Map<number, ReturnType<typeof deferred<apiClient.Tenant[]>>>();
     vi.spyOn(apiClient, "getApartments").mockResolvedValue(allApartments);
-    const getTenants = vi.spyOn(apiClient, "getTenants").mockImplementation((apartmentId) => (
-      Promise.resolve(apartmentId === 1 ? [firstTenant] : apartmentId === 2 ? [secondTenant] : [])
-    ));
+    const getTenants = vi.spyOn(apiClient, "getTenants").mockImplementation((apartmentId) => {
+      const request = deferred<apiClient.Tenant[]>();
+      tenantRequests.set(apartmentId, request);
+      return request.promise;
+    });
     vi.spyOn(apiClient, "getConsumptionStats").mockImplementation((apartmentId) => Promise.resolve({ apartment_id: apartmentId, months: 12, series: [] }));
     vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
 
     renderStats();
 
-    expect(await screen.findByRole("option", { name: "Іван Петренко" })).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Квартира для статистики"), "2");
+    const apartmentSelect = await screen.findByLabelText("Квартира для статистики");
+    await waitFor(() => expect(getTenants).toHaveBeenCalledWith(1));
+    await user.selectOptions(apartmentSelect, "2");
+    await waitFor(() => expect(getTenants).toHaveBeenCalledWith(2));
+    await act(async () => tenantRequests.get(2)!.resolve([secondTenant]));
     expect(await screen.findByRole("option", { name: "Олена Коваль" })).toBeInTheDocument();
+
+    await act(async () => tenantRequests.get(1)!.resolve([firstTenant]));
     expect(screen.queryByRole("option", { name: "Іван Петренко" })).not.toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText("Квартира для статистики"), "3");
+    await user.selectOptions(apartmentSelect, "3");
+    await waitFor(() => expect(getTenants).toHaveBeenCalledWith(3));
+    await act(async () => tenantRequests.get(3)!.resolve([]));
     await waitFor(() => expect(screen.queryByLabelText("Орендар для статистики")).not.toBeInTheDocument());
     expect(getTenants).toHaveBeenCalledWith(1);
     expect(getTenants).toHaveBeenCalledWith(2);

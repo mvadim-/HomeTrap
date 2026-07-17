@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import {
@@ -37,14 +37,15 @@ const NUMBER_FORMATTERS = [0, 1, 2].map((maximumFractionDigits) => (
 ));
 const PERIOD_MODES = ["6", "12", "24", "all", "custom"] as const;
 type PeriodMode = typeof PERIOD_MODES[number];
-
-function initialStatsFilters(searchParams: URLSearchParams): {
+type StatsFilters = {
   apartmentId: number | null;
   scope: "portfolio" | "apartment";
   periodMode: PeriodMode;
   dateFrom: string;
   dateTo: string;
-} {
+};
+
+function initialStatsFilters(searchParams: URLSearchParams): StatsFilters {
   const apartmentParam = searchParams.get("apartment") ?? "";
   const parsedApartmentId = /^\d+$/.test(apartmentParam) ? Number(apartmentParam) : null;
   const scopeParam = searchParams.get("scope");
@@ -63,6 +64,18 @@ function initialStatsFilters(searchParams: URLSearchParams): {
     dateFrom: hasCustomRange ? fromParam : "",
     dateTo: hasCustomRange ? toParam : "",
   };
+}
+
+function statsFiltersSearchParams(filters: StatsFilters): URLSearchParams {
+  const result = new URLSearchParams();
+  if (filters.apartmentId !== null) result.set("apartment", String(filters.apartmentId));
+  result.set("scope", filters.scope);
+  result.set("period", filters.periodMode);
+  if (filters.periodMode === "custom") {
+    if (filters.dateFrom) result.set("from", filters.dateFrom);
+    if (filters.dateTo) result.set("to", filters.dateTo);
+  }
+  return result;
 }
 
 function monthLabel(period: string): string {
@@ -96,12 +109,23 @@ function contractStartMonthLabel(date: string): string {
   return selectedMonthLabel(date.slice(0, 7)).replace(/\s+р\.$/, "");
 }
 
+function currentKyivMonth(): string {
+  const parts = new Intl.DateTimeFormat("en", {
+    year: "numeric",
+    month: "2-digit",
+    timeZone: "Europe/Kyiv",
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")!.value;
+  const month = parts.find((part) => part.type === "month")!.value;
+  return `${year}-${month}`;
+}
+
 function tenantPeriod(tenant: Tenant): { from: string; to: string } {
-  const today = new Date();
+  const from = tenant.contract_start.slice(0, 7);
+  const currentMonth = currentKyivMonth();
   return {
-    from: tenant.contract_start.slice(0, 7),
-    to: tenant.contract_end?.slice(0, 7)
-      ?? `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`,
+    from,
+    to: tenant.contract_end?.slice(0, 7) ?? (from > currentMonth ? from : currentMonth),
   };
 }
 
@@ -366,10 +390,13 @@ function IncomeChart({ stats, periods, tenantStarts }: {
 export function Stats() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [initialFilters] = useState(() => initialStatsFilters(searchParams));
+  const pendingUrlFilters = useRef<string | null>(null);
+  const lastWrittenSearch = useRef<string | null>(null);
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [apartmentId, setApartmentId] = useState<number | null>(null);
   const [apartmentsLoaded, setApartmentsLoaded] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenantsStatus, setTenantsStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [scope, setScope] = useState<"portfolio" | "apartment">(initialFilters.scope);
   const [consumption, setConsumption] = useState<ConsumptionSeries[] | null>(null);
   const [consumptionLoading, setConsumptionLoading] = useState(false);
@@ -446,24 +473,59 @@ export function Stats() {
 
   useEffect(() => {
     if (!apartmentsLoaded) return;
-    const nextSearchParams = new URLSearchParams();
-    if (apartmentId !== null) nextSearchParams.set("apartment", String(apartmentId));
-    nextSearchParams.set("scope", scope);
-    nextSearchParams.set("period", periodMode);
-    if (periodMode === "custom") {
-      if (dateFrom) nextSearchParams.set("from", dateFrom);
-      if (dateTo) nextSearchParams.set("to", dateTo);
+    if (searchParams.toString() === lastWrittenSearch.current) {
+      lastWrittenSearch.current = null;
+      return;
     }
-    setSearchParams(nextSearchParams, { replace: true });
-  }, [apartmentId, apartmentsLoaded, dateFrom, dateTo, periodMode, scope, setSearchParams]);
+    const parsed = initialStatsFilters(searchParams);
+    const filters: StatsFilters = {
+      ...parsed,
+      apartmentId: apartments.find((item) => item.id === parsed.apartmentId)?.id
+        ?? apartments.find((item) => item.is_active)?.id
+        ?? apartments[0]?.id
+        ?? null,
+    };
+    pendingUrlFilters.current = statsFiltersSearchParams(filters).toString();
+    setApartmentId(filters.apartmentId);
+    setScope(filters.scope);
+    setPeriodMode(filters.periodMode);
+    setDateFrom(filters.dateFrom);
+    setDateTo(filters.dateTo);
+  }, [apartments, apartmentsLoaded, searchParams]);
+
+  useEffect(() => {
+    if (!apartmentsLoaded) return;
+    const nextSearchParams = statsFiltersSearchParams({ apartmentId, scope, periodMode, dateFrom, dateTo });
+    const nextSearch = nextSearchParams.toString();
+    if (pendingUrlFilters.current !== null) {
+      if (pendingUrlFilters.current !== nextSearch) return;
+      pendingUrlFilters.current = null;
+    }
+    if (searchParams.toString() !== nextSearch) {
+      lastWrittenSearch.current = nextSearch;
+      setSearchParams(nextSearchParams, { replace: true });
+    }
+  }, [apartmentId, apartmentsLoaded, dateFrom, dateTo, periodMode, scope, searchParams, setSearchParams]);
 
   useEffect(() => {
     setTenants([]);
-    if (apartmentId === null) return;
+    if (apartmentId === null) {
+      setTenantsStatus("idle");
+      return;
+    }
     let active = true;
+    setTenantsStatus("loading");
     getTenants(apartmentId)
-      .then((items) => active && setTenants(items))
-      .catch(() => active && setTenants([]));
+      .then((items) => {
+        if (!active) return;
+        setTenants(items);
+        setTenantsStatus("success");
+      })
+      .catch(() => {
+        if (!active) return;
+        setTenants([]);
+        setTenantsStatus("error");
+      });
     return () => { active = false; };
   }, [apartmentId]);
 
@@ -568,12 +630,11 @@ export function Stats() {
             {tenants.length > 0 && (
               <label className="stats-apartment-select">Орендар
                 <select
-                  key={apartmentId}
                   aria-label="Орендар для статистики"
                   value={selectedTenant?.id ?? ""}
                   onChange={(event) => selectTenant(Number(event.target.value))}
                 >
-                  <option value="">—</option>
+                  <option value="" disabled>—</option>
                   {tenants.map((tenant) => (
                     <option key={tenant.id} value={tenant.id}>
                       {tenant.full_name}{tenant.contract_end === null ? " (поточний)" : ""}
@@ -637,7 +698,11 @@ export function Stats() {
           </Link>
         ) : <article className="stats-summary-tile">{topServiceContent}</article>}
         {scope === "apartment" && (
-          <article className="stats-summary-tile"><span>Простій</span><strong>{vacancyMonths} міс</strong><small>без орендаря за період</small></article>
+          <article className="stats-summary-tile">
+            <span>Простій</span>
+            <strong>{tenantsStatus === "success" ? `${vacancyMonths} міс` : "—"}</strong>
+            <small>{tenantsStatus === "error" ? "дані орендарів недоступні" : tenantsStatus === "success" ? "без орендаря за період" : "завантажуємо дані орендарів"}</small>
+          </article>
         )}
       </section>
 
