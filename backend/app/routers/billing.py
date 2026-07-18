@@ -29,7 +29,7 @@ def upcoming_billing(session: Session = Depends(get_db)) -> list[dict[str, objec
     entries = (
         entry
         for entry in compute_billing_schedule(session, today)
-        if entry.next_billing_date <= horizon_end
+        if entry.billing_date <= horizon_end
     )
     return [
         {
@@ -37,7 +37,7 @@ def upcoming_billing(session: Session = Depends(get_db)) -> list[dict[str, objec
             "apartment_name": entry.apartment.name,
             "tenant_id": entry.tenant.id,
             "tenant_name": entry.tenant.full_name,
-            "next_billing_date": entry.next_billing_date,
+            "billing_date": entry.billing_date,
             "period": entry.period,
             "invoice_status": entry.invoice_status,
             "is_overdue": entry.is_overdue,
@@ -45,7 +45,7 @@ def upcoming_billing(session: Session = Depends(get_db)) -> list[dict[str, objec
         for entry in sorted(
             entries,
             key=lambda entry: (
-                entry.next_billing_date,
+                entry.billing_date,
                 entry.apartment.name,
                 entry.apartment.id,
             ),

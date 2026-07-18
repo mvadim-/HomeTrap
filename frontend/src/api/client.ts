@@ -130,7 +130,7 @@ export interface UpcomingBillingItem {
   apartment_name: string;
   tenant_id: number;
   tenant_name: string;
-  next_billing_date: string;
+  billing_date: string;
   period: string;
   invoice_status: InvoiceStatus | null;
   is_overdue: boolean;

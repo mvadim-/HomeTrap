@@ -122,10 +122,13 @@ def test_contract_day_is_clipped_to_end_of_month(
     )
     db_session.commit()
 
-    [entry] = compute_billing_schedule(db_session, today)
+    entry = next(
+        item for item in compute_billing_schedule(db_session, today)
+        if item.billing_date == expected
+    )
 
     assert entry.billing_day == 31
-    assert entry.next_billing_date == expected
+    assert entry.billing_date == expected
     assert entry.period == expected.replace(day=1)
     assert entry.invoice_exists is False
     assert entry.invoice_status is None
@@ -142,27 +145,34 @@ def test_billing_day_override_replaces_contract_day(db_session: Session) -> None
     )
     db_session.commit()
 
-    [entry] = compute_billing_schedule(db_session, date(2026, 2, 1))
+    entry = next(
+        item for item in compute_billing_schedule(db_session, date(2026, 2, 1))
+        if item.billing_date == date(2026, 2, 15)
+    )
 
     assert entry.billing_day == 15
-    assert entry.next_billing_date == date(2026, 2, 15)
+    assert entry.billing_date == date(2026, 2, 15)
     assert entry.period == date(2026, 2, 1)
 
 
-def test_next_billing_date_moves_to_next_month_after_billing_day(
+def test_schedule_separates_overdue_and_next_billing_occurrences(
     db_session: Session,
 ) -> None:
     apartment = make_apartment("Наступний місяць")
     db_session.add(
-        make_tenant(apartment, contract_start=date(2026, 1, 10))
+        make_tenant(apartment, contract_start=date(2026, 7, 10))
     )
     db_session.commit()
 
-    [entry] = compute_billing_schedule(db_session, date(2026, 7, 11))
+    entries = compute_billing_schedule(db_session, date(2026, 7, 11))
 
-    assert entry.next_billing_date == date(2026, 8, 10)
-    assert entry.period == date(2026, 8, 1)
-    assert entry.is_overdue is True
+    assert [
+        (entry.billing_date, entry.period, entry.is_overdue)
+        for entry in entries
+    ] == [
+        (date(2026, 7, 10), date(2026, 7, 1), True),
+        (date(2026, 8, 10), date(2026, 8, 1), False),
+    ]
 
 
 def test_schedule_uses_current_tenant_and_ignores_future_tenant(
@@ -187,9 +197,8 @@ def test_schedule_uses_current_tenant_and_ignores_future_tenant(
 
     entries = compute_billing_schedule(db_session, date(2026, 7, 1))
 
-    assert len(entries) == 1
-    assert entries[0].tenant.id == current.id
-    assert entries[0].billing_day == 5
+    assert {entry.tenant.id for entry in entries} == {current.id}
+    assert {entry.billing_day for entry in entries} == {5}
 
 
 def test_schedule_includes_contract_start_and_end_boundaries(
@@ -216,7 +225,12 @@ def test_schedule_includes_contract_start_and_end_boundaries(
         "Завершення сьогодні",
         "Початок сьогодні",
     }
-    assert all(entry.next_billing_date == today for entry in entries)
+    current_entries = [entry for entry in entries if not entry.is_overdue]
+    assert {entry.apartment.name for entry in current_entries} == {
+        "Завершення сьогодні",
+        "Початок сьогодні",
+    }
+    assert all(entry.billing_date == today for entry in current_entries)
 
 
 def test_schedule_excludes_ineligible_apartments_and_tenants(
@@ -248,7 +262,7 @@ def test_schedule_excludes_ineligible_apartments_and_tenants(
 
     entries = compute_billing_schedule(db_session, date(2026, 7, 1))
 
-    assert [entry.apartment.name for entry in entries] == ["Активна"]
+    assert {entry.apartment.name for entry in entries} == {"Активна"}
 
 
 @pytest.mark.parametrize("status", list(InvoiceStatus))
@@ -265,7 +279,10 @@ def test_schedule_reports_existing_invoice_status(
     db_session.add_all([tenant, invoice])
     db_session.commit()
 
-    [entry] = compute_billing_schedule(db_session, date(2026, 7, 18))
+    entry = next(
+        item for item in compute_billing_schedule(db_session, date(2026, 7, 18))
+        if item.period == date(2026, 7, 1)
+    )
 
     assert entry.period == date(2026, 7, 1)
     assert entry.invoice_exists is True
@@ -284,10 +301,14 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
     issued = make_apartment("Богдана Хмельницького")
     paid = make_apartment("Антоновича")
     tenants = [
-        make_tenant(without_invoice, contract_start=date(2026, 1, 8)),
-        make_tenant(draft, contract_start=date(2026, 1, 7)),
-        make_tenant(issued, contract_start=date(2026, 1, 7)),
-        make_tenant(paid, contract_start=date(2026, 1, 9)),
+        make_tenant(
+            without_invoice,
+            contract_start=today,
+            billing_day=8,
+        ),
+        make_tenant(draft, contract_start=today, billing_day=7),
+        make_tenant(issued, contract_start=today, billing_day=7),
+        make_tenant(paid, contract_start=today, billing_day=9),
     ]
     db_session.add_all(
         [
@@ -308,7 +329,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "apartment_name": "Богдана Хмельницького",
             "tenant_id": tenants[2].id,
             "tenant_name": "Орендар",
-            "next_billing_date": "2026-07-07",
+            "billing_date": "2026-07-07",
             "period": "2026-07-01",
             "invoice_status": "issued",
             "is_overdue": False,
@@ -318,7 +339,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "apartment_name": "Володимирська",
             "tenant_id": tenants[1].id,
             "tenant_name": "Орендар",
-            "next_billing_date": "2026-07-07",
+            "billing_date": "2026-07-07",
             "period": "2026-07-01",
             "invoice_status": "draft",
             "is_overdue": False,
@@ -328,7 +349,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "apartment_name": "Грушевського",
             "tenant_id": tenants[0].id,
             "tenant_name": "Орендар",
-            "next_billing_date": "2026-07-08",
+            "billing_date": "2026-07-08",
             "period": "2026-07-01",
             "invoice_status": None,
             "is_overdue": False,
@@ -338,7 +359,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "apartment_name": "Антоновича",
             "tenant_id": tenants[3].id,
             "tenant_name": "Орендар",
-            "next_billing_date": "2026-07-09",
+            "billing_date": "2026-07-09",
             "period": "2026-07-01",
             "invoice_status": "paid",
             "is_overdue": False,
@@ -359,7 +380,7 @@ async def test_upcoming_billing_api_includes_day_30_and_excludes_day_31(
             SimpleNamespace(
                 apartment=SimpleNamespace(id=2, name="Поза горизонтом"),
                 tenant=SimpleNamespace(id=12, full_name="Далекий орендар"),
-                next_billing_date=date(2026, 9, 1),
+                billing_date=date(2026, 9, 1),
                 period=date(2026, 9, 1),
                 invoice_status=None,
                 is_overdue=False,
@@ -367,7 +388,7 @@ async def test_upcoming_billing_api_includes_day_30_and_excludes_day_31(
             SimpleNamespace(
                 apartment=SimpleNamespace(id=1, name="На межі"),
                 tenant=SimpleNamespace(id=11, full_name="Поточний орендар"),
-                next_billing_date=date(2026, 8, 31),
+                billing_date=date(2026, 8, 31),
                 period=date(2026, 8, 1),
                 invoice_status="draft",
                 is_overdue=False,
@@ -390,7 +411,7 @@ async def test_upcoming_billing_api_marks_missing_current_invoice_overdue(
     today = date(2026, 7, 11)
     monkeypatch.setattr("app.routers.billing._today", lambda: today)
     apartment = make_apartment("Пропущене виставлення")
-    db_session.add(make_tenant(apartment, contract_start=date(2026, 1, 10)))
+    db_session.add(make_tenant(apartment, contract_start=date(2026, 7, 10)))
     db_session.commit()
 
     response = await billing_client.get("/api/billing/upcoming")
@@ -402,11 +423,44 @@ async def test_upcoming_billing_api_marks_missing_current_invoice_overdue(
             "apartment_name": "Пропущене виставлення",
             "tenant_id": apartment.tenants[0].id,
             "tenant_name": "Орендар",
-            "next_billing_date": "2026-08-10",
-            "period": "2026-08-01",
+            "billing_date": "2026-07-10",
+            "period": "2026-07-01",
             "invoice_status": None,
             "is_overdue": True,
+        },
+        {
+            "apartment_id": apartment.id,
+            "apartment_name": "Пропущене виставлення",
+            "tenant_id": apartment.tenants[0].id,
+            "tenant_name": "Орендар",
+            "billing_date": "2026-08-10",
+            "period": "2026-08-01",
+            "invoice_status": None,
+            "is_overdue": False,
         }
+    ]
+
+
+async def test_upcoming_billing_api_keeps_missed_period_after_month_rollover(
+    db_session: Session,
+    billing_client: AsyncClient,
+    monkeypatch,
+) -> None:
+    today = date(2026, 8, 1)
+    monkeypatch.setattr("app.routers.billing._today", lambda: today)
+    apartment = make_apartment("Перехід місяця")
+    db_session.add(make_tenant(apartment, contract_start=date(2026, 7, 31)))
+    db_session.commit()
+
+    response = await billing_client.get("/api/billing/upcoming")
+
+    assert response.status_code == 200
+    assert [
+        (item["billing_date"], item["period"], item["is_overdue"])
+        for item in response.json()
+    ] == [
+        ("2026-07-31", "2026-07-01", True),
+        ("2026-08-31", "2026-08-01", False),
     ]
 
 

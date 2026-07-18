@@ -37,7 +37,7 @@ export function Dashboard() {
       .catch(() => undefined);
     getUpcomingBilling()
       .then((items) => active && setUpcomingBilling([...items].sort((left, right) => (
-        left.next_billing_date.localeCompare(right.next_billing_date)
+        left.billing_date.localeCompare(right.billing_date)
         || left.apartment_name.localeCompare(right.apartment_name, "uk")
         || left.apartment_id - right.apartment_id
       ))))
@@ -94,7 +94,7 @@ export function Dashboard() {
 
       <section className="section-card upcoming-billing-card">
         <div className="section-heading">
-          <div><h2>Найближчі виставлення</h2><p>Заплановані дати на наступні 30 днів</p></div>
+          <div><h2>Найближчі виставлення</h2><p>Пропущені та заплановані дати на наступні 30 днів</p></div>
         </div>
         {upcomingError ? (
           <p className="error-message" role="alert">{upcomingError}</p>
@@ -110,10 +110,10 @@ export function Dashboard() {
                 {upcomingBilling.map((item) => {
                   const needsWarning = item.is_overdue;
                   return (
-                    <tr className={needsWarning ? "upcoming-billing-warning" : undefined} key={`${item.apartment_id}-${item.next_billing_date}`}>
+                    <tr className={needsWarning ? "upcoming-billing-warning" : undefined} key={`${item.apartment_id}-${item.billing_date}`}>
                       <td><Link className="upcoming-billing-link" to={billingTarget(item)}>{item.apartment_name}</Link></td>
                       <td>{item.tenant_name}</td>
-                      <td>{formatDate(item.next_billing_date)}</td>
+                      <td>{formatDate(item.billing_date)}</td>
                       <td><InvoiceStatusBadge status={item.invoice_status} /></td>
                     </tr>
                   );

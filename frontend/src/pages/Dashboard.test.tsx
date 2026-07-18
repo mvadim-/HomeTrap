@@ -204,7 +204,7 @@ describe("Dashboard", () => {
         apartment_name: "Липки",
         tenant_id: 13,
         tenant_name: "Марія Бондар",
-        next_billing_date: "2099-07-20",
+        billing_date: "2099-07-20",
         period: "2099-07-01",
         invoice_status: null,
         is_overdue: false,
@@ -214,7 +214,7 @@ describe("Dashboard", () => {
         apartment_name: "Печерськ",
         tenant_id: 12,
         tenant_name: "Ірина Коваль",
-        next_billing_date: "2099-07-19",
+        billing_date: "2099-07-19",
         period: "2099-07-01",
         invoice_status: "draft",
         is_overdue: false,
@@ -224,7 +224,7 @@ describe("Dashboard", () => {
         apartment_name: "Поділ",
         tenant_id: 11,
         tenant_name: "Олег Шевченко",
-        next_billing_date: "2099-07-18",
+        billing_date: "2099-07-18",
         period: "2099-07-01",
         invoice_status: null,
         is_overdue: true,
@@ -257,6 +257,42 @@ describe("Dashboard", () => {
     render(<MemoryRouter><Dashboard /></MemoryRouter>);
 
     expect(await screen.findByText("У найближчі 30 днів виставлень немає.")).toBeInTheDocument();
+  });
+
+  it("renders a missed month and its future occurrence as separate rows", async () => {
+    mockDashboardShell();
+    vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([
+      {
+        apartment_id: 1,
+        apartment_name: "Поділ",
+        tenant_id: 11,
+        tenant_name: "Олег Шевченко",
+        billing_date: "2026-07-31",
+        period: "2026-07-01",
+        invoice_status: null,
+        is_overdue: true,
+      },
+      {
+        apartment_id: 1,
+        apartment_name: "Поділ",
+        tenant_id: 11,
+        tenant_name: "Олег Шевченко",
+        billing_date: "2026-08-31",
+        period: "2026-08-01",
+        invoice_status: null,
+        is_overdue: false,
+      },
+    ]);
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+
+    const table = await screen.findByRole("table", { name: "Найближчі виставлення" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("31 лип. 2026 р.");
+    expect(rows[0]).toHaveClass("upcoming-billing-warning");
+    expect(rows[1]).toHaveTextContent("31 серп. 2026 р.");
+    expect(rows[1]).not.toHaveClass("upcoming-billing-warning");
   });
 
   it("keeps the dashboard available when upcoming billing fails", async () => {

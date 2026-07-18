@@ -1,5 +1,22 @@
 # ChangeLog
 
+## [2026-07-18 23:40] Узгодження прострочених виставлень із billing-періодами
+
+- `backend/app/services/billing_schedule.py`, `backend/app/routers/billing.py`,
+  `backend/app/schemas.py` — кожен рядок розкладу тепер описує одну фактичну дату
+  `billing_date`, її період і статус; пропущені періоди не зникають після зміни
+  місяця, а найближче майбутнє виставлення лишається окремим рядком для
+  30-денного Dashboard і нагадувань.
+- `frontend/src/api/client.ts`, `frontend/src/pages/Dashboard.tsx` — UI перейшов
+  на узгоджений API-контракт, окремо сортує і підсвічує пропущені occurrence-и та
+  пояснює, що таблиця містить прострочені й заплановані дати.
+- `backend/tests/test_billing_schedule.py`, `frontend/src/pages/Dashboard.test.tsx`
+  — додано контрактні регресії для простроченої дати без підміни майбутнім
+  періодом та для збереження пропуску після переходу на новий місяць.
+- Зміна призначена для production. Для розгортання виконайте backup, потім
+  rebuild і restart контейнера за `docs/deploy.md`; міграцій БД і нових змінних
+  середовища немає. Автоматичний деплой не виконувався.
+
 ## [2026-07-18 23:22] Виправлення за комплексним review billing reminder
 
 - `backend/app/services/notify.py`, `backend/app/services/billing_schedule.py` —

@@ -225,7 +225,7 @@ class UpcomingBillingResponse(ApiSchema):
     apartment_name: str
     tenant_id: int
     tenant_name: str
-    next_billing_date: date
+    billing_date: date
     period: date
     invoice_status: Literal["draft", "issued", "paid"] | None
     is_overdue: bool
