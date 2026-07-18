@@ -306,11 +306,11 @@
 - [x] run tests (повний прогін для фіксації стану) - must pass before next task
 
 ### Task 14: Verify acceptance criteria
-- [ ] verify all requirements from Overview are implemented
-- [ ] verify edge cases are handled (обрізання дня, межі договору, fallback-и, мертві підписки)
-- [ ] run full test suite: `docker compose -f docker/docker-compose.dev.yml run --rm backend pytest` і `docker compose -f docker/docker-compose.dev.yml run --rm frontend npm test -- --run`
-- [ ] production build frontend успішний (`npm run build` у Docker)
-- [ ] verify test coverage meets project standard
+- [x] verify all requirements from Overview are implemented
+- [x] verify edge cases are handled (обрізання дня, межі договору, fallback-и, мертві підписки)
+- [x] run full test suite: `docker compose -f docker/docker-compose.dev.yml run --rm backend pytest` і `docker compose -f docker/docker-compose.dev.yml run --rm frontend npm test -- --run`
+- [x] production build frontend успішний (`npm run build` у Docker)
+- [x] verify test coverage meets project standard
 
 ### Task 15: [Final] Update documentation
 - [ ] update README.md if needed

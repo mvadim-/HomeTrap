@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-18 23:02] Верифікація billing reminder
+
+- `backend/tests/test_billing_schedule.py` — додано acceptance-перевірку включних
+  меж договору: орендарі враховуються у дати початку та завершення договору.
+- `backend/tests/test_push.py` — перевірку видалення мертвих Web Push-підписок
+  розширено на обидві передбачені відповіді push-сервісу, HTTP 404 і 410.
+- `docs/plans/20260718-billing-reminder.md` — лише Task 14 позначено виконаним після
+  звірки Overview/Technical Details і повних Docker-перевірок: 121 backend-тест,
+  161 frontend-тест, Ruff, Alembic check та production frontend build із TypeScript.
+- Числового coverage threshold у конфігурації проєкту немає; виконано наявний
+  стандарт покриття success/error та edge-case тестами для змінених сценаріїв.
+- Зміни тестові й локальні, тому окремого production-деплою не потребують. Для
+  розгортання перевіреної фічі потрібні rebuild і restart контейнера за
+  `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-18 22:55] Документація Web Push і контрольний прогін
 
 - `docs/deploy.md` — задокументовано HTTPS як передумову Web Push через Synology

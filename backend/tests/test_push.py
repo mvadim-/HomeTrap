@@ -234,7 +234,12 @@ def test_web_push_sender_sends_to_all_subscriptions(db_session, monkeypatch) -> 
     assert calls[0]["vapid_private_key"].startswith("-----BEGIN PRIVATE KEY-----")
 
 
-def test_web_push_sender_deletes_gone_subscription_and_continues(db_session, monkeypatch) -> None:
+@pytest.mark.parametrize("status_code", [404, 410])
+def test_web_push_sender_deletes_gone_subscription_and_continues(
+    db_session,
+    monkeypatch,
+    status_code: int,
+) -> None:
     gone = _subscription("https://push/gone")
     live = _subscription("https://push/live")
     db_session.add_all([gone, live])
@@ -248,7 +253,7 @@ def test_web_push_sender_deletes_gone_subscription_and_continues(db_session, mon
         if endpoint == "https://push/gone":
             raise WebPushException(
                 "subscription expired",
-                response=SimpleNamespace(status_code=410, text="gone"),
+                response=SimpleNamespace(status_code=status_code, text="gone"),
             )
 
     monkeypatch.setattr("app.services.push.webpush", send)

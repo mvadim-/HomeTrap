@@ -191,6 +191,33 @@ def test_schedule_uses_current_tenant_and_ignores_future_tenant(
     assert entries[0].billing_day == 5
 
 
+def test_schedule_includes_contract_start_and_end_boundaries(
+    db_session: Session,
+) -> None:
+    today = date(2026, 7, 20)
+    starting_apartment = make_apartment("Початок сьогодні")
+    ending_apartment = make_apartment("Завершення сьогодні")
+    db_session.add_all(
+        [
+            make_tenant(starting_apartment, contract_start=today),
+            make_tenant(
+                ending_apartment,
+                contract_start=date(2026, 1, 20),
+                contract_end=today,
+            ),
+        ]
+    )
+    db_session.commit()
+
+    entries = compute_billing_schedule(db_session, today)
+
+    assert {entry.apartment.name for entry in entries} == {
+        "Завершення сьогодні",
+        "Початок сьогодні",
+    }
+    assert all(entry.next_billing_date == today for entry in entries)
+
+
 def test_schedule_excludes_ineligible_apartments_and_tenants(
     db_session: Session,
 ) -> None:
