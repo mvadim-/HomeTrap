@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-18 22:38] Налаштування billing reminder і Push
+
+- `frontend/src/api/client.ts` — тип `NotificationSettings` доповнено блоками
+  `billing_reminder` і `push`; додано типізовані клієнтські обгортки для VAPID
+  public key, створення та видалення Push-підписки.
+- `frontend/src/pages/Settings.tsx` — у форму додано налаштування нагадувань про
+  виставлення рахунків, глобальний перемикач Push, статус цього пристрою та кнопку
+  майбутнього PWA-флоу; використано наявні компоненти стилів на токенах `theme.css`.
+- `frontend/src/pages/Settings.test.tsx` — перевірено рендер станів Push,
+  збереження нових вкладених полів і блокування невалідного інтервалу повторів.
+- `docs/plans/20260718-billing-reminder.md` — Task 10 позначено виконаним після
+  успішних Docker-перевірок: 8 цільових і 154 повних frontend-тести та production
+  build із TypeScript-перевіркою.
+- Зміна зачіпає production frontend. Для розгортання потрібні rebuild і restart
+  контейнера за `docs/deploy.md`; міграцій і нових змінних середовища немає.
+  Повний service worker / `pushManager` флоу буде доданий у Task 11. Автоматичний
+  деплой не виконувався.
+
 ## [2026-07-18 22:32] Override дня виставлення для орендаря
 
 - `backend/app/schemas.py`, `backend/tests/test_tenants.py` — до tenant API додано

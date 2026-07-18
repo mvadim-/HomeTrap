@@ -260,11 +260,11 @@
 - Modify: `frontend/src/api/client.ts` (тип `NotificationSettings` + клієнтські функції push)
 - Modify: `frontend/src/pages/Settings.test.tsx`
 
-- [ ] розширити TypeScript-тип `NotificationSettings` полями `billing_reminder` і `push` у `client.ts`
-- [ ] блок «Виставлення рахунків»: enabled, days_before, repeat_every_days, auto_draft (токени `theme.css`)
-- [ ] блок «Push»: глобальний перемикач каналу + кнопка «Підписати цей пристрій» зі статусом підписки цього пристрою
-- [ ] write tests: збереження нових полів, валідація, стани підписки (мок API)
-- [ ] run tests - must pass before next task
+- [x] розширити TypeScript-тип `NotificationSettings` полями `billing_reminder` і `push` у `client.ts`
+- [x] блок «Виставлення рахунків»: enabled, days_before, repeat_every_days, auto_draft (токени `theme.css`)
+- [x] блок «Push»: глобальний перемикач каналу + кнопка «Підписати цей пристрій» зі статусом підписки цього пристрою
+- [x] write tests: збереження нових полів, валідація, стани підписки (мок API)
+- [x] run tests - must pass before next task
 
 ### Task 11: PWA — маніфест, service worker, флоу підписки
 

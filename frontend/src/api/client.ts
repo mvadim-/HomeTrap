@@ -188,9 +188,31 @@ export interface NotificationSettings {
     to_address: string;
     use_tls: boolean;
   };
+  billing_reminder: {
+    enabled: boolean;
+    days_before: number;
+    repeat_every_days: number;
+    auto_draft: boolean;
+  };
+  push: {
+    enabled: boolean;
+  };
   readings_day: number;
   overdue_after_days: number;
   repeat_every_days: number;
+}
+
+export interface PushSubscriptionPayload {
+  endpoint: string;
+  keys: {
+    p256dh: string;
+    auth: string;
+  };
+}
+
+export interface PushSubscriptionResponse {
+  endpoint: string;
+  created_at: string;
 }
 
 export interface NotificationTestResult {
@@ -496,6 +518,26 @@ export function updateNotificationSettings(
 export function testNotification(): Promise<NotificationTestResult> {
   return request<NotificationTestResult>("/api/settings/test-notification", {
     method: "POST",
+  });
+}
+
+export function getPushPublicKey(): Promise<{ public_key: string }> {
+  return request<{ public_key: string }>("/api/push/public-key");
+}
+
+export function createPushSubscription(
+  payload: PushSubscriptionPayload,
+): Promise<PushSubscriptionResponse> {
+  return request<PushSubscriptionResponse>("/api/push/subscriptions", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deletePushSubscription(endpoint: string): Promise<void> {
+  return request<void>("/api/push/subscriptions", {
+    method: "DELETE",
+    body: JSON.stringify({ endpoint }),
   });
 }
 

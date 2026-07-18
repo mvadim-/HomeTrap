@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, vi } from "vitest";
@@ -18,6 +18,13 @@ const settings: apiClient.NotificationSettings = {
     to_address: "owner@example.test",
     use_tls: true,
   },
+  billing_reminder: {
+    enabled: false,
+    days_before: 3,
+    repeat_every_days: 1,
+    auto_draft: true,
+  },
+  push: { enabled: false },
   readings_day: 20,
   overdue_after_days: 3,
   repeat_every_days: 3,
@@ -64,7 +71,61 @@ describe("Settings", () => {
     expect(screen.getByLabelText("Пароль")).toHaveValue("");
     expect(screen.getByLabelText("SMTP host")).toHaveValue("smtp.example.test");
     expect(screen.getByLabelText("День зняття показників")).toHaveValue(20);
+    expect(screen.getByRole("group", { name: "Виставлення рахунків" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Push" })).toBeInTheDocument();
+    expect(screen.getByText("Канал Push вимкнено.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Підписати цей пристрій" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Надіслати тестове повідомлення" })).toBeInTheDocument();
+  });
+
+  it("saves billing reminder and global Push settings", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const update = vi.spyOn(apiClient, "updateNotificationSettings").mockImplementation(
+      async (payload) => payload,
+    );
+
+    render(<Settings />);
+
+    await user.click(await screen.findByLabelText("Увімкнути нагадування про виставлення"));
+    await user.clear(screen.getByLabelText("Нагадати за, днів"));
+    await user.type(screen.getByLabelText("Нагадати за, днів"), "5");
+    const billingGroup = screen.getByRole("group", { name: "Виставлення рахунків" });
+    await user.clear(within(billingGroup).getByLabelText("Повторювати кожні, днів"));
+    await user.type(within(billingGroup).getByLabelText("Повторювати кожні, днів"), "2");
+    await user.click(screen.getByLabelText("Автоматично створювати чернетку в день виставлення"));
+    await user.click(screen.getByLabelText("Увімкнути Push"));
+
+    expect(screen.getByText("Цей пристрій ще не підписано.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Зберегти" }));
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      billing_reminder: {
+        enabled: true,
+        days_before: 5,
+        repeat_every_days: 2,
+        auto_draft: false,
+      },
+      push: { enabled: true },
+    }));
+  });
+
+  it("prevents saving invalid billing reminder values", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const update = vi.spyOn(apiClient, "updateNotificationSettings").mockResolvedValue(settings);
+
+    render(<Settings />);
+
+    const billingGroup = await screen.findByRole("group", { name: "Виставлення рахунків" });
+    const repeatInput = within(billingGroup).getByLabelText("Повторювати кожні, днів");
+    await user.clear(repeatInput);
+    await user.type(repeatInput, "0");
+    expect(repeatInput).toBeInvalid();
+    await user.click(screen.getByRole("button", { name: "Зберегти" }));
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("shows the dry-run import report and warnings", async () => {
