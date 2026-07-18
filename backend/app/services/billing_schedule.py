@@ -3,12 +3,15 @@ from __future__ import annotations
 from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
+import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, Tenant
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from app.services.notify import NotificationResult, NotificationSender
@@ -107,7 +110,7 @@ def send_billing_reminders(
     senders: list[NotificationSender],
     history: dict[str, str],
 ) -> NotificationResult:
-    from app.services.notify import NotificationResult, send_notification
+    from app.services.notify import NotificationResult
 
     result = NotificationResult()
     window_delta = timedelta(days=settings["days_before"])
@@ -115,6 +118,19 @@ def send_billing_reminders(
 
     for entry in compute_billing_schedule(session, today):
         if entry.invoice_exists:
+            continue
+        if today == entry.next_billing_date:
+            if settings["auto_draft"]:
+                _create_draft_and_notify(
+                    session,
+                    today,
+                    entry,
+                    senders,
+                    history,
+                    result,
+                )
+            else:
+                _send_manual_billing_reminder(entry, senders, history, today, result)
             continue
         if not entry.next_billing_date - window_delta <= today < entry.next_billing_date:
             continue
@@ -126,18 +142,77 @@ def send_billing_reminders(
             if days_since_delivery < repeat_every_days:
                 continue
 
-        delivery = send_notification(
-            senders,
-            "Нагадування про виставлення рахунка",
-            (
-                f"Виставте рахунок для квартири «{entry.apartment.name}» "
-                f"за {entry.period:%m.%Y} до {entry.next_billing_date:%d.%m.%Y}."
-            ),
-        )
-        result.notifications += delivery.notifications
-        result.deliveries += delivery.deliveries
-        result.errors.extend(delivery.errors)
-        if delivery.deliveries:
-            history[key] = today.isoformat()
+        _send_manual_billing_reminder(entry, senders, history, today, result)
 
     return result
+
+
+def _create_draft_and_notify(
+    session: Session,
+    today: date,
+    entry: BillingScheduleEntry,
+    senders: list[NotificationSender],
+    history: dict[str, str],
+    result: NotificationResult,
+) -> None:
+    from app.services import billing, nbu
+    from app.services.billing import BillingValidationError, InvoiceChronologyError
+    from app.services.nbu import NbuRateUnavailable
+    from app.services.notify import send_notification
+
+    key = f"billing_draft:{entry.apartment.id}:{entry.period}"
+    if key in history:
+        return
+
+    try:
+        rate = nbu.get_rate(session, today).rate
+        billing.create_draft(session, entry.apartment, entry.period, rate)
+    except (BillingValidationError, InvoiceChronologyError, NbuRateUnavailable) as error:
+        session.rollback()
+        logger.warning(
+            "Automatic billing draft failed for apartment %s and period %s: %s",
+            entry.apartment.id,
+            entry.period,
+            error,
+        )
+        subject = "Не вдалося створити чернетку рахунка"
+        message = (
+            f"Створіть рахунок вручну для квартири «{entry.apartment.name}» "
+            f"за {entry.period:%m.%Y}: {error}."
+        )
+    else:
+        history[key] = today.isoformat()
+        subject = "Чернетку рахунка створено"
+        message = (
+            f"Чернетку рахунка для квартири «{entry.apartment.name}» "
+            f"за {entry.period:%m.%Y} створено автоматично."
+        )
+
+    delivery = send_notification(senders, subject, message)
+    result.notifications += delivery.notifications
+    result.deliveries += delivery.deliveries
+    result.errors.extend(delivery.errors)
+
+
+def _send_manual_billing_reminder(
+    entry: BillingScheduleEntry,
+    senders: list[NotificationSender],
+    history: dict[str, str],
+    today: date,
+    result: NotificationResult,
+) -> None:
+    from app.services.notify import send_notification
+
+    delivery = send_notification(
+        senders,
+        "Нагадування про виставлення рахунка",
+        (
+            f"Виставте рахунок для квартири «{entry.apartment.name}» "
+            f"за {entry.period:%m.%Y} до {entry.next_billing_date:%d.%m.%Y}."
+        ),
+    )
+    result.notifications += delivery.notifications
+    result.deliveries += delivery.deliveries
+    result.errors.extend(delivery.errors)
+    if delivery.deliveries:
+        history[f"billing:{entry.apartment.id}:{entry.period}"] = today.isoformat()

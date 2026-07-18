@@ -2,13 +2,16 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, InvoiceStatus, Tenant
+from app.services.billing import BillingValidationError, InvoiceChronologyError
 from app.services.billing_schedule import (
     compute_billing_schedule,
     send_billing_reminders,
 )
+from app.services.nbu import NbuRateUnavailable, RateResult
 
 
 class RecordingSender:
@@ -327,3 +330,183 @@ def test_billing_reminder_does_not_update_history_without_delivery(
     assert result.deliveries == 0
     assert len(result.errors) == 1
     assert history == {}
+
+
+def test_auto_draft_is_created_once_and_not_recreated_after_deletion(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    apartment = make_apartment("Лісова")
+    db_session.add(
+        make_tenant(apartment, contract_start=date(2026, 1, 20))
+    )
+    db_session.commit()
+    created: list[tuple[Apartment, date, Decimal]] = []
+
+    def create_draft(
+        session: Session,
+        target_apartment: Apartment,
+        period: date,
+        rate: Decimal,
+    ) -> None:
+        created.append((target_apartment, period, rate))
+        session.add(make_invoice(target_apartment, period, InvoiceStatus.DRAFT))
+        session.commit()
+
+    monkeypatch.setattr(
+        "app.services.nbu.get_rate",
+        lambda _session, target_date: RateResult(
+            requested_date=target_date,
+            rate_date=target_date,
+            currency="USD",
+            rate=Decimal("44.680000"),
+            is_fallback=False,
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.billing.create_draft",
+        create_draft,
+    )
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    first = send_billing_reminders(
+        db_session,
+        date(2026, 7, 20),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+    draft = db_session.scalar(select(Invoice))
+    assert draft is not None
+    db_session.delete(draft)
+    db_session.commit()
+    after_deleted_draft = send_billing_reminders(
+        db_session,
+        date(2026, 7, 20),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    assert created == [(apartment, date(2026, 7, 1), Decimal("44.680000"))]
+    assert first.notifications == 1
+    assert first.deliveries == 1
+    assert after_deleted_draft.notifications == 0
+    assert history == {
+        f"billing_draft:{apartment.id}:2026-07-01": "2026-07-20"
+    }
+    assert sender.messages == [
+        (
+            "Чернетку рахунка створено",
+            "Чернетку рахунка для квартири «Лісова» за 07.2026 створено автоматично.",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("failure_source", "error"),
+    [
+        ("draft", BillingValidationError("немає тарифу")),
+        (
+            "draft",
+            InvoiceChronologyError("earlier_draft", "є попередня чернетка"),
+        ),
+        ("rate", NbuRateUnavailable("курс недоступний")),
+    ],
+)
+def test_auto_draft_failure_requests_manual_creation_and_rolls_back(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_source: str,
+    error: RuntimeError,
+) -> None:
+    apartment = make_apartment("Січових Стрільців")
+    db_session.add(
+        make_tenant(apartment, contract_start=date(2026, 1, 20))
+    )
+    db_session.commit()
+
+    def get_rate(_session: Session, target_date: date) -> RateResult:
+        if failure_source == "rate":
+            raise error
+        return RateResult(
+            requested_date=target_date,
+            rate_date=target_date,
+            currency="USD",
+            rate=Decimal("44.680000"),
+            is_fallback=False,
+        )
+
+    def create_draft(
+        session: Session,
+        target_apartment: Apartment,
+        period: date,
+        _rate: Decimal,
+    ) -> None:
+        session.add(make_invoice(target_apartment, period, InvoiceStatus.DRAFT))
+        raise error
+
+    monkeypatch.setattr("app.services.nbu.get_rate", get_rate)
+    monkeypatch.setattr("app.services.billing.create_draft", create_draft)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        "app.services.billing_schedule.logger.warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 7, 20),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    assert result.notifications == 1
+    assert result.deliveries == 1
+    assert history == {}
+    assert list(db_session.scalars(select(Invoice))) == []
+    assert sender.messages == [
+        (
+            "Не вдалося створити чернетку рахунка",
+            (
+                "Створіть рахунок вручну для квартири «Січових Стрільців» "
+                f"за 07.2026: {error}."
+            ),
+        )
+    ]
+    assert len(warnings) == 1
+    assert str(error) in warnings[0]
+
+
+def test_billing_day_without_auto_draft_sends_regular_reminder(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment("Поділ")
+    db_session.add(
+        make_tenant(apartment, contract_start=date(2026, 1, 20))
+    )
+    db_session.commit()
+    sender = RecordingSender()
+    history = {f"billing:{apartment.id}:2026-07-01": "2026-07-19"}
+
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 7, 20),
+        {**BILLING_REMINDER_SETTINGS, "auto_draft": False},
+        [sender],
+        history,
+    )
+
+    assert result.notifications == 1
+    assert result.deliveries == 1
+    assert history == {f"billing:{apartment.id}:2026-07-01": "2026-07-20"}
+    assert sender.messages == [
+        (
+            "Нагадування про виставлення рахунка",
+            "Виставте рахунок для квартири «Поділ» за 07.2026 до 20.07.2026.",
+        )
+    ]

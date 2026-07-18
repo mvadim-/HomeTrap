@@ -185,11 +185,11 @@
 - Modify: `backend/app/services/billing_schedule.py`
 - Modify: `backend/tests/test_billing_schedule.py`
 
-- [ ] у день `next_billing_date` при `auto_draft`: виклик `billing.create_draft(session, apartment, period, rate)` з курсом `nbu.get_rate(session, today).rate`, повідомлення «чернетку створено», history-ключ `billing_draft:{apartment_id}:{period}`
-- [ ] fallback: `BillingValidationError` / `InvoiceChronologyError` / `NbuRateUnavailable` → повідомлення «створіть вручну: причина» + `logger.warning`, без чернетки
-- [ ] write tests: чернетка створюється рівно один раз (після видалення не відтворюється), зміст повідомлення, усі три fallback-сценарії
-- [ ] write tests: у день виставлення `auto_draft: false` → нагадування надсилається (не тиша); `auto_draft: true` → лише повідомлення про чернетку, без дубльованого нагадування
-- [ ] run tests - must pass before next task
+- [x] у день `next_billing_date` при `auto_draft`: виклик `billing.create_draft(session, apartment, period, rate)` з курсом `nbu.get_rate(session, today).rate`, повідомлення «чернетку створено», history-ключ `billing_draft:{apartment_id}:{period}`
+- [x] fallback: `BillingValidationError` / `InvoiceChronologyError` / `NbuRateUnavailable` → повідомлення «створіть вручну: причина» + `logger.warning`, без чернетки
+- [x] write tests: чернетка створюється рівно один раз (після видалення не відтворюється), зміст повідомлення, усі три fallback-сценарії
+- [x] write tests: у день виставлення `auto_draft: false` → нагадування надсилається (не тиша); `auto_draft: true` → лише повідомлення про чернетку, без дубльованого нагадування
+- [x] run tests - must pass before next task
 
 ### Task 6: Web Push бекенд — VAPID, WebPushSender
 
