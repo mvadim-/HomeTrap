@@ -4,8 +4,12 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from pywebpush import WebPushException
+from sqlalchemy import func, select
 
+from app.config import Settings
+from app.main import create_app
 from app.models import PushSubscription, Setting
 from app.services.notify import build_senders
 from app.services.push import (
@@ -25,6 +29,44 @@ def _subscription(endpoint: str) -> PushSubscription:
     )
 
 
+async def _create_client(tmp_path):
+    settings = Settings(
+        database_path=tmp_path / "push.db",
+        secret_key="test-session-secret",
+        debug=True,
+        scheduler_enabled=False,
+        admin_username="admin",
+        admin_password="password",
+    )
+    application = create_app(settings)
+    lifespan = application.router.lifespan_context(application)
+    await lifespan.__aenter__()
+    client = AsyncClient(
+        transport=ASGITransport(app=application),
+        base_url="http://test",
+    )
+    login = await client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "password"},
+    )
+    assert login.status_code == 200
+    return application, lifespan, client
+
+
+async def _close_client(lifespan, client: AsyncClient) -> None:
+    await client.aclose()
+    await lifespan.__aexit__(None, None, None)
+
+
+def _subscription_payload(**overrides) -> dict:
+    payload = {
+        "endpoint": "https://push.example/subscriptions/one",
+        "keys": {"p256dh": "public-key", "auth": "auth-secret"},
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_get_vapid_public_key_generates_and_reuses_pair(db_session) -> None:
     first = get_vapid_public_key(db_session)
     stored = db_session.get(Setting, VAPID_KEYS_SETTING_KEY)
@@ -41,6 +83,106 @@ def test_get_vapid_public_key_generates_and_reuses_pair(db_session) -> None:
     assert first.startswith("B")
     assert len(first) == 87
     assert private_key.startswith("-----BEGIN PRIVATE KEY-----")
+
+
+async def test_push_public_key_api_generates_and_reuses_pair(tmp_path) -> None:
+    application, lifespan, client = await _create_client(tmp_path)
+    try:
+        first = await client.get("/api/push/public-key")
+        second = await client.get("/api/push/public-key")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert second.json() == first.json()
+        assert first.json()["public_key"].startswith("B")
+
+        with application.state.session_factory() as session:
+            stored = session.get(Setting, VAPID_KEYS_SETTING_KEY)
+            assert stored is not None
+            assert stored.value["public_key"] == first.json()["public_key"]
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_push_subscription_create_and_repeat_update(tmp_path) -> None:
+    application, lifespan, client = await _create_client(tmp_path)
+    try:
+        created = await client.post(
+            "/api/push/subscriptions",
+            json=_subscription_payload(),
+        )
+        assert created.status_code == 201
+        assert created.json()["endpoint"] == _subscription_payload()["endpoint"]
+        assert created.json()["created_at"].endswith("Z")
+
+        updated = await client.post(
+            "/api/push/subscriptions",
+            json=_subscription_payload(
+                keys={"p256dh": "updated-public-key", "auth": "updated-auth"}
+            ),
+        )
+        assert updated.status_code == 201
+        assert updated.json() == created.json()
+
+        with application.state.session_factory() as session:
+            subscriptions = session.scalars(select(PushSubscription)).all()
+            assert len(subscriptions) == 1
+            assert subscriptions[0].p256dh == "updated-public-key"
+            assert subscriptions[0].auth == "updated-auth"
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_push_subscription_delete_is_idempotent(tmp_path) -> None:
+    application, lifespan, client = await _create_client(tmp_path)
+    try:
+        payload = _subscription_payload()
+        assert (
+            await client.post("/api/push/subscriptions", json=payload)
+        ).status_code == 201
+
+        first = await client.request(
+            "DELETE",
+            "/api/push/subscriptions",
+            json={"endpoint": payload["endpoint"]},
+        )
+        second = await client.request(
+            "DELETE",
+            "/api/push/subscriptions",
+            json={"endpoint": payload["endpoint"]},
+        )
+
+        assert first.status_code == 204
+        assert second.status_code == 204
+        with application.state.session_factory() as session:
+            assert session.scalar(select(func.count(PushSubscription.id))) == 0
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_push_routes_require_auth_and_validate_payload(tmp_path) -> None:
+    _, lifespan, client = await _create_client(tmp_path)
+    try:
+        invalid = await client.post(
+            "/api/push/subscriptions",
+            json=_subscription_payload(endpoint="not-a-url"),
+        )
+        assert invalid.status_code == 422
+
+        client.cookies.clear()
+        requests = [
+            client.get("/api/push/public-key"),
+            client.post("/api/push/subscriptions", json=_subscription_payload()),
+            client.request(
+                "DELETE",
+                "/api/push/subscriptions",
+                json={"endpoint": _subscription_payload()["endpoint"]},
+            ),
+        ]
+        for request in requests:
+            assert (await request).status_code == 401
+    finally:
+        await _close_client(lifespan, client)
 
 
 def test_build_senders_adds_push_and_generates_vapid_only_when_enabled(db_session) -> None:

@@ -218,11 +218,11 @@
 - Modify: `backend/app/main.py`
 - Modify: `backend/tests/test_push.py`
 
-- [ ] `GET /api/push/public-key` (генерує VAPID за потреби)
-- [ ] `POST /api/push/subscriptions` (upsert за endpoint) і `DELETE /api/push/subscriptions` (за endpoint)
-- [ ] Pydantic-схеми підписки; зареєструвати router у `main.py` (з auth, як інші routers)
-- [ ] write tests: підписка/повторна підписка/відписка, неавторизований доступ
-- [ ] run tests - must pass before next task
+- [x] `GET /api/push/public-key` (генерує VAPID за потреби)
+- [x] `POST /api/push/subscriptions` (upsert за endpoint) і `DELETE /api/push/subscriptions` (за endpoint)
+- [x] Pydantic-схеми підписки; зареєструвати router у `main.py` (з auth, як інші routers)
+- [x] write tests: підписка/повторна підписка/відписка, неавторизований доступ
+- [x] run tests - must pass before next task
 
 ### Task 8: Endpoint GET /api/billing/upcoming
 

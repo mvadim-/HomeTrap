@@ -9,6 +9,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    HttpUrl,
     field_serializer,
     field_validator,
     model_validator,
@@ -337,6 +338,29 @@ class BillingReminderSettings(ApiSchema):
 
 class PushSettings(ApiSchema):
     enabled: bool = False
+
+
+class VapidPublicKeyResponse(ApiSchema):
+    public_key: str
+
+
+class PushSubscriptionKeys(ApiSchema):
+    p256dh: str = Field(min_length=1, max_length=2048)
+    auth: str = Field(min_length=1, max_length=2048)
+
+
+class PushSubscriptionCreate(ApiSchema):
+    endpoint: HttpUrl
+    keys: PushSubscriptionKeys
+
+
+class PushSubscriptionDelete(ApiSchema):
+    endpoint: HttpUrl
+
+
+class PushSubscriptionResponse(ApiSchema):
+    endpoint: str
+    created_at: datetime
 
 
 class NotificationSettings(ApiSchema):

@@ -1,5 +1,21 @@
 # ChangeLog
 
+## [2026-07-18 22:19] API керування Web Push підписками
+
+- `backend/app/routers/push.py`, `backend/app/main.py` — додано захищені endpoint-и
+  отримання VAPID public key, створення або оновлення підписки за endpoint та
+  ідемпотентного видалення підписки.
+- `backend/app/schemas.py` — додано валідацію URL endpoint, браузерних ключів
+  `p256dh`/`auth` і типізовані відповіді без розкриття приватного VAPID-ключа.
+- `backend/tests/test_push.py` — перевірено генерацію й повторне використання public
+  key, підписку, оновлення без дубля, повторну відписку, валідацію та 401 для всіх
+  нових маршрутів.
+- `docs/plans/20260718-billing-reminder.md` — Task 7 позначено виконаним після
+  успішних Docker-перевірок: 115 backend-тестів і `ruff check`.
+- Зміна зачіпає production backend. Для розгортання потрібні rebuild і restart
+  контейнера за `docs/deploy.md`; нових міграцій та змінних середовища немає.
+  Автоматичний деплой не виконувався.
+
 ## [2026-07-18 22:09] Web Push backend із VAPID
 
 - `backend/requirements.txt`, `backend/app/services/push.py` — додано
