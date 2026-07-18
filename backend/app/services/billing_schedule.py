@@ -26,6 +26,7 @@ class BillingScheduleEntry:
     period: date
     invoice_exists: bool
     invoice_status: str | None
+    is_overdue: bool
 
 
 def _date_for_billing_day(year: int, month: int, billing_day: int) -> date:
@@ -75,7 +76,12 @@ def compute_billing_schedule(
         pending.append((apartment, tenant, billing_day, next_billing_date, period))
 
     invoice_by_apartment_period: dict[tuple[int, date], Invoice] = {}
-    invoice_keys = [(apartment.id, period) for apartment, _, _, _, period in pending]
+    invoice_keys: set[tuple[int, date]] = set()
+    for apartment, tenant, billing_day, _, period in pending:
+        invoice_keys.add((apartment.id, period))
+        current_billing_date = _date_for_billing_day(today.year, today.month, billing_day)
+        if tenant.contract_start <= current_billing_date < today:
+            invoice_keys.add((apartment.id, current_billing_date.replace(day=1)))
     if invoice_keys:
         invoices = session.scalars(
             select(Invoice).where(
@@ -89,6 +95,12 @@ def compute_billing_schedule(
     result: list[BillingScheduleEntry] = []
     for apartment, tenant, billing_day, next_billing_date, period in pending:
         invoice = invoice_by_apartment_period.get((apartment.id, period))
+        current_billing_date = _date_for_billing_day(today.year, today.month, billing_day)
+        current_period = current_billing_date.replace(day=1)
+        is_overdue = (
+            tenant.contract_start <= current_billing_date < today
+            and (apartment.id, current_period) not in invoice_by_apartment_period
+        )
         result.append(
             BillingScheduleEntry(
                 apartment=apartment,
@@ -98,6 +110,7 @@ def compute_billing_schedule(
                 period=period,
                 invoice_exists=invoice is not None,
                 invoice_status=invoice.status if invoice is not None else None,
+                is_overdue=is_overdue,
             )
         )
     return result

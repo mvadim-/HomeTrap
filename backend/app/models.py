@@ -64,6 +64,10 @@ class Apartment(Base):
 class Tenant(Base):
     __tablename__ = "tenants"
     __table_args__ = (
+        CheckConstraint(
+            "billing_day IS NULL OR billing_day BETWEEN 1 AND 31",
+            name="ck_tenants_billing_day",
+        ),
         Index("ix_tenants_apartment_id_contract_end", "apartment_id", "contract_end"),
         Index(
             "uq_tenants_active_apartment",

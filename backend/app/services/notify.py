@@ -141,7 +141,6 @@ def build_senders(settings: dict, session: Session) -> list[NotificationSender]:
     if email["enabled"]:
         senders.append(EmailSender(**{key: value for key, value in email.items() if key != "enabled"}))
     if settings["push"]["enabled"]:
-        get_vapid_public_key(session)
         senders.append(WebPushSender(session))
     return senders
 
@@ -171,8 +170,6 @@ def run_daily_notifications(
     settings = get_notification_settings(session)
     resolved_senders = senders if senders is not None else build_senders(settings, session)
     result = NotificationResult()
-    if not resolved_senders:
-        return result
     history_setting = session.get(Setting, NOTIFICATION_HISTORY_KEY)
     history = dict(history_setting.value) if history_setting is not None else {}
 
@@ -189,6 +186,14 @@ def run_daily_notifications(
             ),
         )
 
+    if not resolved_senders:
+        if history_setting is None and history:
+            session.add(Setting(key=NOTIFICATION_HISTORY_KEY, value=history))
+        elif history_setting is not None:
+            history_setting.value = history
+        session.commit()
+        return result
+
     if today.day == settings["readings_day"]:
         key = "readings"
         if history.get(key) != today.isoformat():
@@ -197,6 +202,7 @@ def run_daily_notifications(
             ).all()
             if apartments:
                 names = "\n".join(f"• {apartment.name}" for apartment in apartments)
+                deliveries_before = result.deliveries
                 _merge_result(
                     result,
                     send_notification(
@@ -205,7 +211,7 @@ def run_daily_notifications(
                         f"Зніміть показники для активних квартир:\n{names}",
                     ),
                 )
-                if result.deliveries:
+                if result.deliveries > deliveries_before:
                     history[key] = today.isoformat()
 
     invoices = session.scalars(
@@ -237,9 +243,9 @@ def run_daily_notifications(
         if result.deliveries > deliveries_before:
             history[key] = today.isoformat()
 
-    if history_setting is None:
+    if history_setting is None and history:
         session.add(Setting(key=NOTIFICATION_HISTORY_KEY, value=history))
-    else:
+    elif history_setting is not None:
         history_setting.value = history
     session.commit()
     return result

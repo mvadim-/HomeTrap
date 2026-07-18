@@ -14,17 +14,6 @@ import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
 import { formatDate, formatTenantRent, formatUah } from "../utils/format";
 import "./portal.css";
 
-function currentKyivDate(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: "Europe/Kyiv",
-  }).formatToParts(new Date());
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${value.year}-${value.month}-${value.day}`;
-}
-
 export function Dashboard() {
   const [dashboard, setDashboard] = useState<DashboardStats | null>(null);
   const [apartments, setApartments] = useState<Apartment[]>([]);
@@ -63,8 +52,6 @@ export function Dashboard() {
 
   const draftCount = dashboard.needs_attention.filter((item) => item.reason === "draft").length;
   const unpaidCount = dashboard.needs_attention.filter((item) => item.reason === "unpaid").length;
-  const today = currentKyivDate();
-
   function billingTarget(item: UpcomingBillingItem): string {
     const invoice = apartments.find((apartment) => (
       apartment.id === item.apartment_id
@@ -121,7 +108,7 @@ export function Dashboard() {
               <thead><tr><th>Квартира</th><th>Орендар</th><th>Дата</th><th>Статус рахунка</th></tr></thead>
               <tbody>
                 {upcomingBilling.map((item) => {
-                  const needsWarning = item.invoice_status === null && item.next_billing_date < today;
+                  const needsWarning = item.is_overdue;
                   return (
                     <tr className={needsWarning ? "upcoming-billing-warning" : undefined} key={`${item.apartment_id}-${item.next_billing_date}`}>
                       <td><Link className="upcoming-billing-link" to={billingTarget(item)}>{item.apartment_name}</Link></td>

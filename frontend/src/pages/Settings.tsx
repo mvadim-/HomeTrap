@@ -200,7 +200,7 @@ export function Settings() {
               <legend>Виставлення рахунків</legend>
               <label className="checkbox-field"><input type="checkbox" checked={settings.billing_reminder.enabled} onChange={(event) => patchSettings({ billing_reminder: { ...settings.billing_reminder, enabled: event.target.checked } })} />Увімкнути нагадування про виставлення</label>
               <div className="settings-grid">
-                <label>Нагадати за, днів<input type="number" min="0" required value={settings.billing_reminder.days_before} onChange={(event) => patchSettings({ billing_reminder: { ...settings.billing_reminder, days_before: Number(event.target.value) } })} /></label>
+                <label>Нагадати за, днів<input type="number" min="0" max="365" required value={settings.billing_reminder.days_before} onChange={(event) => patchSettings({ billing_reminder: { ...settings.billing_reminder, days_before: Number(event.target.value) } })} /></label>
                 <label>Повторювати кожні, днів<input type="number" min="1" required value={settings.billing_reminder.repeat_every_days} onChange={(event) => patchSettings({ billing_reminder: { ...settings.billing_reminder, repeat_every_days: Number(event.target.value) } })} /></label>
               </div>
               <label className="checkbox-field"><input type="checkbox" checked={settings.billing_reminder.auto_draft} onChange={(event) => patchSettings({ billing_reminder: { ...settings.billing_reminder, auto_draft: event.target.checked } })} />Автоматично створювати чернетку в день виставлення</label>

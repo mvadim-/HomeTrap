@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 
 from httpx import ASGITransport, AsyncClient
 
@@ -168,6 +169,92 @@ def test_daily_pipeline_sends_enabled_billing_reminder(db_session) -> None:
     history = db_session.get(Setting, NOTIFICATION_HISTORY_KEY)
     assert history is not None
     assert history.value == {f"billing:{apartment.id}:2026-07-01": "2026-07-17"}
+
+
+def test_daily_pipeline_creates_auto_draft_without_delivery_channels(
+    db_session,
+    monkeypatch,
+) -> None:
+    apartment = Apartment(
+        name="Лісова",
+        address="Київ",
+        rent_amount=Decimal("325.00"),
+        rent_currency="USD",
+        tenants=[Tenant(full_name="Орендар", contract_start=date(2026, 1, 20))],
+    )
+    db_session.add(apartment)
+    save_notification_settings(
+        db_session,
+        _settings(
+            billing_reminder={
+                "enabled": True,
+                "days_before": 3,
+                "repeat_every_days": 1,
+                "auto_draft": True,
+            }
+        ),
+    )
+    created: list[tuple[int, date, Decimal]] = []
+    monkeypatch.setattr(
+        "app.services.nbu.get_rate",
+        lambda _session, _today: SimpleNamespace(rate=Decimal("44.680000")),
+    )
+    monkeypatch.setattr(
+        "app.services.billing.create_draft",
+        lambda _session, target, period, rate: created.append((target.id, period, rate)),
+    )
+
+    result = run_daily_notifications(db_session, date(2026, 7, 20), [])
+
+    assert created == [(apartment.id, date(2026, 7, 1), Decimal("44.680000"))]
+    assert result.notifications == 1
+    assert result.deliveries == 0
+    assert db_session.get(Setting, NOTIFICATION_HISTORY_KEY).value == {
+        f"billing_draft:{apartment.id}:2026-07-01": "2026-07-20"
+    }
+
+
+def test_readings_history_requires_its_own_successful_delivery(db_session) -> None:
+    today = date(2026, 7, 17)
+    apartment = Apartment(
+        name="Лісова",
+        address="Київ",
+        rent_amount=Decimal("325.00"),
+        rent_currency="USD",
+        tenants=[Tenant(full_name="Орендар", contract_start=date(2026, 1, 20))],
+    )
+    db_session.add(apartment)
+    save_notification_settings(
+        db_session,
+        _settings(
+            readings_day=17,
+            billing_reminder={
+                "enabled": True,
+                "days_before": 3,
+                "repeat_every_days": 1,
+                "auto_draft": True,
+            },
+        ),
+    )
+
+    class BillingOnlySender:
+        readings_attempts = 0
+
+        def send(self, subject: str, _message: str) -> None:
+            if subject == "Час зняти показники":
+                self.readings_attempts += 1
+                raise RuntimeError("readings delivery failed")
+
+    sender = BillingOnlySender()
+    first = run_daily_notifications(db_session, today, [sender])
+    second = run_daily_notifications(db_session, today, [sender])
+
+    history = db_session.get(Setting, NOTIFICATION_HISTORY_KEY)
+    assert first.deliveries == 1
+    assert second.deliveries == 0
+    assert sender.readings_attempts == 2
+    assert history is not None
+    assert "readings" not in history.value
 
 
 def test_notification_settings_deep_merge_legacy_value_with_defaults(db_session) -> None:
@@ -354,9 +441,21 @@ async def test_settings_api_rejects_invalid_billing_reminder_values(tmp_path) ->
                 }
             ),
         )
+        excessive_days_before = await client.put(
+            "/api/settings",
+            json=_settings(
+                billing_reminder={
+                    "enabled": True,
+                    "days_before": 366,
+                    "repeat_every_days": 1,
+                    "auto_draft": True,
+                }
+            ),
+        )
 
         assert invalid_days_before.status_code == 422
         assert invalid_repeat.status_code == 422
+        assert excessive_days_before.status_code == 422
     finally:
         await client.aclose()
         await lifespan.__aexit__(None, None, None)

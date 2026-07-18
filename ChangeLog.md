@@ -1,5 +1,26 @@
 # ChangeLog
 
+## [2026-07-18 23:22] Виправлення за комплексним review billing reminder
+
+- `backend/app/services/notify.py`, `backend/app/services/billing_schedule.py` —
+  авто-чернетки виконуються без активних каналів доставки, readings-history
+  оновлюється лише після власної успішної доставки, а API отримав явну ознаку
+  простроченого виставлення.
+- `backend/app/schemas.py`, `backend/app/models.py`,
+  `backend/alembic/versions/20260718_05_billing_day_push_subscriptions.py` — межу
+  попереднього нагадування обмежено 365 днями, а `billing_day` захищено CHECK 1–31
+  на рівні БД.
+- `frontend/src/pages/Dashboard.tsx`, `frontend/src/utils/push.ts` та тести —
+  Dashboard використовує backend-контракт `is_overdue`, перевірка Push-стану не
+  реєструє service worker, а невдала браузерна відписка більше не повертає успіх.
+- `backend/requirements.txt`, `README.md`, `docs/deploy.md` — закріплено прямі
+  криптографічні залежності та повне runtime-дерево Web Push; уточнено час
+  scheduler, двоетапне ввімкнення Push, секретність VAPID/підписок і мінімальну
+  iOS/iPadOS 16.4.
+- Зміни призначені для production. Для розгортання виконайте backup, потім rebuild
+  і restart контейнера командою з `docs/deploy.md`; міграція додасть CHECK під час
+  старту. Автоматичний деплой не виконувався.
+
 ## [2026-07-18 23:04] Документація billing reminder
 
 - `README.md` — описано розрахунок дати виставлення, Dashboard-віджет,

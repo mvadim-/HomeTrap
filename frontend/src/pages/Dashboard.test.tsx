@@ -207,6 +207,7 @@ describe("Dashboard", () => {
         next_billing_date: "2099-07-20",
         period: "2099-07-01",
         invoice_status: null,
+        is_overdue: false,
       },
       {
         apartment_id: 2,
@@ -216,15 +217,17 @@ describe("Dashboard", () => {
         next_billing_date: "2099-07-19",
         period: "2099-07-01",
         invoice_status: "draft",
+        is_overdue: false,
       },
       {
         apartment_id: 1,
         apartment_name: "Поділ",
         tenant_id: 11,
         tenant_name: "Олег Шевченко",
-        next_billing_date: "2000-07-17",
-        period: "2000-07-01",
+        next_billing_date: "2099-07-18",
+        period: "2099-07-01",
         invoice_status: null,
+        is_overdue: true,
       },
     ]);
 

@@ -23,9 +23,13 @@ function installPushMocks(
   const requestPermission = vi.fn().mockResolvedValue(permission);
   const subscribe = vi.fn();
   const getSubscription = vi.fn().mockResolvedValue(subscription);
+  const registration = {
+    pushManager: { getSubscription, subscribe },
+  };
   const register = vi.fn().mockResolvedValue({
     pushManager: { getSubscription, subscribe },
   });
+  const getRegistration = vi.fn().mockResolvedValue(registration);
 
   Object.defineProperty(window, "Notification", {
     configurable: true,
@@ -37,10 +41,10 @@ function installPushMocks(
   });
   Object.defineProperty(navigator, "serviceWorker", {
     configurable: true,
-    value: { register },
+    value: { getRegistration, register },
   });
 
-  return { getSubscription, register, requestPermission, subscribe };
+  return { getRegistration, getSubscription, register, requestPermission, subscribe };
 }
 
 afterEach(() => {
@@ -103,5 +107,26 @@ describe("Push subscription flow", () => {
     await expect(unsubscribePushDevice()).resolves.toBe("unsubscribed");
     expect(remove).toHaveBeenCalledWith(subscription.endpoint);
     expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it("checks status without registering a service worker", async () => {
+    const mocks = installPushMocks(null);
+
+    await expect(getPushDeviceStatus()).resolves.toBe("unsubscribed");
+
+    expect(mocks.getRegistration).toHaveBeenCalledOnce();
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  it("does not report success when browser unsubscribe returns false", async () => {
+    const subscription = {
+      endpoint: "https://push.example.test/device",
+      unsubscribe: vi.fn().mockResolvedValue(false),
+    } as unknown as PushSubscription;
+    installPushMocks(subscription);
+    const remove = vi.spyOn(apiClient, "deletePushSubscription").mockResolvedValue();
+
+    await expect(unsubscribePushDevice()).rejects.toThrow("remains active");
+    expect(remove).not.toHaveBeenCalled();
   });
 });

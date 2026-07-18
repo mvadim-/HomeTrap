@@ -185,7 +185,7 @@ async def test_push_routes_require_auth_and_validate_payload(tmp_path) -> None:
         await _close_client(lifespan, client)
 
 
-def test_build_senders_adds_push_and_generates_vapid_only_when_enabled(db_session) -> None:
+def test_build_senders_adds_push_without_vapid_storage_side_effect(db_session) -> None:
     disabled = build_senders(
         {
             "telegram": {"enabled": False},
@@ -208,7 +208,7 @@ def test_build_senders_adds_push_and_generates_vapid_only_when_enabled(db_sessio
 
     assert len(enabled) == 1
     assert isinstance(enabled[0], WebPushSender)
-    assert db_session.get(Setting, VAPID_KEYS_SETTING_KEY) is not None
+    assert db_session.get(Setting, VAPID_KEYS_SETTING_KEY) is None
 
 
 def test_web_push_sender_sends_to_all_subscriptions(db_session, monkeypatch) -> None:

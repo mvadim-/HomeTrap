@@ -17,7 +17,18 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("tenants", sa.Column("billing_day", sa.Integer(), nullable=True))
+    op.add_column(
+        "tenants",
+        sa.Column(
+            "billing_day",
+            sa.Integer(),
+            sa.CheckConstraint(
+                "billing_day IS NULL OR billing_day BETWEEN 1 AND 31",
+                name="ck_tenants_billing_day",
+            ),
+            nullable=True,
+        ),
+    )
     op.create_table(
         "push_subscriptions",
         sa.Column("id", sa.Integer(), nullable=False),

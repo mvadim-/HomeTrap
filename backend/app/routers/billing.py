@@ -40,6 +40,7 @@ def upcoming_billing(session: Session = Depends(get_db)) -> list[dict[str, objec
             "next_billing_date": entry.next_billing_date,
             "period": entry.period,
             "invoice_status": entry.invoice_status,
+            "is_overdue": entry.is_overdue,
         }
         for entry in sorted(
             entries,

@@ -34,7 +34,8 @@ export async function getPushDeviceStatus(): Promise<PushDeviceStatus> {
   if (!isPushSupported()) return "unsupported";
   if (Notification.permission === "denied") return "denied";
 
-  const registration = await registerServiceWorker();
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) return "unsubscribed";
   const subscription = await registration.pushManager.getSubscription();
   return subscription ? "subscribed" : "unsubscribed";
 }
@@ -71,11 +72,14 @@ export async function subscribePushDevice(): Promise<PushDeviceStatus> {
 export async function unsubscribePushDevice(): Promise<PushDeviceStatus> {
   if (!isPushSupported()) return "unsupported";
 
-  const registration = await registerServiceWorker();
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) return "unsubscribed";
   const subscription = await registration.pushManager.getSubscription();
   if (!subscription) return "unsubscribed";
 
+  if (!await subscription.unsubscribe()) {
+    throw new Error("Browser Push subscription remains active");
+  }
   await deletePushSubscription(subscription.endpoint);
-  await subscription.unsubscribe();
   return "unsubscribed";
 }

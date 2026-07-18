@@ -228,6 +228,7 @@ class UpcomingBillingResponse(ApiSchema):
     next_billing_date: date
     period: date
     invoice_status: Literal["draft", "issued", "paid"] | None
+    is_overdue: bool
 
 
 class ConsumptionPoint(ApiSchema):
@@ -342,7 +343,7 @@ class EmailNotificationSettings(ApiSchema):
 
 class BillingReminderSettings(ApiSchema):
     enabled: bool = False
-    days_before: int = Field(default=3, ge=0)
+    days_before: int = Field(default=3, ge=0, le=365)
     repeat_every_days: int = Field(default=1, ge=1)
     auto_draft: bool = True
 

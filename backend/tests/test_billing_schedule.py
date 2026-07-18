@@ -162,6 +162,7 @@ def test_next_billing_date_moves_to_next_month_after_billing_day(
 
     assert entry.next_billing_date == date(2026, 8, 10)
     assert entry.period == date(2026, 8, 1)
+    assert entry.is_overdue is True
 
 
 def test_schedule_uses_current_tenant_and_ignores_future_tenant(
@@ -310,6 +311,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "next_billing_date": "2026-07-07",
             "period": "2026-07-01",
             "invoice_status": "issued",
+            "is_overdue": False,
         },
         {
             "apartment_id": draft.id,
@@ -319,6 +321,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "next_billing_date": "2026-07-07",
             "period": "2026-07-01",
             "invoice_status": "draft",
+            "is_overdue": False,
         },
         {
             "apartment_id": without_invoice.id,
@@ -328,6 +331,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "next_billing_date": "2026-07-08",
             "period": "2026-07-01",
             "invoice_status": None,
+            "is_overdue": False,
         },
         {
             "apartment_id": paid.id,
@@ -337,6 +341,7 @@ async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
             "next_billing_date": "2026-07-09",
             "period": "2026-07-01",
             "invoice_status": "paid",
+            "is_overdue": False,
         },
     ]
 
@@ -357,6 +362,7 @@ async def test_upcoming_billing_api_includes_day_30_and_excludes_day_31(
                 next_billing_date=date(2026, 9, 1),
                 period=date(2026, 9, 1),
                 invoice_status=None,
+                is_overdue=False,
             ),
             SimpleNamespace(
                 apartment=SimpleNamespace(id=1, name="На межі"),
@@ -364,6 +370,7 @@ async def test_upcoming_billing_api_includes_day_30_and_excludes_day_31(
                 next_billing_date=date(2026, 8, 31),
                 period=date(2026, 8, 1),
                 invoice_status="draft",
+                is_overdue=False,
             ),
         ]
 
@@ -373,6 +380,34 @@ async def test_upcoming_billing_api_includes_day_30_and_excludes_day_31(
 
     assert response.status_code == 200
     assert [item["apartment_name"] for item in response.json()] == ["На межі"]
+
+
+async def test_upcoming_billing_api_marks_missing_current_invoice_overdue(
+    db_session: Session,
+    billing_client: AsyncClient,
+    monkeypatch,
+) -> None:
+    today = date(2026, 7, 11)
+    monkeypatch.setattr("app.routers.billing._today", lambda: today)
+    apartment = make_apartment("Пропущене виставлення")
+    db_session.add(make_tenant(apartment, contract_start=date(2026, 1, 10)))
+    db_session.commit()
+
+    response = await billing_client.get("/api/billing/upcoming")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "apartment_id": apartment.id,
+            "apartment_name": "Пропущене виставлення",
+            "tenant_id": apartment.tenants[0].id,
+            "tenant_name": "Орендар",
+            "next_billing_date": "2026-08-10",
+            "period": "2026-08-01",
+            "invoice_status": None,
+            "is_overdue": True,
+        }
+    ]
 
 
 async def test_upcoming_billing_api_returns_empty_list(

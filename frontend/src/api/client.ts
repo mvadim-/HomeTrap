@@ -133,6 +133,7 @@ export interface UpcomingBillingItem {
   next_billing_date: string;
   period: string;
   invoice_status: InvoiceStatus | null;
+  is_overdue: boolean;
 }
 
 export interface ConsumptionPoint {

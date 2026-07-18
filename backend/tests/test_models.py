@@ -91,6 +91,25 @@ def test_can_create_all_entities(db_session: Session) -> None:
     assert db_session.get(Setting, "reminder").value["day"] == 25
 
 
+@pytest.mark.parametrize("billing_day", [0, 32])
+def test_tenant_billing_day_database_constraint(
+    db_session: Session,
+    billing_day: int,
+) -> None:
+    apartment = make_apartment()
+    apartment.tenants.append(
+        Tenant(
+            full_name="Орендар",
+            contract_start=date(2026, 1, 1),
+            billing_day=billing_day,
+        )
+    )
+    db_session.add(apartment)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
 def test_deleting_apartment_cascades_services_and_tariffs(db_session: Session) -> None:
     apartment = make_apartment()
     apartment.services.append(
@@ -292,6 +311,10 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         tenant_columns = {
             column["name"]: column for column in inspect(engine).get_columns("tenants")
         }
+        tenant_checks = {
+            constraint["name"]
+            for constraint in inspect(engine).get_check_constraints("tenants")
+        }
         push_unique_constraints = inspect(engine).get_unique_constraints(
             "push_subscriptions"
         )
@@ -315,6 +338,7 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
     assert invoice_line_columns["service_kind"]["nullable"] is False
     assert "ck_invoice_lines_service_kind" in invoice_line_checks
     assert tenant_columns["billing_day"]["nullable"] is True
+    assert "ck_tenants_billing_day" in tenant_checks
     assert any(
         constraint["column_names"] == ["endpoint"]
         for constraint in push_unique_constraints
