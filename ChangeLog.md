@@ -1,5 +1,16 @@
 # ChangeLog
 
+## [2026-07-19 00:09] Незалежний цикл billing reminder
+
+- `backend/app/services/billing_schedule.py` — reminder/auto-draft pipeline тепер
+  обирає найближче поточне або майбутнє виставлення незалежно від пропущеного
+  попереднього періоду; Dashboard зберігає rollover-пропуск і один рядок на квартиру.
+- `backend/tests/test_billing_schedule.py` — додано регресії для pre-reminder та
+  авто-чернетки поточного періоду за наявності пропущеного попереднього рахунка.
+- Зміна призначена для production. Для розгортання виконайте backup, rebuild і
+  restart контейнера за `docs/deploy.md`; міграцій БД і нових змінних середовища
+  немає. Автоматичний деплой не виконувався.
+
 ## [2026-07-18 23:56] Збереження пропущеного виставлення під час rollover
 
 - `backend/app/services/billing_schedule.py` — після переходу місяця розклад

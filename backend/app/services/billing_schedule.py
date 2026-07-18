@@ -70,10 +70,10 @@ def _billing_dates(
     )
 
 
-def compute_billing_schedule(
+def _compute_billing_schedule_candidates(
     session: Session,
     today: date,
-) -> list[BillingScheduleEntry]:
+) -> list[list[BillingScheduleEntry]]:
     rows = session.execute(
         select(Apartment, Tenant)
         .join(Tenant, Tenant.apartment_id == Apartment.id)
@@ -123,7 +123,7 @@ def compute_billing_schedule(
             if (invoice.apartment_id, invoice.period) in invoice_keys
         }
 
-    result: list[BillingScheduleEntry] = []
+    result: list[list[BillingScheduleEntry]] = []
     for apartment, tenant, billing_day, billing_dates in pending:
         candidates: list[BillingScheduleEntry] = []
         for billing_date in billing_dates:
@@ -142,10 +142,33 @@ def compute_billing_schedule(
                     is_overdue=is_overdue,
                 )
             )
+        if candidates:
+            result.append(candidates)
+    return result
+
+
+def compute_billing_schedule(
+    session: Session,
+    today: date,
+) -> list[BillingScheduleEntry]:
+    result: list[BillingScheduleEntry] = []
+    for candidates in _compute_billing_schedule_candidates(session, today):
         missed = [entry for entry in candidates if entry.is_overdue]
         if missed:
             result.append(max(missed, key=lambda entry: entry.billing_date))
             continue
+        upcoming = [entry for entry in candidates if entry.billing_date >= today]
+        if upcoming:
+            result.append(min(upcoming, key=lambda entry: entry.billing_date))
+    return result
+
+
+def _compute_reminder_schedule(
+    session: Session,
+    today: date,
+) -> list[BillingScheduleEntry]:
+    result: list[BillingScheduleEntry] = []
+    for candidates in _compute_billing_schedule_candidates(session, today):
         upcoming = [entry for entry in candidates if entry.billing_date >= today]
         if upcoming:
             result.append(min(upcoming, key=lambda entry: entry.billing_date))
@@ -165,7 +188,7 @@ def send_billing_reminders(
     window_delta = timedelta(days=settings["days_before"])
     repeat_every_days = settings["repeat_every_days"]
 
-    for entry in compute_billing_schedule(session, today):
+    for entry in _compute_reminder_schedule(session, today):
         if entry.invoice_exists:
             continue
         if today == entry.billing_date:

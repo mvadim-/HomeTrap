@@ -554,6 +554,113 @@ def test_missed_previous_month_occurrence_does_not_trigger_old_reminder_or_draft
     assert history == {}
 
 
+def test_missed_previous_month_does_not_block_upcoming_reminder(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment("Пропущений липень, нагадування за серпень")
+    db_session.add(
+        make_tenant(
+            apartment,
+            contract_start=date(2026, 1, 20),
+            billing_day=20,
+        )
+    )
+    db_session.commit()
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    dashboard_entries = compute_billing_schedule(db_session, date(2026, 8, 15))
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 8, 15),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    assert [entry.billing_date for entry in dashboard_entries] == [date(2026, 7, 20)]
+    assert dashboard_entries[0].is_overdue is True
+    assert result.notifications == 1
+    assert result.deliveries == 1
+    assert history == {f"billing:{apartment.id}:2026-08-01": "2026-08-15"}
+    assert sender.messages == [
+        (
+            "Нагадування про виставлення рахунка",
+            (
+                "Виставте рахунок для квартири «Пропущений липень, "
+                "нагадування за серпень» за 08.2026 до 20.08.2026."
+            ),
+        )
+    ]
+
+
+def test_missed_previous_month_does_not_block_billing_day_auto_draft(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    apartment = make_apartment("Пропущений липень, чернетка за серпень")
+    db_session.add(
+        make_tenant(
+            apartment,
+            contract_start=date(2026, 1, 20),
+            billing_day=20,
+        )
+    )
+    db_session.commit()
+    created: list[date] = []
+
+    monkeypatch.setattr(
+        "app.services.nbu.get_rate",
+        lambda _session, target_date: RateResult(
+            requested_date=target_date,
+            rate_date=target_date,
+            currency="USD",
+            rate=Decimal("44.680000"),
+            is_fallback=False,
+        ),
+    )
+
+    def create_draft(
+        session: Session,
+        target_apartment: Apartment,
+        period: date,
+        _rate: Decimal,
+    ) -> None:
+        created.append(period)
+        session.add(make_invoice(target_apartment, period, InvoiceStatus.DRAFT))
+        session.commit()
+
+    monkeypatch.setattr("app.services.billing.create_draft", create_draft)
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    dashboard_entries = compute_billing_schedule(db_session, date(2026, 8, 20))
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 8, 20),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    assert [entry.billing_date for entry in dashboard_entries] == [date(2026, 7, 20)]
+    assert created == [date(2026, 8, 1)]
+    assert result.notifications == 1
+    assert result.deliveries == 1
+    assert history == {
+        f"billing_draft:{apartment.id}:2026-08-01": "2026-08-20"
+    }
+    assert sender.messages == [
+        (
+            "Чернетку рахунка створено",
+            (
+                "Чернетку рахунка для квартири «Пропущений липень, "
+                "чернетка за серпень» за 08.2026 створено автоматично."
+            ),
+        )
+    ]
+
+
 async def test_upcoming_billing_api_returns_empty_list(
     billing_client: AsyncClient,
     monkeypatch,
