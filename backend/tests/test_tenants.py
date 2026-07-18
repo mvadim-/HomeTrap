@@ -57,6 +57,7 @@ def _tenant_payload(**overrides) -> dict:
         "email": "oksana@example.com",
         "contract_start": "2025-01-01",
         "contract_end": None,
+        "billing_day": None,
         "notes": "Перший контракт",
     }
     payload.update(overrides)
@@ -194,12 +195,44 @@ async def test_tenant_input_validation(tmp_path) -> None:
         )
         assert invalid_dates.status_code == 422
 
+        for billing_day in (0, 32):
+            invalid_billing_day = await client.post(
+                endpoint,
+                json=_tenant_payload(billing_day=billing_day),
+            )
+            assert invalid_billing_day.status_code == 422
+
         tenant = (await client.post(endpoint, json=_tenant_payload())).json()
         invalid_update = await client.put(
             f"/api/tenants/{tenant['id']}",
             json=_tenant_payload(email="missing-domain@"),
         )
         assert invalid_update.status_code == 422
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_tenant_billing_day_can_be_saved_and_cleared(tmp_path) -> None:
+    lifespan, client = await _create_client(tmp_path)
+    try:
+        apartment = await _create_apartment(client)
+        endpoint = f"/api/apartments/{apartment['id']}/tenants"
+
+        created = await client.post(endpoint, json=_tenant_payload(billing_day=12))
+        assert created.status_code == 201
+        tenant = created.json()
+        assert tenant["billing_day"] == 12
+
+        listed = await client.get(endpoint)
+        assert listed.status_code == 200
+        assert listed.json()[0]["billing_day"] == 12
+
+        cleared = await client.put(
+            f"/api/tenants/{tenant['id']}",
+            json=_tenant_payload(billing_day=None),
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["billing_day"] is None
     finally:
         await _close_client(lifespan, client)
 

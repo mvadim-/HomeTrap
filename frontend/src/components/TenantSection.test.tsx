@@ -13,6 +13,7 @@ const activeTenant: apiClient.Tenant = {
   email: "oksana@example.com",
   contract_start: "2026-01-15",
   contract_end: null,
+  billing_day: 12,
   notes: "Кіт у квартирі",
 };
 
@@ -51,6 +52,8 @@ describe("TenantSection", () => {
     expect(screen.getByRole("link", { name: "oksana@example.com" })).toHaveClass("tenant-contact-link");
     expect(screen.getByRole("link", { name: "contract.pdf" })).toHaveAttribute("href", "/api/attachments/12");
     expect(screen.getByText("контракт з 15 січ. 2026 р.")).toBeInTheDocument();
+    expect(screen.getByText("День виставлення")).toBeInTheDocument();
+    expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("Колишні орендарі (1)")).toBeInTheDocument();
     expect(screen.getByText("Іван Петренко")).toBeInTheDocument();
     expect(screen.getByText("1 січ. 2025 р. — 31 груд. 2025 р.")).toBeInTheDocument();
@@ -218,6 +221,45 @@ describe("TenantSection", () => {
     vi.setSystemTime(new Date(2026, 6, 17, 0, 1));
     await user.click(screen.getByRole("button", { name: "Новий орендар" }));
     expect(screen.getByLabelText("Контракт з")).toHaveValue("2026-07-17");
+  });
+
+  it("loads, changes and clears the tenant billing day", async () => {
+    vi.spyOn(apiClient, "updateTenant").mockResolvedValue({
+      ...activeTenant,
+      billing_day: null,
+    });
+    const user = userEvent.setup();
+    render(<TenantSection apartmentId={1} />);
+
+    await user.click(await screen.findByRole("button", { name: "Редагувати" }));
+    const billingDay = screen.getByLabelText("День виставлення рахунку");
+    expect(billingDay).toHaveValue(12);
+    expect(screen.getByText("порожнє = день підписання договору")).toBeInTheDocument();
+
+    await user.clear(billingDay);
+    await user.click(screen.getByRole("button", { name: "Зберегти" }));
+
+    await waitFor(() => expect(apiClient.updateTenant).toHaveBeenCalledWith(
+      activeTenant.id,
+      expect.objectContaining({ billing_day: null }),
+    ));
+  });
+
+  it("submits a billing day for a new tenant", async () => {
+    vi.mocked(apiClient.getTenants).mockResolvedValue([]);
+    vi.spyOn(apiClient, "createTenant").mockResolvedValue(activeTenant);
+    const user = userEvent.setup();
+    render(<TenantSection apartmentId={1} />);
+
+    await user.click(await screen.findByRole("button", { name: "Новий орендар" }));
+    await user.type(screen.getByLabelText("ПІБ"), "Марія Сидоренко");
+    await user.type(screen.getByLabelText("День виставлення рахунку"), "20");
+    await user.click(screen.getByRole("button", { name: "Додати орендаря" }));
+
+    await waitFor(() => expect(apiClient.createTenant).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ billing_day: 20 }),
+    ));
   });
 
   it("loads attachments only for the active tenant", async () => {

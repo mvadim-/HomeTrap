@@ -28,6 +28,7 @@ function emptyTenant(contractStart = localToday()): TenantPayload {
     email: "",
     contract_start: contractStart,
     contract_end: null,
+    billing_day: null,
     notes: "",
   };
 }
@@ -45,6 +46,7 @@ function tenantPayload(tenant: Tenant): TenantPayload {
     email: tenant.email ?? "",
     contract_start: tenant.contract_start,
     contract_end: tenant.contract_end,
+    billing_day: tenant.billing_day,
     notes: tenant.notes ?? "",
   };
 }
@@ -307,6 +309,7 @@ export function TenantSection({ apartmentId, onOccupancyChange }: TenantSectionP
           <dl className="details-list tenant-details">
             <dt>Телефон</dt><dd>{activeTenant.phone ? <a className="tenant-contact-link" href={`tel:${activeTenant.phone}`}>{activeTenant.phone}</a> : "—"}</dd>
             <dt>Email</dt><dd>{activeTenant.email ? <a className="tenant-contact-link" href={`mailto:${activeTenant.email}`}>{activeTenant.email}</a> : "—"}</dd>
+            <dt>День виставлення</dt><dd>{activeTenant.billing_day ?? "день підписання договору"}</dd>
             <dt>Примітки</dt><dd>{activeTenant.notes || "—"}</dd>
           </dl>
 
@@ -350,6 +353,20 @@ export function TenantSection({ apartmentId, onOccupancyChange }: TenantSectionP
           <label>Телефон<input type="tel" value={draft.phone ?? ""} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></label>
           <label>Email<input type="email" value={draft.email ?? ""} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></label>
           <label>Контракт з<input required type="date" value={draft.contract_start} onChange={(event) => setDraft({ ...draft, contract_start: event.target.value })} /></label>
+          <label>День виставлення рахунку
+            <input
+              aria-label="День виставлення рахунку"
+              min="1"
+              max="31"
+              type="number"
+              value={draft.billing_day ?? ""}
+              onChange={(event) => setDraft({
+                ...draft,
+                billing_day: event.target.value === "" ? null : Number(event.target.value),
+              })}
+            />
+            <small>порожнє = день підписання договору</small>
+          </label>
           <label className="tenant-notes">Примітки<textarea value={draft.notes ?? ""} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
           <div className="form-actions">
             <button className="button" type="submit">{editingTenantId ? "Зберегти" : "Додати орендаря"}</button>

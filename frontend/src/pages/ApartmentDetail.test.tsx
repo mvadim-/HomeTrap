@@ -36,7 +36,7 @@ describe("ApartmentDetail", () => {
     });
     vi.mocked(apiClient.getTenants).mockResolvedValue([{
       id: 8, apartment_id: 1, full_name: "Оксана Коваль", phone: null, email: null,
-      contract_start: "2026-01-15", contract_end: null, notes: null,
+      contract_start: "2026-01-15", contract_end: null, billing_day: null, notes: null,
     }]);
     vi.mocked(apiClient.getIncomeStats).mockResolvedValue({
       scope: "apartment", apartment_id: 1, months: 12,
@@ -101,7 +101,7 @@ describe("ApartmentDetail", () => {
       if (apartmentId === 2) throw new apiClient.ApiError(503, "Unavailable");
       return [{
         id: 8, apartment_id: 1, full_name: "Оксана Коваль", phone: null, email: null,
-        contract_start: "2026-01-15", contract_end: null, notes: null,
+        contract_start: "2026-01-15", contract_end: null, billing_day: null, notes: null,
       }];
     });
     const user = userEvent.setup();

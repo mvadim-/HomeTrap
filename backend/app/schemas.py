@@ -67,6 +67,7 @@ class TenantIn(ApiSchema):
     email: str | None = Field(default=None, max_length=320)
     contract_start: date
     contract_end: date | None = None
+    billing_day: int | None = Field(default=None, ge=1, le=31)
     notes: str | None = None
 
     @field_validator("email")

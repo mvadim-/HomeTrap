@@ -247,11 +247,11 @@
 - Modify: `frontend/src/components/TenantSection.tsx`
 - Modify: `frontend/src/components/TenantSection.test.tsx`
 
-- [ ] додати `billing_day` (optional, 1–31) у tenant-схеми та create/update у router; додати поле в `TenantPayload` у `frontend/src/api/client.ts`
-- [ ] поле «День виставлення рахунку» у формі орендаря з підказкою «порожнє = день підписання договору»
-- [ ] write backend tests: збереження/очищення override, валідація меж (0, 32)
-- [ ] write frontend tests: введення/очищення поля, відображення значення
-- [ ] run tests (backend + frontend) - must pass before next task
+- [x] додати `billing_day` (optional, 1–31) у tenant-схеми та create/update у router; додати поле в `TenantPayload` у `frontend/src/api/client.ts`
+- [x] поле «День виставлення рахунку» у формі орендаря з підказкою «порожнє = день підписання договору»
+- [x] write backend tests: збереження/очищення override, валідація меж (0, 32)
+- [x] write frontend tests: введення/очищення поля, відображення значення
+- [x] run tests (backend + frontend) - must pass before next task
 
 ### Task 10: Налаштування у Settings.tsx — блоки «Виставлення рахунків» і «Push»
 

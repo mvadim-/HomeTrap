@@ -63,6 +63,7 @@ function tenant(overrides: Partial<apiClient.Tenant> = {}): apiClient.Tenant {
     email: null,
     contract_start: "2024-03-15",
     contract_end: "2025-02-28",
+    billing_day: null,
     notes: null,
     ...overrides,
   };

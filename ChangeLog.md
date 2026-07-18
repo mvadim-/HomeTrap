@@ -1,5 +1,24 @@
 # ChangeLog
 
+## [2026-07-18 22:32] Override дня виставлення для орендаря
+
+- `backend/app/schemas.py`, `backend/tests/test_tenants.py` — до tenant API додано
+  nullable `billing_day` з межами 1–31; перевірено збереження, очищення,
+  видачу у списку та відхилення значень 0 і 32.
+- `frontend/src/api/client.ts`, `frontend/src/components/TenantSection.tsx` — картка орендаря
+  показує override, а create/edit форма дає ввести або очистити день
+  з підказкою про fallback на день підписання договору.
+- `frontend/src/components/TenantSection.test.tsx`,
+  `frontend/src/pages/ApartmentDetail.test.tsx`, `frontend/src/pages/Stats.test.tsx` — додано
+  Vitest-перевірки billing day та оновлено типізовані tenant fixtures.
+- `docs/plans/20260718-billing-reminder.md` — Task 9 позначено виконаним після
+  успішних Docker-перевірок: 119 backend-тестів, `ruff check`, 152 frontend-тести
+  та production build.
+- Зміна зачіпає production backend і frontend. Для розгортання потрібні
+  rebuild і restart контейнера за `docs/deploy.md`; міграція `billing_day`
+  вже входить до цієї гілки, нових env-змінних немає. Автоматичний
+  деплой не виконувався.
+
 ## [2026-07-18 22:25] API найближчих виставлень рахунків
 
 - `backend/app/routers/billing.py`, `backend/app/main.py` — додано захищений endpoint

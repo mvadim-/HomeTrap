@@ -89,6 +89,7 @@ export interface TenantPayload {
   email: string | null;
   contract_start: string;
   contract_end: string | null;
+  billing_day: number | null;
   notes: string | null;
 }
 
