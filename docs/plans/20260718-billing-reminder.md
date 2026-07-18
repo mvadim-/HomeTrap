@@ -301,9 +301,9 @@
 - Modify: `docs/deploy.md`
 - Modify: `ChangeLog.md`
 
-- [ ] примітка в `docs/deploy.md`: HTTPS-передумова для Web Push (Synology reverse proxy), поведінка iOS (PWA на головний екран)
-- [ ] звірити, що `ChangeLog.md` має записи за всі виконані цикли (самі записи створюються по ходу — див. Development Approach)
-- [ ] run tests (повний прогін для фіксації стану) - must pass before next task
+- [x] примітка в `docs/deploy.md`: HTTPS-передумова для Web Push (Synology reverse proxy), поведінка iOS (PWA на головний екран)
+- [x] звірити, що `ChangeLog.md` має записи за всі виконані цикли (самі записи створюються по ходу — див. Development Approach)
+- [x] run tests (повний прогін для фіксації стану) - must pass before next task
 
 ### Task 14: Verify acceptance criteria
 - [ ] verify all requirements from Overview are implemented

@@ -63,10 +63,11 @@ docker compose --env-file .env -f docker/docker-compose.yml up -d --build
 docker compose --env-file .env -f docker/docker-compose.yml ps
 ```
 
-Міграції Alembic, включно з таблицями орендарів і вкладень контрактів, застосовуються
-автоматично під час старту; окрема команда міграції не потрібна. Не збільшуйте
-кількість Uvicorn workers і не масштабуйте сервіс: APScheduler виконується в процесі
-застосунку.
+Команда `up -d --build` перебудовує production-образ із backend і frontend та
+перезапускає контейнер. Міграції Alembic, включно з таблицею Push-підписок і днем
+виставлення орендаря, застосовуються автоматично під час старту; окрема команда
+міграції не потрібна. Не збільшуйте кількість Uvicorn workers і не масштабуйте
+сервіс: APScheduler виконується в процесі застосунку.
 
 ## Бекап і відновлення даних
 
@@ -88,6 +89,10 @@ docker compose --env-file .env -f docker/docker-compose.yml start hometrap
 
 ## HTTPS для hometrap.pp.ua
 
+HTTPS є обов'язковою передумовою для service worker і Web Push (виняток браузерів —
+лише `localhost`). Тому Push у production потрібно перевіряти через Synology reverse
+proxy за публічною HTTPS-адресою, а не через прямий HTTP-порт контейнера.
+
 1. Спрямуйте DNS-запис `A` домену `hometrap.pp.ua` на публічну IP-адресу NAS і
    налаштуйте на маршрутизаторі доступ до портів 80/443.
 2. У **Control Panel → Security → Certificate** додайте сертифікат Let's Encrypt для
@@ -108,8 +113,13 @@ docker compose --env-file .env -f docker/docker-compose.yml start hometrap
    HomeTrap довіряє `X-Forwarded-For` лише від цих безпосередніх proxy-адрес.
    Не використовуйте широкі мережі на кшталт `0.0.0.0/0`: це дозволить підробляти
    IP і обходити rate limit входу.
-5. Перевірте вхід, створення квартири й рахунку через HTTPS, а також пряме оновлення
-   сторінки `https://hometrap.pp.ua/invoices`.
+5. Перевірте вхід, створення квартири й рахунку через HTTPS, пряме оновлення
+   сторінки `https://hometrap.pp.ua/invoices`, доступність `/manifest.webmanifest`
+   і `/sw.js`, а потім підписку пристрою на Push у налаштуваннях HomeTrap.
+
+На iPhone/iPad відкрийте HomeTrap у Safari, виберіть **Поділитися → На початковий
+екран**, запустіть встановлену PWA з іконки й лише тоді ввімкніть Push у
+налаштуваннях. Web Push для звичайної вкладки Safari на iOS не використовується.
 
 Не змінюйте `HOMETRAP_BIND_ADDRESS=127.0.0.1`: це залишає порт 8000 доступним
 Synology reverse proxy через `localhost`, але не публікує HTTP API у мережі.

@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-18 22:55] Документація Web Push і контрольний прогін
+
+- `docs/deploy.md` — задокументовано HTTPS як передумову Web Push через Synology
+  reverse proxy, встановлення PWA на початковий екран iOS та production-оновлення
+  з rebuild/restart контейнера й автоматичним застосуванням міграцій.
+- `ChangeLog.md` — звірено наявність окремих записів за всі Task 1–12 поточного
+  циклу нагадувань про виставлення рахунків.
+- `docs/plans/20260718-billing-reminder.md` — лише Task 13 позначено виконаним
+  після повного Docker-прогону: 119 backend-тестів, Ruff, Alembic check, 161
+  frontend-тест і production frontend build із TypeScript-перевіркою.
+- Цей цикл змінює лише документацію й локально перевіряє код у Docker, тому сам
+  по собі не потребує production-деплою. Для розгортання фічі потрібні rebuild і
+  restart контейнера за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-18 22:50] Віджет найближчих виставлень на дашборді
 
 - `frontend/src/api/client.ts`, `frontend/src/pages/Dashboard.tsx` — додано
