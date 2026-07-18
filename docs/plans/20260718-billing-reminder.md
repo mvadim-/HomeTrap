@@ -313,9 +313,10 @@
 - [x] verify test coverage meets project standard
 
 ### Task 15: [Final] Update documentation
-- [ ] update README.md if needed
-- [ ] update CLAUDE.md if new patterns discovered
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update README.md if needed
+- [x] update CLAUDE.md if new patterns discovered
+- [x] move this plan to `docs/plans/completed/` *(physical move deferred to the
+  planning harness after reviews/finalize)*
 
 ## Post-Completion
 *Items requiring manual intervention or external systems - no checkboxes, informational only*

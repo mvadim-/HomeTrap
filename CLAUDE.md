@@ -31,6 +31,15 @@ Always provide deployment instructions for any code that is meant to run in prod
 - Keep production Uvicorn at one worker because APScheduler runs in the application
   process. Follow `docs/deploy.md` for Synology deployment, updates, and backups.
 
+### Notification Architecture
+
+- Add delivery channels through the `NotificationSender` protocol and assemble them
+  in `backend/app/services/notify.py`; Web Push uses the database session for stored
+  subscriptions.
+- Extend the existing daily notification pipeline for calendar-based reminders
+  instead of registering additional APScheduler jobs. Keep production at one Uvicorn
+  worker so the in-process scheduler does not duplicate delivery.
+
 ### Frontend Styling Conventions
 
 - Treat `frontend/src/theme.css` as the source of truth for light and dark design

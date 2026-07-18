@@ -1,5 +1,17 @@
 # ChangeLog
 
+## [2026-07-18 23:04] Документація billing reminder
+
+- `README.md` — описано розрахунок дати виставлення, Dashboard-віджет,
+  авто-чернетки та налаштування Telegram, email і Web Push без дублювання
+  production-інструкції.
+- `CLAUDE.md` — зафіксовано стабільний патерн розширення каналів через
+  `NotificationSender` і використання наявного щоденного scheduler-конвеєра.
+- `docs/plans/20260718-billing-reminder.md` — Task 15 позначено виконаним;
+  фізичне переміщення плану відкладено до завершального кроку planning harness.
+- Цикл змінює лише документацію і не потребує production-деплою. Розгортання
+  самої фічі виконується за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-18 23:02] Верифікація billing reminder
 
 - `backend/tests/test_billing_schedule.py` — додано acceptance-перевірку включних
