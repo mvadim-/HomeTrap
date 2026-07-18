@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives import serialization
 from py_vapid import Vapid
 from pywebpush import WebPushException, webpush
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import PushSubscription, Setting
@@ -44,7 +45,14 @@ def _get_or_create_vapid_keys(session: Session) -> dict[str, str]:
         "public_key": public_key,
     }
     session.add(Setting(key=VAPID_KEYS_SETTING_KEY, value=value))
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        stored = session.get(Setting, VAPID_KEYS_SETTING_KEY)
+        if stored is None:
+            raise
+        return stored.value
     return value
 
 
@@ -95,10 +103,20 @@ class WebPushSender:
                     deleted = True
                 else:
                     errors.append(error)
+                traceback = None
+                if not isinstance(error, WebPushException):
+                    sanitized = WebPushDeliveryError(
+                        "unexpected Web Push delivery failure"
+                    )
+                    traceback = (type(sanitized), sanitized, error.__traceback__)
                 logger.warning(
-                    "Web Push delivery failed for subscription %s (%s)",
-                    subscription.id,
-                    type(error).__name__,
+                    "Web Push delivery failed",
+                    extra={
+                        "subscription_id": subscription.id,
+                        "status_code": status_code,
+                        "error_category": type(error).__name__,
+                    },
+                    exc_info=traceback,
                 )
 
         if deleted:

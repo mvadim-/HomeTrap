@@ -4,19 +4,19 @@ from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
 import logging
-from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, Tenant
+from app.services.notification_delivery import (
+    NotificationResult,
+    NotificationSender,
+    send_notification,
+)
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from app.services.notify import NotificationResult, NotificationSender
-
 
 @dataclass(frozen=True)
 class BillingScheduleEntry:
@@ -182,8 +182,6 @@ def send_billing_reminders(
     senders: list[NotificationSender],
     history: dict[str, str],
 ) -> NotificationResult:
-    from app.services.notify import NotificationResult
-
     result = NotificationResult()
     window_delta = timedelta(days=settings["days_before"])
     repeat_every_days = settings["repeat_every_days"]
@@ -230,7 +228,6 @@ def _create_draft_and_notify(
     from app.services import billing, nbu
     from app.services.billing import BillingValidationError, InvoiceChronologyError
     from app.services.nbu import NbuRateUnavailable
-    from app.services.notify import send_notification
 
     key = f"billing_draft:{entry.apartment.id}:{entry.period}"
     if key in history:
@@ -302,8 +299,6 @@ def _send_manual_billing_reminder(
     today: date,
     result: NotificationResult,
 ) -> None:
-    from app.services.notify import send_notification
-
     delivery = send_notification(
         senders,
         "Нагадування про виставлення рахунка",

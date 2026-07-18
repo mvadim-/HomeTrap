@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from pywebpush import WebPushException
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.config import Settings
 from app.main import create_app
@@ -17,6 +19,7 @@ from app.services.push import (
     VAPID_SUBJECT,
     WebPushDeliveryError,
     WebPushSender,
+    _get_or_create_vapid_keys,
     get_vapid_public_key,
 )
 
@@ -83,6 +86,37 @@ def test_get_vapid_public_key_generates_and_reuses_pair(db_session) -> None:
     assert first.startswith("B")
     assert len(first) == 87
     assert private_key.startswith("-----BEGIN PRIVATE KEY-----")
+
+
+def test_get_vapid_public_key_recovers_from_concurrent_insert() -> None:
+    canonical = {
+        "private_key": "canonical-private-key",
+        "public_key": "canonical-public-key",
+    }
+
+    class RacingSession:
+        def __init__(self) -> None:
+            self.rolled_back = False
+
+        def get(self, _model, _key):
+            if self.rolled_back:
+                return SimpleNamespace(value=canonical)
+            return None
+
+        def add(self, _setting) -> None:
+            pass
+
+        def commit(self) -> None:
+            raise IntegrityError("insert", {}, RuntimeError("unique constraint"))
+
+        def rollback(self) -> None:
+            self.rolled_back = True
+
+    session = RacingSession()
+    result = _get_or_create_vapid_keys(session)  # type: ignore[arg-type]
+
+    assert session.rolled_back is True
+    assert result == canonical
 
 
 async def test_push_public_key_api_generates_and_reuses_pair(tmp_path) -> None:
@@ -268,10 +302,12 @@ def test_web_push_sender_deletes_gone_subscription_and_continues(
 def test_web_push_sender_partial_error_does_not_block_other_subscriptions(
     db_session,
     monkeypatch,
+    caplog,
 ) -> None:
-    db_session.add_all(
-        [_subscription("https://push/broken"), _subscription("https://push/live")]
-    )
+    caplog.set_level(logging.WARNING, logger="app.services.push")
+    broken = _subscription("https://push/broken")
+    live = _subscription("https://push/live")
+    db_session.add_all([broken, live])
     db_session.commit()
     calls: list[str] = []
 
@@ -286,6 +322,45 @@ def test_web_push_sender_partial_error_does_not_block_other_subscriptions(
     WebPushSender(db_session).send("Тема", "Повідомлення")
 
     assert calls == ["https://push/broken", "https://push/live"]
+    record = next(record for record in caplog.records if record.name == "app.services.push")
+    assert record.subscription_id == broken.id
+    assert record.status_code is None
+    assert record.error_category == "RuntimeError"
+    assert record.exc_info is not None
+    assert "unexpected Web Push delivery failure" in caplog.text
+    assert "https://push/broken" not in caplog.text
+
+
+def test_web_push_sender_logs_http_status_without_subscription_secrets(
+    db_session,
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING, logger="app.services.push")
+    subscription = _subscription("https://push/secret-endpoint")
+    db_session.add(subscription)
+    db_session.commit()
+    monkeypatch.setattr(
+        "app.services.push.webpush",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            WebPushException(
+                "request rejected",
+                response=SimpleNamespace(status_code=503, text="rejected"),
+            )
+        ),
+    )
+
+    with pytest.raises(WebPushDeliveryError):
+        WebPushSender(db_session).send("Тема", "Повідомлення")
+
+    record = next(record for record in caplog.records if record.name == "app.services.push")
+    assert record.subscription_id == subscription.id
+    assert record.status_code == 503
+    assert record.error_category == "WebPushException"
+    assert record.exc_info is None
+    assert subscription.endpoint not in caplog.text
+    assert subscription.p256dh not in caplog.text
+    assert subscription.auth not in caplog.text
 
 
 def test_web_push_sender_reports_error_when_nothing_is_delivered(

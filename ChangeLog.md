@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-19 00:17] Усунення code smells у delivery та Web Push
+
+- `backend/app/services/notification_delivery.py`, `backend/app/services/notify.py`,
+  `backend/app/services/billing_schedule.py` — спільні delivery-примітиви винесено
+  в незалежний модуль без циклічного імпорту; збереження notification history
+  зведено до одного helper для обох шляхів завершення daily job.
+- `backend/app/services/push.py`, `backend/alembic/env.py`,
+  `backend/tests/test_push.py` — генерація VAPID-ключів відновлюється після
+  конкурентного insert через rollback і повторне читання канонічного значення;
+  startup-міграції зберігають application loggers, а Web Push логує лише безпечні
+  структуровані category/status і санітизований traceback неочікуваних помилок.
+- Зміна призначена для production. Для розгортання виконайте backup, rebuild і
+  restart контейнера за `docs/deploy.md`; міграцій БД і нових змінних середовища
+  немає. Автоматичний деплой не виконувався.
+
 ## [2026-07-19 00:09] Незалежний цикл billing reminder
 
 - `backend/app/services/billing_schedule.py` — reminder/auto-draft pipeline тепер

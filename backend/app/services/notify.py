@@ -3,10 +3,8 @@ from __future__ import annotations
 import smtplib
 import ssl
 from copy import deepcopy
-from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from email.message import EmailMessage
-from typing import Protocol
 
 import httpx
 from sqlalchemy import select
@@ -14,6 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, InvoiceStatus, Setting
 from app.services.billing_schedule import send_billing_reminders
+from app.services.notification_delivery import (
+    NotificationResult,
+    NotificationSender,
+    send_notification,
+)
 from app.services.push import WebPushSender, get_vapid_public_key
 
 NOTIFICATION_SETTINGS_KEY = "notifications"
@@ -43,10 +46,6 @@ DEFAULT_NOTIFICATION_SETTINGS = {
     "overdue_after_days": 3,
     "repeat_every_days": 3,
 }
-
-
-class NotificationSender(Protocol):
-    def send(self, subject: str, message: str) -> None: ...
 
 
 class TelegramSender:
@@ -97,13 +96,6 @@ class EmailSender:
             smtp.send_message(email)
 
 
-@dataclass
-class NotificationResult:
-    notifications: int = 0
-    deliveries: int = 0
-    errors: list[str] = field(default_factory=list)
-
-
 def get_notification_settings(session: Session) -> dict:
     stored = session.get(Setting, NOTIFICATION_SETTINGS_KEY)
     if stored is None:
@@ -145,23 +137,6 @@ def build_senders(settings: dict, session: Session) -> list[NotificationSender]:
     return senders
 
 
-def send_notification(
-    senders: list[NotificationSender],
-    subject: str,
-    message: str,
-) -> NotificationResult:
-    result = NotificationResult(notifications=1)
-    for sender in senders:
-        try:
-            sender.send(subject, message)
-            result.deliveries += 1
-        except Exception as error:  # sender failures must not block other channels
-            result.errors.append(
-                f"{type(sender).__name__}: delivery failed ({type(error).__name__})"
-            )
-    return result
-
-
 def run_daily_notifications(
     session: Session,
     today: date,
@@ -187,11 +162,7 @@ def run_daily_notifications(
         )
 
     if not resolved_senders:
-        if history_setting is None and history:
-            session.add(Setting(key=NOTIFICATION_HISTORY_KEY, value=history))
-        elif history_setting is not None:
-            history_setting.value = history
-        session.commit()
+        _save_notification_history(session, history_setting, history)
         return result
 
     if today.day == settings["readings_day"]:
@@ -243,12 +214,20 @@ def run_daily_notifications(
         if result.deliveries > deliveries_before:
             history[key] = today.isoformat()
 
+    _save_notification_history(session, history_setting, history)
+    return result
+
+
+def _save_notification_history(
+    session: Session,
+    history_setting: Setting | None,
+    history: dict[str, str],
+) -> None:
     if history_setting is None and history:
         session.add(Setting(key=NOTIFICATION_HISTORY_KEY, value=history))
     elif history_setting is not None:
         history_setting.value = history
     session.commit()
-    return result
 
 
 def _as_utc_date(value: datetime) -> date:
