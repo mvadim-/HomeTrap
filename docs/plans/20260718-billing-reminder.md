@@ -174,10 +174,10 @@
 - Modify: `backend/tests/test_billing_schedule.py`
 - Modify: `backend/tests/test_notify.py`
 
-- [ ] додати в `billing_schedule.py` функцію відправки нагадувань (вікно `days_before`, повтор `repeat_every_days`, history-ключ `billing:{apartment_id}:{period}`), що приймає senders/history від конвеєра
-- [ ] викликати її з `run_daily_notifications` при `billing_reminder.enabled`
-- [ ] write tests (логіка нагадувань — у `test_billing_schedule.py`, інтеграція з конвеєром — у `test_notify.py`): перше нагадування на межі вікна, повтор через `repeat_every_days`, тиша поза вікном, замовкання при наявному рахунку, history не оновлюється якщо жодної доставки
-- [ ] run tests - must pass before next task
+- [x] додати в `billing_schedule.py` функцію відправки нагадувань (вікно `days_before`, повтор `repeat_every_days`, history-ключ `billing:{apartment_id}:{period}`), що приймає senders/history від конвеєра
+- [x] викликати її з `run_daily_notifications` при `billing_reminder.enabled`
+- [x] write tests (логіка нагадувань — у `test_billing_schedule.py`, інтеграція з конвеєром — у `test_notify.py`): перше нагадування на межі вікна, повтор через `repeat_every_days`, тиша поза вікном, замовкання при наявному рахунку, history не оновлюється якщо жодної доставки
+- [x] run tests - must pass before next task
 
 ### Task 5: Авто-чернетка в день виставлення
 

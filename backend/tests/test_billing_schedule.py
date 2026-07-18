@@ -5,7 +5,28 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, InvoiceStatus, Tenant
-from app.services.billing_schedule import compute_billing_schedule
+from app.services.billing_schedule import (
+    compute_billing_schedule,
+    send_billing_reminders,
+)
+
+
+class RecordingSender:
+    def __init__(self, *, fails: bool = False) -> None:
+        self.fails = fails
+        self.messages: list[tuple[str, str]] = []
+
+    def send(self, subject: str, message: str) -> None:
+        if self.fails:
+            raise RuntimeError("delivery failed")
+        self.messages.append((subject, message))
+
+
+BILLING_REMINDER_SETTINGS = {
+    "days_before": 5,
+    "repeat_every_days": 2,
+    "auto_draft": True,
+}
 
 
 def make_apartment(
@@ -195,3 +216,114 @@ def test_schedule_reports_existing_invoice_status(
     assert entry.period == date(2026, 7, 1)
     assert entry.invoice_exists is True
     assert entry.invoice_status == status.value
+
+
+def test_billing_reminder_starts_at_window_boundary_and_repeats(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment("Лісова")
+    db_session.add(
+        make_tenant(apartment, contract_start=date(2026, 1, 20))
+    )
+    db_session.commit()
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    first = send_billing_reminders(
+        db_session,
+        date(2026, 7, 15),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+    too_soon = send_billing_reminders(
+        db_session,
+        date(2026, 7, 16),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+    repeated = send_billing_reminders(
+        db_session,
+        date(2026, 7, 17),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    assert first.deliveries == 1
+    assert too_soon.notifications == 0
+    assert repeated.deliveries == 1
+    assert history == {f"billing:{apartment.id}:2026-07-01": "2026-07-17"}
+    assert sender.messages == [
+        (
+            "Нагадування про виставлення рахунка",
+            "Виставте рахунок для квартири «Лісова» за 07.2026 до 20.07.2026.",
+        ),
+        (
+            "Нагадування про виставлення рахунка",
+            "Виставте рахунок для квартири «Лісова» за 07.2026 до 20.07.2026.",
+        ),
+    ]
+
+
+def test_billing_reminder_is_silent_outside_window_and_for_existing_invoice(
+    db_session: Session,
+) -> None:
+    outside = make_apartment("Поза вікном")
+    invoiced = make_apartment("З рахунком")
+    db_session.add_all(
+        [
+            make_tenant(outside, contract_start=date(2026, 1, 20)),
+            make_tenant(invoiced, contract_start=date(2026, 1, 20)),
+            make_invoice(invoiced, date(2026, 7, 1), InvoiceStatus.DRAFT),
+        ]
+    )
+    db_session.commit()
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 7, 14),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+    invoiced_result = send_billing_reminders(
+        db_session,
+        date(2026, 7, 15),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    assert result.notifications == 0
+    assert invoiced_result.notifications == 1
+    assert len(sender.messages) == 1
+    assert "Поза вікном" in sender.messages[0][1]
+    assert "З рахунком" not in sender.messages[0][1]
+
+
+def test_billing_reminder_does_not_update_history_without_delivery(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment("Недоставлене")
+    db_session.add(
+        make_tenant(apartment, contract_start=date(2026, 1, 20))
+    )
+    db_session.commit()
+    history: dict[str, str] = {}
+
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 7, 15),
+        BILLING_REMINDER_SETTINGS,
+        [RecordingSender(fails=True)],
+        history,
+    )
+
+    assert result.notifications == 1
+    assert result.deliveries == 0
+    assert len(result.errors) == 1
+    assert history == {}

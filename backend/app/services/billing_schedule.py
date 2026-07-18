@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, Tenant
+
+if TYPE_CHECKING:
+    from app.services.notify import NotificationResult, NotificationSender
 
 
 @dataclass(frozen=True)
@@ -93,4 +97,47 @@ def compute_billing_schedule(
                 invoice_status=invoice.status if invoice is not None else None,
             )
         )
+    return result
+
+
+def send_billing_reminders(
+    session: Session,
+    today: date,
+    settings: dict,
+    senders: list[NotificationSender],
+    history: dict[str, str],
+) -> NotificationResult:
+    from app.services.notify import NotificationResult, send_notification
+
+    result = NotificationResult()
+    window_delta = timedelta(days=settings["days_before"])
+    repeat_every_days = settings["repeat_every_days"]
+
+    for entry in compute_billing_schedule(session, today):
+        if entry.invoice_exists:
+            continue
+        if not entry.next_billing_date - window_delta <= today < entry.next_billing_date:
+            continue
+
+        key = f"billing:{entry.apartment.id}:{entry.period}"
+        last_delivery = history.get(key)
+        if last_delivery is not None:
+            days_since_delivery = (today - date.fromisoformat(last_delivery)).days
+            if days_since_delivery < repeat_every_days:
+                continue
+
+        delivery = send_notification(
+            senders,
+            "Нагадування про виставлення рахунка",
+            (
+                f"Виставте рахунок для квартири «{entry.apartment.name}» "
+                f"за {entry.period:%m.%Y} до {entry.next_billing_date:%d.%m.%Y}."
+            ),
+        )
+        result.notifications += delivery.notifications
+        result.deliveries += delivery.deliveries
+        result.errors.extend(delivery.errors)
+        if delivery.deliveries:
+            history[key] = today.isoformat()
+
     return result

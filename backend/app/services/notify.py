@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, InvoiceStatus, Setting
+from app.services.billing_schedule import send_billing_reminders
 
 NOTIFICATION_SETTINGS_KEY = "notifications"
 NOTIFICATION_HISTORY_KEY = "notification_history"
@@ -168,6 +169,19 @@ def run_daily_notifications(
         return result
     history_setting = session.get(Setting, NOTIFICATION_HISTORY_KEY)
     history = dict(history_setting.value) if history_setting is not None else {}
+
+    billing_reminder = settings["billing_reminder"]
+    if billing_reminder["enabled"]:
+        _merge_result(
+            result,
+            send_billing_reminders(
+                session,
+                today,
+                billing_reminder,
+                resolved_senders,
+                history,
+            ),
+        )
 
     if today.day == settings["readings_day"]:
         key = "readings"

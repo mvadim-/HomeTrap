@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
-from app.models import Apartment, Invoice, InvoiceStatus, Setting
+from app.models import Apartment, Invoice, InvoiceStatus, Setting, Tenant
 from app.services.notify import (
     EmailSender,
     NOTIFICATION_HISTORY_KEY,
@@ -130,6 +130,43 @@ def test_disabled_channels_do_not_send_or_consume_daily_reminder(db_session) -> 
     assert result.notifications == 0
     assert result.deliveries == 0
     assert db_session.get(Setting, NOTIFICATION_HISTORY_KEY) is None
+
+
+def test_daily_pipeline_sends_enabled_billing_reminder(db_session) -> None:
+    apartment = Apartment(
+        name="Лісова",
+        address="Київ",
+        rent_amount=Decimal("325.00"),
+        rent_currency="USD",
+    )
+    apartment.tenants.append(
+        Tenant(
+            full_name="Орендар",
+            contract_start=date(2026, 1, 20),
+        )
+    )
+    db_session.add(apartment)
+    save_notification_settings(
+        db_session,
+        _settings(
+            billing_reminder={
+                "enabled": True,
+                "days_before": 3,
+                "repeat_every_days": 1,
+                "auto_draft": True,
+            }
+        ),
+    )
+    sender = RecordingSender()
+
+    result = run_daily_notifications(db_session, date(2026, 7, 17), [sender])
+
+    assert result.notifications == 1
+    assert result.deliveries == 1
+    assert sender.messages[0][0] == "Нагадування про виставлення рахунка"
+    history = db_session.get(Setting, NOTIFICATION_HISTORY_KEY)
+    assert history is not None
+    assert history.value == {f"billing:{apartment.id}:2026-07-01": "2026-07-17"}
 
 
 def test_notification_settings_deep_merge_legacy_value_with_defaults(db_session) -> None:
