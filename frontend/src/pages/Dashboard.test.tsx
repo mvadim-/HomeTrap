@@ -1,11 +1,33 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
 import { Dashboard } from "./Dashboard";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+function mockDashboardShell(apartments: apiClient.Apartment[] = []) {
+  vi.spyOn(apiClient, "getDashboard").mockResolvedValue({
+    period: "2026-07-01",
+    charged: "0.00",
+    paid: "0.00",
+    outstanding: "0.00",
+    needs_attention: [],
+  });
+  vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+  vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
+    scope: "portfolio",
+    apartment_id: null,
+    months: 12,
+    values: [],
+    totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+    top_service: null,
+  });
+}
 
 describe("Dashboard", () => {
   it("renders portfolio metrics, apartment statuses and attention items", async () => {
@@ -74,6 +96,7 @@ describe("Dashboard", () => {
       totals: { rent: "120000.00", utilities: "23456.78", total: "143456.78" },
       top_service: null,
     });
+    vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([]);
 
     render(<MemoryRouter><Dashboard /></MemoryRouter>);
 
@@ -128,6 +151,7 @@ describe("Dashboard", () => {
       totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
       top_service: null,
     });
+    vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([]);
 
     render(<MemoryRouter><Dashboard /></MemoryRouter>);
 
@@ -146,6 +170,7 @@ describe("Dashboard", () => {
     });
     vi.spyOn(apiClient, "getApartments").mockResolvedValue([]);
     vi.spyOn(apiClient, "getIncomeStats").mockRejectedValue(new Error("income unavailable"));
+    vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([]);
 
     render(<MemoryRouter><Dashboard /></MemoryRouter>);
 
@@ -153,6 +178,92 @@ describe("Dashboard", () => {
     const incomeCard = screen.getByText("Дохід за 12 місяців").closest(".metric-card");
     expect(incomeCard).toHaveTextContent("—");
     expect(incomeCard).not.toHaveTextContent("оренда + комунальні");
+    expect(screen.queryByText("Не вдалося завантажити дашборд.")).not.toBeInTheDocument();
+  });
+
+  it("renders upcoming billing sorted by date, highlights missing invoices and links to details", async () => {
+    mockDashboardShell([{
+      id: 2,
+      name: "Печерськ",
+      address: "Київ",
+      rent_amount: "500.00",
+      rent_currency: "USD",
+      notes: null,
+      is_active: true,
+      current_tenant_name: "Ірина",
+      latest_invoice: {
+        id: 42,
+        period: "2099-07-01",
+        status: "draft",
+        grand_total: "1000.00",
+      },
+    }]);
+    vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([
+      {
+        apartment_id: 3,
+        apartment_name: "Липки",
+        tenant_id: 13,
+        tenant_name: "Марія Бондар",
+        next_billing_date: "2099-07-20",
+        period: "2099-07-01",
+        invoice_status: null,
+      },
+      {
+        apartment_id: 2,
+        apartment_name: "Печерськ",
+        tenant_id: 12,
+        tenant_name: "Ірина Коваль",
+        next_billing_date: "2099-07-19",
+        period: "2099-07-01",
+        invoice_status: "draft",
+      },
+      {
+        apartment_id: 1,
+        apartment_name: "Поділ",
+        tenant_id: 11,
+        tenant_name: "Олег Шевченко",
+        next_billing_date: "2000-07-17",
+        period: "2000-07-01",
+        invoice_status: null,
+      },
+    ]);
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+
+    const table = await screen.findByRole("table", { name: "Найближчі виставлення" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows.map((row) => within(row).getAllByRole("cell")[0].textContent)).toEqual([
+      "Поділ",
+      "Печерськ",
+      "Липки",
+    ]);
+    expect(within(rows[0]).getByText("Без рахунків")).toBeInTheDocument();
+    expect(rows[0]).toHaveClass("upcoming-billing-warning");
+    expect(rows[1]).not.toHaveClass("upcoming-billing-warning");
+    expect(rows[2]).not.toHaveClass("upcoming-billing-warning");
+    expect(within(table).getByRole("link", { name: "Поділ" })).toHaveAttribute("href", "/apartments/1");
+    expect(within(table).getByRole("link", { name: "Печерськ" })).toHaveAttribute("href", "/invoices/42");
+    expect(within(table).getByText("Ірина Коваль")).toBeInTheDocument();
+    expect(within(table).getByText("Чернетка")).toBeInTheDocument();
+  });
+
+  it("shows the upcoming billing empty state", async () => {
+    mockDashboardShell();
+    vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([]);
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+
+    expect(await screen.findByText("У найближчі 30 днів виставлень немає.")).toBeInTheDocument();
+  });
+
+  it("keeps the dashboard available when upcoming billing fails", async () => {
+    mockDashboardShell();
+    vi.spyOn(apiClient, "getUpcomingBilling").mockRejectedValue(new Error("upcoming unavailable"));
+
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+
+    expect(await screen.findByText("Не вдалося завантажити найближчі виставлення.")).toHaveAttribute("role", "alert");
+    expect(screen.getByRole("heading", { name: "Дашборд" })).toBeInTheDocument();
     expect(screen.queryByText("Не вдалося завантажити дашборд.")).not.toBeInTheDocument();
   });
 });

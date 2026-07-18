@@ -4,18 +4,33 @@ import { Link } from "react-router-dom";
 import {
   Apartment,
   DashboardStats,
+  UpcomingBillingItem,
   getApartments,
   getDashboard,
   getIncomeStats,
+  getUpcomingBilling,
 } from "../api/client";
 import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
-import { formatTenantRent, formatUah } from "../utils/format";
+import { formatDate, formatTenantRent, formatUah } from "../utils/format";
 import "./portal.css";
+
+function currentKyivDate(): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Europe/Kyiv",
+  }).formatToParts(new Date());
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
 
 export function Dashboard() {
   const [dashboard, setDashboard] = useState<DashboardStats | null>(null);
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [incomeTotal, setIncomeTotal] = useState<string | null>(null);
+  const [upcomingBilling, setUpcomingBilling] = useState<UpcomingBillingItem[] | null>(null);
+  const [upcomingError, setUpcomingError] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -31,6 +46,13 @@ export function Dashboard() {
     getIncomeStats(undefined, { months: 12 })
       .then((stats) => active && setIncomeTotal(stats.totals.total))
       .catch(() => undefined);
+    getUpcomingBilling()
+      .then((items) => active && setUpcomingBilling([...items].sort((left, right) => (
+        left.next_billing_date.localeCompare(right.next_billing_date)
+        || left.apartment_name.localeCompare(right.apartment_name, "uk")
+        || left.apartment_id - right.apartment_id
+      ))))
+      .catch(() => active && setUpcomingError("Не вдалося завантажити найближчі виставлення."));
     return () => {
       active = false;
     };
@@ -41,6 +63,16 @@ export function Dashboard() {
 
   const draftCount = dashboard.needs_attention.filter((item) => item.reason === "draft").length;
   const unpaidCount = dashboard.needs_attention.filter((item) => item.reason === "unpaid").length;
+  const today = currentKyivDate();
+
+  function billingTarget(item: UpcomingBillingItem): string {
+    const invoice = apartments.find((apartment) => (
+      apartment.id === item.apartment_id
+      && apartment.latest_invoice?.period === item.period
+      && apartment.latest_invoice.status === item.invoice_status
+    ))?.latest_invoice;
+    return invoice ? `/invoices/${invoice.id}` : `/apartments/${item.apartment_id}`;
+  }
 
   return (
     <>
@@ -71,6 +103,38 @@ export function Dashboard() {
           <strong>{incomeTotal === null ? "—" : formatUah(incomeTotal)}</strong>
           {incomeTotal !== null && <small className="metric-note note-pos">оренда + комунальні</small>}
         </article>
+      </section>
+
+      <section className="section-card upcoming-billing-card">
+        <div className="section-heading">
+          <div><h2>Найближчі виставлення</h2><p>Заплановані дати на наступні 30 днів</p></div>
+        </div>
+        {upcomingError ? (
+          <p className="error-message" role="alert">{upcomingError}</p>
+        ) : upcomingBilling === null ? (
+          <p className="muted-text">Завантажуємо найближчі виставлення…</p>
+        ) : upcomingBilling.length === 0 ? (
+          <p className="empty-state">У найближчі 30 днів виставлень немає.</p>
+        ) : (
+          <div className="table-wrap">
+            <table aria-label="Найближчі виставлення" className="services-table upcoming-billing-table">
+              <thead><tr><th>Квартира</th><th>Орендар</th><th>Дата</th><th>Статус рахунка</th></tr></thead>
+              <tbody>
+                {upcomingBilling.map((item) => {
+                  const needsWarning = item.invoice_status === null && item.next_billing_date < today;
+                  return (
+                    <tr className={needsWarning ? "upcoming-billing-warning" : undefined} key={`${item.apartment_id}-${item.next_billing_date}`}>
+                      <td><Link className="upcoming-billing-link" to={billingTarget(item)}>{item.apartment_name}</Link></td>
+                      <td>{item.tenant_name}</td>
+                      <td>{formatDate(item.next_billing_date)}</td>
+                      <td><InvoiceStatusBadge status={item.invoice_status} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <div className="content-grid">

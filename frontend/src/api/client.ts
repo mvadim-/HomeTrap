@@ -125,6 +125,16 @@ export interface DashboardStats {
   needs_attention: DashboardAttentionItem[];
 }
 
+export interface UpcomingBillingItem {
+  apartment_id: number;
+  apartment_name: string;
+  tenant_id: number;
+  tenant_name: string;
+  next_billing_date: string;
+  period: string;
+  invoice_status: InvoiceStatus | null;
+}
+
 export interface ConsumptionPoint {
   period: string;
   consumed: string;
@@ -319,6 +329,10 @@ export function getCurrentRate(): Promise<ExchangeRate> {
 
 export function getDashboard(): Promise<DashboardStats> {
   return request<DashboardStats>("/api/stats/dashboard");
+}
+
+export function getUpcomingBilling(): Promise<UpcomingBillingItem[]> {
+  return request<UpcomingBillingItem[]>("/api/billing/upcoming");
 }
 
 function addStatsPeriod(query: URLSearchParams, period: StatsPeriod): void {

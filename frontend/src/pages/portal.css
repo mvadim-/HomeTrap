@@ -88,6 +88,30 @@
   gap: 20px;
 }
 
+.upcoming-billing-card {
+  margin-bottom: 24px;
+}
+
+.upcoming-billing-table td {
+  vertical-align: middle;
+}
+
+.upcoming-billing-warning td {
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+}
+
+.upcoming-billing-link {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.upcoming-billing-link:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
 .section-card {
   padding: 22px;
 }

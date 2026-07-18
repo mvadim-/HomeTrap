@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-18 22:50] Віджет найближчих виставлень на дашборді
+
+- `frontend/src/api/client.ts`, `frontend/src/pages/Dashboard.tsx` — додано
+  типізований клієнт `GET /api/billing/upcoming` і таблицю виставлень на наступні
+  30 днів зі стабільним сортуванням за датою, статусами рахунків та переходами до
+  відповідного рахунка або квартири.
+- `frontend/src/theme.css`, `frontend/src/pages/portal.css` — додано семантичні
+  warning-токени для світлої й темної тем та підсвітку прострочених виставлень без
+  створеного рахунка.
+- `frontend/src/pages/Dashboard.test.tsx` — перевірено рендер, сортування,
+  підсвітку проблемного рядка, переходи, порожній стан і локальну помилку API;
+  у Docker пройшли 6 цільових і 161 повний Vitest-тест, TypeScript typecheck та
+  production build.
+- `docs/plans/20260718-billing-reminder.md` — лише Task 12 позначено виконаним.
+- Зміна призначена для production frontend. Для розгортання потрібно виконати
+  rebuild image і restart контейнера за `docs/deploy.md`; міграцій і нових
+  змінних середовища немає. Автоматичний деплой не виконувався.
+
 ## [2026-07-18 22:44] PWA та Push-підписка пристрою
 
 - `frontend/public/manifest.webmanifest`, `frontend/public/icon.svg`,

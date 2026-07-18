@@ -14,6 +14,8 @@
   --color-on-primary: #ffffff;
   --color-border: #e7e5dd;
   --color-danger: #a14e4e;
+  --color-warning: #7d571c;
+  --color-warning-soft: #fff4dc;
   --color-shadow: rgba(48, 61, 51, 0.1);
   --chart-gas: #eb6834;
   --chart-elec: #eda100;
@@ -40,6 +42,8 @@
   --color-on-primary: #14251e;
   --color-border: #33362f;
   --color-danger: #e69595;
+  --color-warning: #e2b767;
+  --color-warning-soft: #3b3020;
   --color-shadow: rgba(0, 0, 0, 0.28);
   --chart-gas: #d95926;
   --chart-elec: #c98500;
@@ -64,6 +68,8 @@
     --color-on-primary: #14251e;
     --color-border: #33362f;
     --color-danger: #e69595;
+    --color-warning: #e2b767;
+    --color-warning-soft: #3b3020;
     --color-shadow: rgba(0, 0, 0, 0.28);
     --chart-gas: #d95926;
     --chart-elec: #c98500;
