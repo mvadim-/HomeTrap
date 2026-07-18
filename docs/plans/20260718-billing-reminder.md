@@ -160,11 +160,11 @@
 - Modify: `backend/app/schemas.py`
 - Modify: `backend/tests/test_notify.py`
 
-- [ ] додати `billing_reminder` і `push` у `DEFAULT_NOTIFICATION_SETTINGS`
-- [ ] `get_notification_settings`: **глибокий** merge збереженого значення з defaults (нові вкладені блоки з'являються для старих інсталяцій без міграції даних; `DEFAULT_NOTIFICATION_SETTINGS.copy()` — shallow, для вкладених dict потрібен deep merge)
-- [ ] додати в `backend/app/schemas.py` вкладені моделі `BillingReminderSettings` (`days_before: Field(ge=0)`, `repeat_every_days: Field(ge=1)`) і `PushSettings` як поля `NotificationSettings` із `default_factory` — за зразком `TelegramNotificationSettings`/`EmailNotificationSettings`; інакше Pydantic (`extra="ignore"`) мовчки викине нові ключі з PUT/GET
-- [ ] write tests: merge старих збережених налаштувань без нових ключів; збереження/читання нових полів через API (success + невалідні значення)
-- [ ] run tests - must pass before next task
+- [x] додати `billing_reminder` і `push` у `DEFAULT_NOTIFICATION_SETTINGS`
+- [x] `get_notification_settings`: **глибокий** merge збереженого значення з defaults (нові вкладені блоки з'являються для старих інсталяцій без міграції даних; `DEFAULT_NOTIFICATION_SETTINGS.copy()` — shallow, для вкладених dict потрібен deep merge)
+- [x] додати в `backend/app/schemas.py` вкладені моделі `BillingReminderSettings` (`days_before: Field(ge=0)`, `repeat_every_days: Field(ge=1)`) і `PushSettings` як поля `NotificationSettings` із `default_factory` — за зразком `TelegramNotificationSettings`/`EmailNotificationSettings`; інакше Pydantic (`extra="ignore"`) мовчки викине нові ключі з PUT/GET
+- [x] write tests: merge старих збережених налаштувань без нових ключів; збереження/читання нових полів через API (success + невалідні значення)
+- [x] run tests - must pass before next task
 
 ### Task 4: Нагадування про виставлення в щоденному конвеєрі
 

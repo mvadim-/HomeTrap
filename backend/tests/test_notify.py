@@ -14,6 +14,7 @@ from app.services.notify import (
     NOTIFICATION_HISTORY_KEY,
     NOTIFICATION_SETTINGS_KEY,
     TelegramSender,
+    get_notification_settings,
     run_daily_notifications,
     save_notification_settings,
     send_notification,
@@ -41,6 +42,13 @@ def _settings(**overrides) -> dict:
             "to_address": "",
             "use_tls": True,
         },
+        "billing_reminder": {
+            "enabled": False,
+            "days_before": 3,
+            "repeat_every_days": 1,
+            "auto_draft": True,
+        },
+        "push": {"enabled": False},
         "readings_day": 20,
         "overdue_after_days": 3,
         "repeat_every_days": 3,
@@ -124,6 +132,40 @@ def test_disabled_channels_do_not_send_or_consume_daily_reminder(db_session) -> 
     assert db_session.get(Setting, NOTIFICATION_HISTORY_KEY) is None
 
 
+def test_notification_settings_deep_merge_legacy_value_with_defaults(db_session) -> None:
+    db_session.add(
+        Setting(
+            key=NOTIFICATION_SETTINGS_KEY,
+            value={
+                "telegram": {"enabled": False, "token": "legacy-token"},
+                "email": {"enabled": False, "smtp_port": 2525},
+                "readings_day": 18,
+                "overdue_after_days": 5,
+                "repeat_every_days": 2,
+            },
+        )
+    )
+    db_session.commit()
+
+    loaded = get_notification_settings(db_session)
+
+    assert loaded["telegram"] == {
+        "enabled": False,
+        "token": "legacy-token",
+        "chat_id": "",
+    }
+    assert loaded["email"]["smtp_port"] == 2525
+    assert loaded["email"]["smtp_host"] == ""
+    assert loaded["billing_reminder"] == {
+        "enabled": False,
+        "days_before": 3,
+        "repeat_every_days": 1,
+        "auto_draft": True,
+    }
+    assert loaded["push"] == {"enabled": False}
+    assert loaded["readings_day"] == 18
+
+
 async def test_settings_api_persists_and_tests_enabled_sender(
     tmp_path,
     monkeypatch,
@@ -153,6 +195,13 @@ async def test_settings_api_persists_and_tests_enabled_sender(
         assert login.status_code == 200
         payload = _settings(
             telegram={"enabled": True, "token": "test-token", "chat_id": "42"},
+            billing_reminder={
+                "enabled": True,
+                "days_before": 5,
+                "repeat_every_days": 2,
+                "auto_draft": False,
+            },
+            push={"enabled": True},
             readings_day=18,
         )
 
@@ -180,6 +229,8 @@ async def test_settings_api_persists_and_tests_enabled_sender(
             stored = session.get(Setting, NOTIFICATION_SETTINGS_KEY)
             assert stored is not None
             assert stored.value["readings_day"] == 18
+            assert stored.value["billing_reminder"]["days_before"] == 5
+            assert stored.value["push"] == {"enabled": True}
         engine.dispose()
     finally:
         await client.aclose()
@@ -216,6 +267,57 @@ async def test_settings_api_rejects_incomplete_enabled_channel(
             ),
         )
         assert response.status_code == 422
+    finally:
+        await client.aclose()
+        await lifespan.__aexit__(None, None, None)
+
+
+async def test_settings_api_rejects_invalid_billing_reminder_values(tmp_path) -> None:
+    settings = Settings(
+        database_path=tmp_path / "notify-billing-validation.db",
+        secret_key="test-session-secret",
+        debug=True,
+        scheduler_enabled=False,
+        admin_username="admin",
+        admin_password="password",
+    )
+    application = create_app(settings)
+    lifespan = application.router.lifespan_context(application)
+    await lifespan.__aenter__()
+    client = AsyncClient(
+        transport=ASGITransport(app=application),
+        base_url="http://test",
+    )
+    try:
+        await client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "password"},
+        )
+        invalid_days_before = await client.put(
+            "/api/settings",
+            json=_settings(
+                billing_reminder={
+                    "enabled": True,
+                    "days_before": -1,
+                    "repeat_every_days": 1,
+                    "auto_draft": True,
+                }
+            ),
+        )
+        invalid_repeat = await client.put(
+            "/api/settings",
+            json=_settings(
+                billing_reminder={
+                    "enabled": True,
+                    "days_before": 3,
+                    "repeat_every_days": 0,
+                    "auto_draft": True,
+                }
+            ),
+        )
+
+        assert invalid_days_before.status_code == 422
+        assert invalid_repeat.status_code == 422
     finally:
         await client.aclose()
         await lifespan.__aexit__(None, None, None)

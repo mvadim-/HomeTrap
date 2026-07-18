@@ -328,11 +328,26 @@ class EmailNotificationSettings(ApiSchema):
         return self
 
 
+class BillingReminderSettings(ApiSchema):
+    enabled: bool = False
+    days_before: int = Field(default=3, ge=0)
+    repeat_every_days: int = Field(default=1, ge=1)
+    auto_draft: bool = True
+
+
+class PushSettings(ApiSchema):
+    enabled: bool = False
+
+
 class NotificationSettings(ApiSchema):
     telegram: TelegramNotificationSettings = Field(
         default_factory=TelegramNotificationSettings
     )
     email: EmailNotificationSettings = Field(default_factory=EmailNotificationSettings)
+    billing_reminder: BillingReminderSettings = Field(
+        default_factory=BillingReminderSettings
+    )
+    push: PushSettings = Field(default_factory=PushSettings)
     readings_day: int = Field(default=20, ge=1, le=28)
     overdue_after_days: int = Field(default=3, ge=1, le=365)
     repeat_every_days: int = Field(default=3, ge=1, le=365)

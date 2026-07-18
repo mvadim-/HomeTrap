@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import smtplib
 import ssl
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from email.message import EmailMessage
@@ -29,6 +30,13 @@ DEFAULT_NOTIFICATION_SETTINGS = {
         "to_address": "",
         "use_tls": True,
     },
+    "billing_reminder": {
+        "enabled": False,
+        "days_before": 3,
+        "repeat_every_days": 1,
+        "auto_draft": True,
+    },
+    "push": {"enabled": False},
     "readings_day": 20,
     "overdue_after_days": 3,
     "repeat_every_days": 3,
@@ -97,8 +105,18 @@ class NotificationResult:
 def get_notification_settings(session: Session) -> dict:
     stored = session.get(Setting, NOTIFICATION_SETTINGS_KEY)
     if stored is None:
-        return DEFAULT_NOTIFICATION_SETTINGS.copy()
-    return stored.value
+        return deepcopy(DEFAULT_NOTIFICATION_SETTINGS)
+    return _merge_settings(DEFAULT_NOTIFICATION_SETTINGS, stored.value)
+
+
+def _merge_settings(defaults: dict, stored: dict) -> dict:
+    merged = deepcopy(defaults)
+    for key, value in stored.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _merge_settings(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
 
 
 def save_notification_settings(session: Session, value: dict) -> None:
