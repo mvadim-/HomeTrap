@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_db, require_auth
@@ -155,7 +156,7 @@ def test_billing_day_override_replaces_contract_day(db_session: Session) -> None
     assert entry.period == date(2026, 2, 1)
 
 
-def test_schedule_separates_overdue_and_next_billing_occurrences(
+def test_schedule_prefers_current_month_overdue_occurrence(
     db_session: Session,
 ) -> None:
     apartment = make_apartment("Наступний місяць")
@@ -169,10 +170,40 @@ def test_schedule_separates_overdue_and_next_billing_occurrences(
     assert [
         (entry.billing_date, entry.period, entry.is_overdue)
         for entry in entries
-    ] == [
-        (date(2026, 7, 10), date(2026, 7, 1), True),
-        (date(2026, 8, 10), date(2026, 8, 1), False),
-    ]
+    ] == [(date(2026, 7, 10), date(2026, 7, 1), True)]
+
+
+def test_schedule_is_bounded_for_long_contract(db_session: Session) -> None:
+    apartment = make_apartment("Довгий договір")
+    db_session.add(
+        make_tenant(apartment, contract_start=date(2010, 1, 10))
+    )
+    db_session.commit()
+
+    entries = compute_billing_schedule(db_session, date(2026, 7, 11))
+
+    assert len(entries) == 1
+    assert entries[0].billing_date == date(2026, 7, 10)
+    assert entries[0].is_overdue is True
+
+
+def test_schedule_excludes_occurrence_after_contract_end(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment("Договір завершується")
+    db_session.add(
+        make_tenant(
+            apartment,
+            contract_start=date(2026, 1, 10),
+            contract_end=date(2026, 7, 31),
+        )
+    )
+    db_session.commit()
+
+    entries = compute_billing_schedule(db_session, date(2026, 7, 25))
+
+    assert [entry.billing_date for entry in entries] == [date(2026, 7, 10)]
+    assert all(entry.billing_date <= date(2026, 7, 31) for entry in entries)
 
 
 def test_schedule_uses_current_tenant_and_ignores_future_tenant(
@@ -427,21 +458,11 @@ async def test_upcoming_billing_api_marks_missing_current_invoice_overdue(
             "period": "2026-07-01",
             "invoice_status": None,
             "is_overdue": True,
-        },
-        {
-            "apartment_id": apartment.id,
-            "apartment_name": "Пропущене виставлення",
-            "tenant_id": apartment.tenants[0].id,
-            "tenant_name": "Орендар",
-            "billing_date": "2026-08-10",
-            "period": "2026-08-01",
-            "invoice_status": None,
-            "is_overdue": False,
         }
     ]
 
 
-async def test_upcoming_billing_api_keeps_missed_period_after_month_rollover(
+async def test_upcoming_billing_api_does_not_expand_previous_month_backlog(
     db_session: Session,
     billing_client: AsyncClient,
     monkeypatch,
@@ -458,10 +479,7 @@ async def test_upcoming_billing_api_keeps_missed_period_after_month_rollover(
     assert [
         (item["billing_date"], item["period"], item["is_overdue"])
         for item in response.json()
-    ] == [
-        ("2026-07-31", "2026-07-01", True),
-        ("2026-08-31", "2026-08-01", False),
-    ]
+    ] == [("2026-08-31", "2026-08-01", False)]
 
 
 async def test_upcoming_billing_api_returns_empty_list(
@@ -660,6 +678,69 @@ def test_auto_draft_is_created_once_and_not_recreated_after_deletion(
             "Чернетку рахунка для квартири «Лісова» за 07.2026 створено автоматично.",
         )
     ]
+
+
+def test_auto_draft_integrity_race_is_suppressed_and_job_continues(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raced_apartment = make_apartment("А Конкурентний рахунок")
+    next_apartment = make_apartment("Б Наступна квартира")
+    db_session.add_all(
+        [
+            make_tenant(raced_apartment, contract_start=date(2026, 1, 20)),
+            make_tenant(next_apartment, contract_start=date(2026, 1, 20)),
+        ]
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        "app.services.nbu.get_rate",
+        lambda _session, target_date: RateResult(
+            requested_date=target_date,
+            rate_date=target_date,
+            currency="USD",
+            rate=Decimal("44.680000"),
+            is_fallback=False,
+        ),
+    )
+
+    def create_draft(
+        session: Session,
+        target_apartment: Apartment,
+        period: date,
+        _rate: Decimal,
+    ) -> None:
+        session.add(make_invoice(target_apartment, period, InvoiceStatus.DRAFT))
+        session.commit()
+        if target_apartment.id == raced_apartment.id:
+            raise IntegrityError("INSERT", {}, RuntimeError("concurrent invoice"))
+
+    monkeypatch.setattr("app.services.billing.create_draft", create_draft)
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 7, 20),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    invoices = list(db_session.scalars(select(Invoice).order_by(Invoice.apartment_id)))
+    assert [invoice.apartment_id for invoice in invoices] == [
+        raced_apartment.id,
+        next_apartment.id,
+    ]
+    assert result.notifications == 1
+    assert result.deliveries == 1
+    assert history == {
+        f"billing_draft:{next_apartment.id}:2026-07-01": "2026-07-20"
+    }
+    assert len(sender.messages) == 1
+    assert "Наступна квартира" in sender.messages[0][1]
+    assert db_session.scalar(select(Apartment).where(Apartment.id == raced_apartment.id))
 
 
 @pytest.mark.parametrize(

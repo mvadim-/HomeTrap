@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, Tenant
@@ -44,25 +45,22 @@ def _next_billing_date(today: date, billing_day: int) -> date:
     return _date_for_billing_day(today.year, today.month + 1, billing_day)
 
 
-def _next_month(period: date) -> date:
-    if period.month == 12:
-        return date(period.year + 1, 1, 1)
-    return date(period.year, period.month + 1, 1)
-
-
 def _billing_dates(
     tenant: Tenant,
     billing_day: int,
-    last_date: date,
+    today: date,
 ) -> list[date]:
-    period = tenant.contract_start.replace(day=1)
-    dates: list[date] = []
-    while period <= last_date.replace(day=1):
-        billing_date = _date_for_billing_day(period.year, period.month, billing_day)
-        if billing_date >= tenant.contract_start:
-            dates.append(billing_date)
-        period = _next_month(period)
-    return dates
+    current = _date_for_billing_day(today.year, today.month, billing_day)
+    upcoming = _next_billing_date(today, billing_day)
+    dates = {upcoming}
+    if current < today:
+        dates.add(current)
+    return sorted(
+        billing_date
+        for billing_date in dates
+        if billing_date >= tenant.contract_start
+        and (tenant.contract_end is None or billing_date <= tenant.contract_end)
+    )
 
 
 def compute_billing_schedule(
@@ -93,7 +91,7 @@ def compute_billing_schedule(
         seen_apartments.add(apartment.id)
         billing_day = tenant.billing_day or tenant.contract_start.day
         next_billing_date = _next_billing_date(today, billing_day)
-        billing_dates = _billing_dates(tenant, billing_day, next_billing_date)
+        billing_dates = _billing_dates(tenant, billing_day, today)
         pending.append(
             (apartment, tenant, billing_day, billing_dates, next_billing_date)
         )
@@ -141,6 +139,7 @@ def compute_billing_schedule(
                     is_overdue=is_overdue,
                 )
             )
+            break
     return result
 
 
@@ -208,6 +207,35 @@ def _create_draft_and_notify(
     try:
         rate = nbu.get_rate(session, today).rate
         billing.create_draft(session, entry.apartment, entry.period, rate)
+    except IntegrityError as error:
+        session.rollback()
+        invoice_exists = session.scalar(
+            select(Invoice.id).where(
+                Invoice.apartment_id == entry.apartment.id,
+                Invoice.period == entry.period,
+            )
+        )
+        if invoice_exists is not None:
+            logger.info(
+                "Automatic billing draft suppressed because invoice %s already exists "
+                "for apartment %s and period %s",
+                invoice_exists,
+                entry.apartment.id,
+                entry.period,
+            )
+            return
+        logger.warning(
+            "Automatic billing draft hit a database conflict for apartment %s and "
+            "period %s: %s",
+            entry.apartment.id,
+            entry.period,
+            error,
+        )
+        subject = "Не вдалося створити чернетку рахунка"
+        message = (
+            f"Створіть рахунок вручну для квартири «{entry.apartment.name}» "
+            f"за {entry.period:%m.%Y}: конфлікт збереження."
+        )
     except (BillingValidationError, InvoiceChronologyError, NbuRateUnavailable) as error:
         session.rollback()
         logger.warning(
