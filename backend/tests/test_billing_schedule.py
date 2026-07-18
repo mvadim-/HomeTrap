@@ -105,21 +105,25 @@ def make_invoice(
 
 
 @pytest.mark.parametrize(
-    ("today", "expected"),
+    ("today", "previous_period", "expected"),
     [
-        (date(2026, 2, 1), date(2026, 2, 28)),
-        (date(2028, 2, 1), date(2028, 2, 29)),
-        (date(2026, 4, 1), date(2026, 4, 30)),
+        (date(2026, 2, 2), date(2026, 1, 1), date(2026, 2, 28)),
+        (date(2028, 2, 2), date(2028, 1, 1), date(2028, 2, 29)),
+        (date(2026, 4, 2), date(2026, 3, 1), date(2026, 4, 30)),
     ],
 )
 def test_contract_day_is_clipped_to_end_of_month(
     db_session: Session,
     today: date,
+    previous_period: date,
     expected: date,
 ) -> None:
     apartment = make_apartment("Квартира 31")
-    db_session.add(
-        make_tenant(apartment, contract_start=date(2026, 1, 31))
+    db_session.add_all(
+        [
+            make_tenant(apartment, contract_start=date(2026, 1, 31)),
+            make_invoice(apartment, previous_period, InvoiceStatus.DRAFT),
+        ]
     )
     db_session.commit()
 
@@ -176,14 +180,18 @@ def test_schedule_prefers_current_month_overdue_occurrence(
 def test_schedule_is_bounded_for_long_contract(db_session: Session) -> None:
     apartment = make_apartment("Довгий договір")
     db_session.add(
-        make_tenant(apartment, contract_start=date(2010, 1, 10))
+        make_tenant(
+            apartment,
+            contract_start=date(2010, 1, 31),
+            billing_day=31,
+        )
     )
     db_session.commit()
 
-    entries = compute_billing_schedule(db_session, date(2026, 7, 11))
+    entries = compute_billing_schedule(db_session, date(2026, 8, 15))
 
     assert len(entries) == 1
-    assert entries[0].billing_date == date(2026, 7, 10)
+    assert entries[0].billing_date == date(2026, 7, 31)
     assert entries[0].is_overdue is True
 
 
@@ -246,6 +254,11 @@ def test_schedule_includes_contract_start_and_end_boundaries(
                 contract_start=date(2026, 1, 20),
                 contract_end=today,
             ),
+            make_invoice(
+                ending_apartment,
+                date(2026, 6, 1),
+                InvoiceStatus.DRAFT,
+            ),
         ]
     )
     db_session.commit()
@@ -306,8 +319,13 @@ def test_schedule_reports_existing_invoice_status(
         apartment,
         contract_start=date(2026, 1, 20),
     )
+    previous_invoice = make_invoice(
+        apartment,
+        date(2026, 6, 1),
+        InvoiceStatus.DRAFT,
+    )
     invoice = make_invoice(apartment, date(2026, 7, 1), status)
-    db_session.add_all([tenant, invoice])
+    db_session.add_all([tenant, previous_invoice, invoice])
     db_session.commit()
 
     entry = next(
@@ -462,7 +480,7 @@ async def test_upcoming_billing_api_marks_missing_current_invoice_overdue(
     ]
 
 
-async def test_upcoming_billing_api_does_not_expand_previous_month_backlog(
+async def test_upcoming_billing_api_preserves_latest_missed_month_occurrence(
     db_session: Session,
     billing_client: AsyncClient,
     monkeypatch,
@@ -479,7 +497,61 @@ async def test_upcoming_billing_api_does_not_expand_previous_month_backlog(
     assert [
         (item["billing_date"], item["period"], item["is_overdue"])
         for item in response.json()
-    ] == [("2026-08-31", "2026-08-01", False)]
+    ] == [("2026-07-31", "2026-07-01", True)]
+
+
+def test_schedule_uses_upcoming_occurrence_when_previous_month_has_invoice(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment("Попередній рахунок існує")
+    db_session.add_all(
+        [
+            make_tenant(
+                apartment,
+                contract_start=date(2026, 1, 31),
+                billing_day=31,
+            ),
+            make_invoice(apartment, date(2026, 7, 1), InvoiceStatus.DRAFT),
+        ]
+    )
+    db_session.commit()
+
+    entries = compute_billing_schedule(db_session, date(2026, 8, 1))
+
+    assert len(entries) == 1
+    assert entries[0].billing_date == date(2026, 8, 31)
+    assert entries[0].period == date(2026, 8, 1)
+    assert entries[0].invoice_exists is False
+    assert entries[0].is_overdue is False
+
+
+def test_missed_previous_month_occurrence_does_not_trigger_old_reminder_or_draft(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment("Пропущений минулий місяць")
+    db_session.add(
+        make_tenant(
+            apartment,
+            contract_start=date(2026, 1, 31),
+            billing_day=31,
+        )
+    )
+    db_session.commit()
+    sender = RecordingSender()
+    history: dict[str, str] = {}
+
+    result = send_billing_reminders(
+        db_session,
+        date(2026, 8, 15),
+        BILLING_REMINDER_SETTINGS,
+        [sender],
+        history,
+    )
+
+    assert result.notifications == 0
+    assert list(db_session.scalars(select(Invoice))) == []
+    assert sender.messages == []
+    assert history == {}
 
 
 async def test_upcoming_billing_api_returns_empty_list(
@@ -504,6 +576,7 @@ def test_billing_reminder_starts_at_window_boundary_and_repeats(
     db_session.add(
         make_tenant(apartment, contract_start=date(2026, 1, 20))
     )
+    db_session.add(make_invoice(apartment, date(2026, 6, 1), InvoiceStatus.DRAFT))
     db_session.commit()
     sender = RecordingSender()
     history: dict[str, str] = {}
@@ -555,6 +628,8 @@ def test_billing_reminder_is_silent_outside_window_and_for_existing_invoice(
         [
             make_tenant(outside, contract_start=date(2026, 1, 20)),
             make_tenant(invoiced, contract_start=date(2026, 1, 20)),
+            make_invoice(outside, date(2026, 6, 1), InvoiceStatus.DRAFT),
+            make_invoice(invoiced, date(2026, 6, 1), InvoiceStatus.DRAFT),
             make_invoice(invoiced, date(2026, 7, 1), InvoiceStatus.DRAFT),
         ]
     )
@@ -591,6 +666,7 @@ def test_billing_reminder_does_not_update_history_without_delivery(
     db_session.add(
         make_tenant(apartment, contract_start=date(2026, 1, 20))
     )
+    db_session.add(make_invoice(apartment, date(2026, 6, 1), InvoiceStatus.DRAFT))
     db_session.commit()
     history: dict[str, str] = {}
 
@@ -616,6 +692,7 @@ def test_auto_draft_is_created_once_and_not_recreated_after_deletion(
     db_session.add(
         make_tenant(apartment, contract_start=date(2026, 1, 20))
     )
+    db_session.add(make_invoice(apartment, date(2026, 6, 1), InvoiceStatus.DRAFT))
     db_session.commit()
     created: list[tuple[Apartment, date, Decimal]] = []
 
@@ -653,7 +730,9 @@ def test_auto_draft_is_created_once_and_not_recreated_after_deletion(
         [sender],
         history,
     )
-    draft = db_session.scalar(select(Invoice))
+    draft = db_session.scalar(
+        select(Invoice).where(Invoice.period == date(2026, 7, 1))
+    )
     assert draft is not None
     db_session.delete(draft)
     db_session.commit()
@@ -690,6 +769,16 @@ def test_auto_draft_integrity_race_is_suppressed_and_job_continues(
         [
             make_tenant(raced_apartment, contract_start=date(2026, 1, 20)),
             make_tenant(next_apartment, contract_start=date(2026, 1, 20)),
+            make_invoice(
+                raced_apartment,
+                date(2026, 6, 1),
+                InvoiceStatus.DRAFT,
+            ),
+            make_invoice(
+                next_apartment,
+                date(2026, 6, 1),
+                InvoiceStatus.DRAFT,
+            ),
         ]
     )
     db_session.commit()
@@ -728,7 +817,13 @@ def test_auto_draft_integrity_race_is_suppressed_and_job_continues(
         history,
     )
 
-    invoices = list(db_session.scalars(select(Invoice).order_by(Invoice.apartment_id)))
+    invoices = list(
+        db_session.scalars(
+            select(Invoice)
+            .where(Invoice.period == date(2026, 7, 1))
+            .order_by(Invoice.apartment_id)
+        )
+    )
     assert [invoice.apartment_id for invoice in invoices] == [
         raced_apartment.id,
         next_apartment.id,
@@ -764,6 +859,7 @@ def test_auto_draft_failure_requests_manual_creation_and_rolls_back(
     db_session.add(
         make_tenant(apartment, contract_start=date(2026, 1, 20))
     )
+    db_session.add(make_invoice(apartment, date(2026, 6, 1), InvoiceStatus.DRAFT))
     db_session.commit()
 
     def get_rate(_session: Session, target_date: date) -> RateResult:
@@ -807,7 +903,9 @@ def test_auto_draft_failure_requests_manual_creation_and_rolls_back(
     assert result.notifications == 1
     assert result.deliveries == 1
     assert history == {}
-    assert list(db_session.scalars(select(Invoice))) == []
+    assert db_session.scalar(
+        select(Invoice).where(Invoice.period == date(2026, 7, 1))
+    ) is None
     assert sender.messages == [
         (
             "Не вдалося створити чернетку рахунка",
@@ -828,6 +926,7 @@ def test_billing_day_without_auto_draft_sends_regular_reminder(
     db_session.add(
         make_tenant(apartment, contract_start=date(2026, 1, 20))
     )
+    db_session.add(make_invoice(apartment, date(2026, 6, 1), InvoiceStatus.DRAFT))
     db_session.commit()
     sender = RecordingSender()
     history = {f"billing:{apartment.id}:2026-07-01": "2026-07-19"}

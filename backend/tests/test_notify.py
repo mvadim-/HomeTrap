@@ -59,11 +59,17 @@ def _settings(**overrides) -> dict:
     return value
 
 
-def _invoice(apartment: Apartment, *, issued_at: datetime) -> Invoice:
+def _invoice(
+    apartment: Apartment,
+    *,
+    issued_at: datetime,
+    period: date = date(2026, 7, 1),
+    status: InvoiceStatus = InvoiceStatus.ISSUED,
+) -> Invoice:
     return Invoice(
         apartment=apartment,
-        period=date(2026, 7, 1),
-        status=InvoiceStatus.ISSUED.value,
+        period=period,
+        status=status.value,
         issued_at=issued_at,
         exchange_rate=Decimal("44.680000"),
         rent_amount_usd=Decimal("325.00"),
@@ -147,6 +153,14 @@ def test_daily_pipeline_sends_enabled_billing_reminder(db_session) -> None:
             contract_start=date(2026, 1, 20),
         )
     )
+    apartment.invoices.append(
+        _invoice(
+            apartment,
+            issued_at=datetime(2026, 6, 20, tzinfo=UTC),
+            period=date(2026, 6, 1),
+            status=InvoiceStatus.PAID,
+        )
+    )
     db_session.add(apartment)
     save_notification_settings(
         db_session,
@@ -181,6 +195,14 @@ def test_daily_pipeline_creates_auto_draft_without_delivery_channels(
         rent_amount=Decimal("325.00"),
         rent_currency="USD",
         tenants=[Tenant(full_name="Орендар", contract_start=date(2026, 1, 20))],
+    )
+    apartment.invoices.append(
+        _invoice(
+            apartment,
+            issued_at=datetime(2026, 6, 20, tzinfo=UTC),
+            period=date(2026, 6, 1),
+            status=InvoiceStatus.PAID,
+        )
     )
     db_session.add(apartment)
     save_notification_settings(
@@ -222,6 +244,14 @@ def test_readings_history_requires_its_own_successful_delivery(db_session) -> No
         rent_amount=Decimal("325.00"),
         rent_currency="USD",
         tenants=[Tenant(full_name="Орендар", contract_start=date(2026, 1, 20))],
+    )
+    apartment.invoices.append(
+        _invoice(
+            apartment,
+            issued_at=datetime(2026, 6, 20, tzinfo=UTC),
+            period=date(2026, 6, 1),
+            status=InvoiceStatus.PAID,
+        )
     )
     db_session.add(apartment)
     save_notification_settings(

@@ -45,16 +45,23 @@ def _next_billing_date(today: date, billing_day: int) -> date:
     return _date_for_billing_day(today.year, today.month + 1, billing_day)
 
 
+def _previous_billing_date(today: date, billing_day: int) -> date:
+    if today.month == 1:
+        return _date_for_billing_day(today.year - 1, 12, billing_day)
+    return _date_for_billing_day(today.year, today.month - 1, billing_day)
+
+
 def _billing_dates(
     tenant: Tenant,
     billing_day: int,
     today: date,
 ) -> list[date]:
     current = _date_for_billing_day(today.year, today.month, billing_day)
-    upcoming = _next_billing_date(today, billing_day)
-    dates = {upcoming}
-    if current < today:
-        dates.add(current)
+    dates = {
+        _previous_billing_date(today, billing_day),
+        current,
+        _next_billing_date(today, billing_day),
+    }
     return sorted(
         billing_date
         for billing_date in dates
@@ -83,22 +90,19 @@ def compute_billing_schedule(
         )
     ).all()
 
-    pending: list[tuple[Apartment, Tenant, int, list[date], date]] = []
+    pending: list[tuple[Apartment, Tenant, int, list[date]]] = []
     seen_apartments: set[int] = set()
     for apartment, tenant in rows:
         if apartment.id in seen_apartments:
             continue
         seen_apartments.add(apartment.id)
         billing_day = tenant.billing_day or tenant.contract_start.day
-        next_billing_date = _next_billing_date(today, billing_day)
         billing_dates = _billing_dates(tenant, billing_day, today)
-        pending.append(
-            (apartment, tenant, billing_day, billing_dates, next_billing_date)
-        )
+        pending.append((apartment, tenant, billing_day, billing_dates))
 
     invoice_by_apartment_period: dict[tuple[int, date], Invoice] = {}
     invoice_keys: set[tuple[int, date]] = set()
-    for apartment, _, _, billing_dates, _ in pending:
+    for apartment, _, _, billing_dates in pending:
         invoice_keys.update(
             (apartment.id, billing_date.replace(day=1))
             for billing_date in billing_dates
@@ -120,14 +124,13 @@ def compute_billing_schedule(
         }
 
     result: list[BillingScheduleEntry] = []
-    for apartment, tenant, billing_day, billing_dates, next_billing_date in pending:
+    for apartment, tenant, billing_day, billing_dates in pending:
+        candidates: list[BillingScheduleEntry] = []
         for billing_date in billing_dates:
             period = billing_date.replace(day=1)
             invoice = invoice_by_apartment_period.get((apartment.id, period))
             is_overdue = billing_date < today and invoice is None
-            if not is_overdue and billing_date != next_billing_date:
-                continue
-            result.append(
+            candidates.append(
                 BillingScheduleEntry(
                     apartment=apartment,
                     tenant=tenant,
@@ -139,7 +142,13 @@ def compute_billing_schedule(
                     is_overdue=is_overdue,
                 )
             )
-            break
+        missed = [entry for entry in candidates if entry.is_overdue]
+        if missed:
+            result.append(max(missed, key=lambda entry: entry.billing_date))
+            continue
+        upcoming = [entry for entry in candidates if entry.billing_date >= today]
+        if upcoming:
+            result.append(min(upcoming, key=lambda entry: entry.billing_date))
     return result
 
 
