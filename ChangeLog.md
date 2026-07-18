@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-18 21:31] Схема даних для нагадувань і Web Push
+
+- `backend/app/models.py` — до орендаря додано optional день виставлення рахунку,
+  а також модель push-підписки з унікальним endpoint і ключами шифрування.
+- `backend/alembic/versions/20260718_05_billing_day_push_subscriptions.py` — нова
+  міграція додає `tenants.billing_day` і таблицю `push_subscriptions`.
+- `backend/tests/test_models.py` — перевірено збереження дня виставлення,
+  унікальність endpoint і застосування нової міграції під час startup.
+- `docs/plans/20260718-billing-reminder.md` — Task 1 позначено виконаним після
+  успішних Docker-перевірок: 84 backend-тести, `ruff check` та `alembic check`.
+- Зміна зачіпає production backend. Для розгортання потрібні rebuild і restart
+  контейнера за `docs/deploy.md`; міграція застосовується автоматично на startup.
+  Автоматичний деплой не виконувався.
+
 ## [2026-07-18 21:24] План нагадувань про виставлення рахунків
 
 - `docs/plans/20260718-billing-reminder.md` — новий план фічі: день виставлення

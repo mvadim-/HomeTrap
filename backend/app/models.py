@@ -83,6 +83,7 @@ class Tenant(Base):
     email: Mapped[str | None] = mapped_column(String(320))
     contract_start: Mapped[date] = mapped_column(Date)
     contract_end: Mapped[date | None] = mapped_column(Date)
+    billing_day: Mapped[int | None] = mapped_column(Integer)
     notes: Mapped[str | None] = mapped_column(Text)
 
     apartment: Mapped[Apartment] = relationship(back_populates="tenants")
@@ -241,3 +242,16 @@ class Setting(Base):
 
     key: Mapped[str] = mapped_column(String(100), primary_key=True)
     value: Mapped[Any] = mapped_column(JSON)
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(Text)
+    auth: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )

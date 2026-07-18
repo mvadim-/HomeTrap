@@ -136,11 +136,11 @@
 - Create: `backend/alembic/versions/20260718_05_billing_day_push_subscriptions.py`
 - Modify: `backend/tests/test_models.py`
 
-- [ ] додати `Tenant.billing_day: Mapped[int | None]` у `backend/app/models.py`
-- [ ] додати модель `PushSubscription` (`endpoint` unique, `p256dh`, `auth`, `created_at`)
-- [ ] створити Alembic-міграцію з обома змінами (add column + create table)
-- [ ] write tests: збереження/читання `billing_day`, unique на `endpoint` (success + violation)
-- [ ] run tests - must pass before next task
+- [x] додати `Tenant.billing_day: Mapped[int | None]` у `backend/app/models.py`
+- [x] додати модель `PushSubscription` (`endpoint` unique, `p256dh`, `auth`, `created_at`)
+- [x] створити Alembic-міграцію з обома змінами (add column + create table)
+- [x] write tests: збереження/читання `billing_day`, unique на `endpoint` (success + violation)
+- [x] run tests - must pass before next task
 
 ### Task 2: Чиста функція compute_billing_schedule
 

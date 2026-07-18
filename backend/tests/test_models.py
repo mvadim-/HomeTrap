@@ -15,6 +15,7 @@ from app.models import (
     Invoice,
     InvoiceLine,
     InvoiceStatus,
+    PushSubscription,
     Service,
     ServiceKind,
     Setting,
@@ -120,6 +121,7 @@ def test_can_create_tenant_with_nullable_contract_end(db_session: Session) -> No
         phone="+380501234567",
         email="oksana@example.com",
         contract_start=date(2026, 7, 1),
+        billing_day=15,
         notes="Контракт підписано",
         attachments=[
             TenantAttachment(
@@ -135,8 +137,37 @@ def test_can_create_tenant_with_nullable_contract_end(db_session: Session) -> No
 
     assert tenant.apartment.tenants == [tenant]
     assert tenant.contract_end is None
+    assert db_session.get(Tenant, tenant.id).billing_day == 15
     assert tenant.attachments[0].tenant is tenant
     assert tenant.attachments[0].uploaded_at is not None
+
+
+def test_push_subscription_endpoint_is_unique(db_session: Session) -> None:
+    first = PushSubscription(
+        endpoint="https://push.example.test/first",
+        p256dh="first-public-key",
+        auth="first-auth-secret",
+    )
+    second = PushSubscription(
+        endpoint="https://push.example.test/second",
+        p256dh="second-public-key",
+        auth="second-auth-secret",
+    )
+    db_session.add_all([first, second])
+    db_session.commit()
+
+    assert db_session.get(PushSubscription, first.id).endpoint == first.endpoint
+    assert first.created_at is not None
+
+    db_session.add(
+        PushSubscription(
+            endpoint=first.endpoint,
+            p256dh="duplicate-public-key",
+            auth="duplicate-auth-secret",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db_session.commit()
 
 
 def test_only_one_active_tenant_is_allowed_per_apartment(db_session: Session) -> None:
@@ -258,6 +289,12 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
             constraint["name"]
             for constraint in inspect(engine).get_check_constraints("invoice_lines")
         }
+        tenant_columns = {
+            column["name"]: column for column in inspect(engine).get_columns("tenants")
+        }
+        push_unique_constraints = inspect(engine).get_unique_constraints(
+            "push_subscriptions"
+        )
     finally:
         engine.dispose()
 
@@ -273,6 +310,12 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         "settings",
         "tenants",
         "tenant_attachments",
+        "push_subscriptions",
     } <= table_names
     assert invoice_line_columns["service_kind"]["nullable"] is False
     assert "ck_invoice_lines_service_kind" in invoice_line_checks
+    assert tenant_columns["billing_day"]["nullable"] is True
+    assert any(
+        constraint["column_names"] == ["endpoint"]
+        for constraint in push_unique_constraints
+    )
