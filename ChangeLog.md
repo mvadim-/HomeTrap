@@ -1,5 +1,13 @@
 # ChangeLog
 
+## [2026-07-19 00:37] Завершення плану billing reminder
+
+- `docs/plans/20260718-billing-reminder.md` переміщено до
+  `docs/plans/completed/20260718-billing-reminder.md` після виконання 15 tasks,
+  review/fix, аналізу code smells, фінального critical review, finalize і stats.
+- Production-код у цьому docs-only кроці не змінювався.
+- Додатковий deployment не потрібен і не виконувався.
+
 ## [2026-07-19 00:17] Усунення code smells у delivery та Web Push
 
 - `backend/app/services/notification_delivery.py`, `backend/app/services/notify.py`,
