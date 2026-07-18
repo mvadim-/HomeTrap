@@ -10,6 +10,7 @@ from app.config import Settings, get_settings, validate_production_settings
 from app.db import create_database_engine, create_session_factory, run_migrations
 from app.routers.apartments import router as apartments_router
 from app.routers.auth import router as auth_router
+from app.routers.billing import router as billing_router
 from app.routers.invoices import router as invoices_router
 from app.routers.import_ import router as import_router
 from app.routers.push import router as push_router
@@ -80,6 +81,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(services_router)
     application.include_router(rates_router)
     application.include_router(invoices_router)
+    application.include_router(billing_router)
     application.include_router(import_router)
     application.include_router(stats_router)
     application.include_router(settings_router)

@@ -1,10 +1,15 @@
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.auth import get_db, require_auth
+from app.config import Settings
+from app.main import create_app
 from app.models import Apartment, Invoice, InvoiceStatus, Tenant
 from app.services.billing import BillingValidationError, InvoiceChronologyError
 from app.services.billing_schedule import (
@@ -30,6 +35,24 @@ BILLING_REMINDER_SETTINGS = {
     "repeat_every_days": 2,
     "auto_draft": True,
 }
+
+
+@pytest.fixture
+async def billing_client(db_session: Session):
+    application = create_app(
+        Settings(
+            secret_key="test-session-secret",
+            debug=True,
+            scheduler_enabled=False,
+        )
+    )
+    application.dependency_overrides[get_db] = lambda: db_session
+    application.dependency_overrides[require_auth] = lambda: object()
+    async with AsyncClient(
+        transport=ASGITransport(app=application),
+        base_url="http://test",
+    ) as client:
+        yield client
 
 
 def make_apartment(
@@ -219,6 +242,125 @@ def test_schedule_reports_existing_invoice_status(
     assert entry.period == date(2026, 7, 1)
     assert entry.invoice_exists is True
     assert entry.invoice_status == status.value
+
+
+async def test_upcoming_billing_api_sorts_and_reports_all_invoice_statuses(
+    db_session: Session,
+    billing_client: AsyncClient,
+    monkeypatch,
+) -> None:
+    today = date(2026, 7, 1)
+    monkeypatch.setattr("app.routers.billing._today", lambda: today)
+    without_invoice = make_apartment("Грушевського")
+    draft = make_apartment("Володимирська")
+    issued = make_apartment("Богдана Хмельницького")
+    paid = make_apartment("Антоновича")
+    tenants = [
+        make_tenant(without_invoice, contract_start=date(2026, 1, 8)),
+        make_tenant(draft, contract_start=date(2026, 1, 7)),
+        make_tenant(issued, contract_start=date(2026, 1, 7)),
+        make_tenant(paid, contract_start=date(2026, 1, 9)),
+    ]
+    db_session.add_all(
+        [
+            *tenants,
+            make_invoice(draft, today, InvoiceStatus.DRAFT),
+            make_invoice(issued, today, InvoiceStatus.ISSUED),
+            make_invoice(paid, today, InvoiceStatus.PAID),
+        ]
+    )
+    db_session.commit()
+
+    response = await billing_client.get("/api/billing/upcoming")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "apartment_id": issued.id,
+            "apartment_name": "Богдана Хмельницького",
+            "tenant_id": tenants[2].id,
+            "tenant_name": "Орендар",
+            "next_billing_date": "2026-07-07",
+            "period": "2026-07-01",
+            "invoice_status": "issued",
+        },
+        {
+            "apartment_id": draft.id,
+            "apartment_name": "Володимирська",
+            "tenant_id": tenants[1].id,
+            "tenant_name": "Орендар",
+            "next_billing_date": "2026-07-07",
+            "period": "2026-07-01",
+            "invoice_status": "draft",
+        },
+        {
+            "apartment_id": without_invoice.id,
+            "apartment_name": "Грушевського",
+            "tenant_id": tenants[0].id,
+            "tenant_name": "Орендар",
+            "next_billing_date": "2026-07-08",
+            "period": "2026-07-01",
+            "invoice_status": None,
+        },
+        {
+            "apartment_id": paid.id,
+            "apartment_name": "Антоновича",
+            "tenant_id": tenants[3].id,
+            "tenant_name": "Орендар",
+            "next_billing_date": "2026-07-09",
+            "period": "2026-07-01",
+            "invoice_status": "paid",
+        },
+    ]
+
+
+async def test_upcoming_billing_api_includes_day_30_and_excludes_day_31(
+    billing_client: AsyncClient,
+    monkeypatch,
+) -> None:
+    today = date(2026, 8, 1)
+    monkeypatch.setattr("app.routers.billing._today", lambda: today)
+
+    def schedule(_session: Session, schedule_today: date) -> list[SimpleNamespace]:
+        assert schedule_today == today
+        return [
+            SimpleNamespace(
+                apartment=SimpleNamespace(id=2, name="Поза горизонтом"),
+                tenant=SimpleNamespace(id=12, full_name="Далекий орендар"),
+                next_billing_date=date(2026, 9, 1),
+                period=date(2026, 9, 1),
+                invoice_status=None,
+            ),
+            SimpleNamespace(
+                apartment=SimpleNamespace(id=1, name="На межі"),
+                tenant=SimpleNamespace(id=11, full_name="Поточний орендар"),
+                next_billing_date=date(2026, 8, 31),
+                period=date(2026, 8, 1),
+                invoice_status="draft",
+            ),
+        ]
+
+    monkeypatch.setattr("app.routers.billing.compute_billing_schedule", schedule)
+
+    response = await billing_client.get("/api/billing/upcoming")
+
+    assert response.status_code == 200
+    assert [item["apartment_name"] for item in response.json()] == ["На межі"]
+
+
+async def test_upcoming_billing_api_returns_empty_list(
+    billing_client: AsyncClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.routers.billing._today",
+        lambda: date(2026, 7, 1),
+    )
+
+    response = await billing_client.get("/api/billing/upcoming")
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_billing_reminder_starts_at_window_boundary_and_repeats(

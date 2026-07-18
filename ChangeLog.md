@@ -1,5 +1,21 @@
 # ChangeLog
 
+## [2026-07-18 22:25] API найближчих виставлень рахунків
+
+- `backend/app/routers/billing.py`, `backend/app/main.py` — додано захищений endpoint
+  `GET /api/billing/upcoming` як тонку обгортку над спільним розкладом із включним
+  горизонтом 30 днів і стабільним сортуванням за датою та квартирою.
+- `backend/app/schemas.py` — додано типізовану відповідь із квартирою, орендарем,
+  датою виставлення, періодом і nullable статусом рахунка.
+- `backend/tests/test_billing_schedule.py` — перевірено сортування, включну межу
+  горизонту, відсікання 31-го дня, відсутність рахунка, статуси draft/issued/paid
+  і порожній результат.
+- `docs/plans/20260718-billing-reminder.md` — Task 8 позначено виконаним після
+  успішних Docker-перевірок: 118 backend-тестів і `ruff check`.
+- Зміна зачіпає production backend. Для розгортання потрібні rebuild і restart
+  контейнера за `docs/deploy.md`; нових міграцій і змінних середовища немає.
+  Автоматичний деплой не виконувався.
+
 ## [2026-07-18 22:19] API керування Web Push підписками
 
 - `backend/app/routers/push.py`, `backend/app/main.py` — додано захищені endpoint-и

@@ -219,6 +219,16 @@ class InvoiceListItem(ApiSchema):
     grand_total: Decimal
 
 
+class UpcomingBillingResponse(ApiSchema):
+    apartment_id: int
+    apartment_name: str
+    tenant_id: int
+    tenant_name: str
+    next_billing_date: date
+    period: date
+    invoice_status: Literal["draft", "issued", "paid"] | None
+
+
 class ConsumptionPoint(ApiSchema):
     period: date
     consumed: Decimal

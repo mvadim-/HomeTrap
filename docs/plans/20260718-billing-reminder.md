@@ -232,10 +232,10 @@
 - Modify: `backend/app/main.py`
 - Modify: `backend/tests/test_billing_schedule.py`
 
-- [ ] тонка обгортка над `compute_billing_schedule`: квартира, орендар, дата виставлення, статус рахунка за period; горизонт 30 днів, сортування за датою
-- [ ] Pydantic-схема відповіді; реєстрація router у `main.py`
-- [ ] write tests: сортування, горизонт, статуси (немає/чернетка/виставлено/оплачено), порожній результат
-- [ ] run tests - must pass before next task
+- [x] тонка обгортка над `compute_billing_schedule`: квартира, орендар, дата виставлення, статус рахунка за period; горизонт 30 днів, сортування за датою
+- [x] Pydantic-схема відповіді; реєстрація router у `main.py`
+- [x] write tests: сортування, горизонт, статуси (немає/чернетка/виставлено/оплачено), порожній результат
+- [x] run tests - must pass before next task
 
 ### Task 9: Override дня виставлення в картці орендаря (end-to-end)
 
