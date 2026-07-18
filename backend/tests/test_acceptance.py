@@ -222,7 +222,7 @@ async def test_complete_landlord_acceptance_scenario(tmp_path, monkeypatch) -> N
         assert saved_settings.status_code == 200
         monkeypatch.setattr(
             "app.routers.settings.build_senders",
-            lambda _settings: [sender],
+            lambda _settings, _session: [sender],
         )
         notification = await client.post("/api/settings/test-notification")
         assert notification.status_code == 200

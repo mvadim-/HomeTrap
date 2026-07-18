@@ -36,7 +36,7 @@ def update_settings(
 def test_notification(session: Session = Depends(get_db)) -> dict:
     settings = get_notification_settings(session)
     result = send_notification(
-        build_senders(settings),
+        build_senders(settings, session),
         "Тестове сповіщення HomeTrap",
         "Канали сповіщень налаштовано правильно.",
     )

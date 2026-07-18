@@ -202,13 +202,13 @@
 - Modify: `backend/tests/test_acceptance.py`
 - Create: `backend/tests/test_push.py`
 
-- [ ] додати `pywebpush` у `backend/requirements.txt`
-- [ ] `push.py`: генерація VAPID-пари при першому вмиканні, збереження в окремому `Setting`-ключі, читання публічного ключа
-- [ ] `WebPushSender` (протокол `NotificationSender`): відправка на всі підписки, 404/410 → видалення підписки, помилка однієї підписки не блокує інші
-- [ ] змінити сигнатуру на `build_senders(settings, session)` і оновити обидва call sites: `run_daily_notifications` (notify.py) та `test_notification` (routers/settings.py); інтегрувати push при `push.enabled`
-- [ ] оновити наявні тести, що патчать `app.routers.settings.build_senders` (`test_acceptance.py`, `test_notify.py`), під нову сигнатуру
-- [ ] write tests (мок pywebpush): успішна відправка, 410 → підписка видалена, часткова помилка, генерація/повторне використання VAPID
-- [ ] run tests - must pass before next task
+- [x] додати `pywebpush` у `backend/requirements.txt`
+- [x] `push.py`: генерація VAPID-пари при першому вмиканні, збереження в окремому `Setting`-ключі, читання публічного ключа
+- [x] `WebPushSender` (протокол `NotificationSender`): відправка на всі підписки, 404/410 → видалення підписки, помилка однієї підписки не блокує інші
+- [x] змінити сигнатуру на `build_senders(settings, session)` і оновити обидва call sites: `run_daily_notifications` (notify.py) та `test_notification` (routers/settings.py); інтегрувати push при `push.enabled`
+- [x] оновити наявні тести, що патчать `app.routers.settings.build_senders` (`test_acceptance.py`, `test_notify.py`), під нову сигнатуру
+- [x] write tests (мок pywebpush): успішна відправка, 410 → підписка видалена, часткова помилка, генерація/повторне використання VAPID
+- [x] run tests - must pass before next task
 
 ### Task 7: API push-підписок
 

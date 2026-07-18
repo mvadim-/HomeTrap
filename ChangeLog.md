@@ -1,5 +1,27 @@
 # ChangeLog
 
+## [2026-07-18 22:09] Web Push backend із VAPID
+
+- `backend/requirements.txt`, `backend/app/services/push.py` — додано
+  `pywebpush`, одноразову генерацію та окреме збереження VAPID-пари й канал
+  Web Push для всіх активних підписок; відповіді 404/410 видаляють мертві
+  підписки, а збій однієї доставки не блокує решту.
+- `backend/app/services/notify.py`, `backend/app/routers/settings.py` —
+  `build_senders` отримує DB-сесію, Push підключається як третій глобальний
+  канал, а VAPID-пара створюється при першому збереженні ввімкненого Push.
+- `backend/tests/test_push.py`, `backend/tests/test_notify.py`,
+  `backend/tests/test_acceptance.py` — перевірено успішну й частково успішну
+  доставку, повну помилку, очищення 410, повторне використання VAPID та нову
+  сигнатуру обох call sites.
+- `docs/plans/20260718-billing-reminder.md` — Task 6 позначено виконаним після
+  успішних Docker-перевірок: 111 backend-тестів і `ruff check`.
+- Зміна зачіпає production backend. Для розгортання потрібні rebuild image,
+  restart контейнера й звичайний startup за `docs/deploy.md`, щоб встановити
+  `pywebpush`; нових міграцій і змінних середовища немає. VAPID-пара
+  згенерується в таблиці `settings` при першому ввімкненні Push, тому backup
+  production-бази має зберігатися між оновленнями. Автоматичний деплой не
+  виконувався.
+
 ## [2026-07-18 21:54] Автоматичні чернетки у день виставлення
 
 - `backend/app/services/billing_schedule.py` — у день виставлення додано одноразове

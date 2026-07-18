@@ -19,6 +19,7 @@ from app.services.notify import (
     save_notification_settings,
     send_notification,
 )
+from app.services.push import VAPID_KEYS_SETTING_KEY
 
 
 class RecordingSender:
@@ -249,7 +250,7 @@ async def test_settings_api_persists_and_tests_enabled_sender(
 
         monkeypatch.setattr(
             "app.routers.settings.build_senders",
-            lambda _settings: [sender],
+            lambda _settings, _session: [sender],
         )
         test_response = await client.post("/api/settings/test-notification")
         assert test_response.status_code == 200
@@ -268,6 +269,7 @@ async def test_settings_api_persists_and_tests_enabled_sender(
             assert stored.value["readings_day"] == 18
             assert stored.value["billing_reminder"]["days_before"] == 5
             assert stored.value["push"] == {"enabled": True}
+            assert session.get(Setting, VAPID_KEYS_SETTING_KEY) is not None
         engine.dispose()
     finally:
         await client.aclose()

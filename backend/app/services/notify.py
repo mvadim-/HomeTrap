@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Apartment, Invoice, InvoiceStatus, Setting
 from app.services.billing_schedule import send_billing_reminders
+from app.services.push import WebPushSender, get_vapid_public_key
 
 NOTIFICATION_SETTINGS_KEY = "notifications"
 NOTIFICATION_HISTORY_KEY = "notification_history"
@@ -121,6 +122,8 @@ def _merge_settings(defaults: dict, stored: dict) -> dict:
 
 
 def save_notification_settings(session: Session, value: dict) -> None:
+    if value.get("push", {}).get("enabled"):
+        get_vapid_public_key(session)
     stored = session.get(Setting, NOTIFICATION_SETTINGS_KEY)
     if stored is None:
         session.add(Setting(key=NOTIFICATION_SETTINGS_KEY, value=value))
@@ -129,7 +132,7 @@ def save_notification_settings(session: Session, value: dict) -> None:
     session.commit()
 
 
-def build_senders(settings: dict) -> list[NotificationSender]:
+def build_senders(settings: dict, session: Session) -> list[NotificationSender]:
     senders: list[NotificationSender] = []
     telegram = settings["telegram"]
     if telegram["enabled"]:
@@ -137,6 +140,9 @@ def build_senders(settings: dict) -> list[NotificationSender]:
     email = settings["email"]
     if email["enabled"]:
         senders.append(EmailSender(**{key: value for key, value in email.items() if key != "enabled"}))
+    if settings["push"]["enabled"]:
+        get_vapid_public_key(session)
+        senders.append(WebPushSender(session))
     return senders
 
 
@@ -163,7 +169,7 @@ def run_daily_notifications(
     senders: list[NotificationSender] | None = None,
 ) -> NotificationResult:
     settings = get_notification_settings(session)
-    resolved_senders = senders if senders is not None else build_senders(settings)
+    resolved_senders = senders if senders is not None else build_senders(settings, session)
     result = NotificationResult()
     if not resolved_senders:
         return result
