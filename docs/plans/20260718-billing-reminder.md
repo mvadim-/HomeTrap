@@ -276,12 +276,12 @@
 - Modify: `frontend/src/pages/Settings.tsx`
 - Create: `frontend/src/utils/push.test.ts`
 
-- [ ] маніфест (назва, іконки, display standalone) + link в `index.html`
-- [ ] `sw.js`: обробники `push` → `showNotification` і `notificationclick` → відкриття застосунку; без кешування
-- [ ] `push.ts`: реєстрація SW, запит дозволу, `pushManager.subscribe` з публічним VAPID-ключем, POST/DELETE підписки, визначення статусу пристрою
-- [ ] підключити `push.ts` до кнопки підписки в Settings
-- [ ] write tests: `push.ts` з моками `navigator.serviceWorker`/`pushManager` (успіх, відмова дозволу, відписка)
-- [ ] run tests - must pass before next task
+- [x] маніфест (назва, іконки, display standalone) + link в `index.html`
+- [x] `sw.js`: обробники `push` → `showNotification` і `notificationclick` → відкриття застосунку; без кешування
+- [x] `push.ts`: реєстрація SW, запит дозволу, `pushManager.subscribe` з публічним VAPID-ключем, POST/DELETE підписки, визначення статусу пристрою
+- [x] підключити `push.ts` до кнопки підписки в Settings
+- [x] write tests: `push.ts` з моками `navigator.serviceWorker`/`pushManager` (успіх, відмова дозволу, відписка)
+- [x] run tests - must pass before next task
 
 ### Task 12: Dashboard-віджет «Найближчі виставлення»
 

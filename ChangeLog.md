@@ -1,5 +1,27 @@
 # ChangeLog
 
+## [2026-07-18 22:44] PWA та Push-підписка пристрою
+
+- `frontend/public/manifest.webmanifest`, `frontend/public/icon.svg`,
+  `frontend/index.html` — додано standalone PWA-маніфест, мінімальну SVG-іконку та
+  підключення manifest/favicon без дублювання raster assets.
+- `frontend/public/sw.js` — додано лише обробники Push-повідомлень і кліку по
+  сповіщенню з відкриттям застосунку; service worker не містить кешування.
+- `frontend/src/utils/push.ts`, `frontend/src/pages/Settings.tsx` — реалізовано
+  типізоване визначення статусу пристрою, реєстрацію service worker, permission і
+  VAPID subscription flow, синхронізацію POST/DELETE з backend та робочі кнопки
+  підписки/відписки зі статусами браузера.
+- `frontend/src/utils/push.test.ts`, `frontend/src/pages/Settings.test.tsx` —
+  перевірено успішну підписку, відмову в дозволі, відписку й UI-флоу; у Docker
+  пройшли 12 цільових і 158 повних Vitest-тестів, окремий TypeScript typecheck,
+  production build та перевірка PWA assets.
+- `docs/plans/20260718-billing-reminder.md` — лише Task 11 позначено виконаним.
+- Зміна призначена для production frontend: Web Push і service worker потребують
+  HTTPS (виняток — localhost). Для розгортання потрібно виконати rebuild image і
+  restart контейнера за `docs/deploy.md`, після чого перевірити доступність
+  `/manifest.webmanifest`, `/sw.js` та повторно підписати потрібні браузери.
+  Автоматичний деплой не виконувався; міграцій і нових env-змінних немає.
+
 ## [2026-07-18 22:38] Налаштування billing reminder і Push
 
 - `frontend/src/api/client.ts` — тип `NotificationSettings` доповнено блоками

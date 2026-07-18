@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, vi } from "vitest";
 
 import * as apiClient from "../api/client";
+import * as pushUtils from "../utils/push";
 import { Settings } from "./Settings";
 
 const settings: apiClient.NotificationSettings = {
@@ -97,7 +98,7 @@ describe("Settings", () => {
     await user.click(screen.getByLabelText("Автоматично створювати чернетку в день виставлення"));
     await user.click(screen.getByLabelText("Увімкнути Push"));
 
-    expect(screen.getByText("Цей пристрій ще не підписано.")).toBeInTheDocument();
+    expect(screen.getByText("Цей браузер не підтримує Push.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Зберегти" }));
 
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
@@ -109,6 +110,28 @@ describe("Settings", () => {
       },
       push: { enabled: true },
     }));
+  });
+
+  it("subscribes and unsubscribes this device from the Push controls", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue({
+      ...settings,
+      push: { enabled: true },
+    });
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(pushUtils, "getPushDeviceStatus").mockResolvedValue("unsubscribed");
+    const subscribe = vi.spyOn(pushUtils, "subscribePushDevice").mockResolvedValue("subscribed");
+    const unsubscribe = vi.spyOn(pushUtils, "unsubscribePushDevice").mockResolvedValue("unsubscribed");
+
+    render(<Settings />);
+
+    await user.click(await screen.findByRole("button", { name: "Підписати цей пристрій" }));
+    expect(subscribe).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Цей пристрій підписано на Push.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Відписати цей пристрій" }));
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Цей пристрій відписано від Push.")).toBeInTheDocument();
   });
 
   it("prevents saving invalid billing reminder values", async () => {

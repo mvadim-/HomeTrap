@@ -12,6 +12,12 @@ import {
   testNotification,
   updateNotificationSettings,
 } from "../api/client";
+import {
+  PushDeviceStatus,
+  getPushDeviceStatus,
+  subscribePushDevice,
+  unsubscribePushDevice,
+} from "../utils/push";
 import "./portal.css";
 
 function ImportReportView({ report, dryRun }: { report: ImportReport; dryRun: boolean }) {
@@ -43,7 +49,8 @@ export function Settings() {
   const [report, setReport] = useState<{ value: ImportReport; dryRun: boolean } | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"save" | "test" | "preview" | "import" | null>(null);
+  const [busy, setBusy] = useState<"save" | "test" | "preview" | "import" | "push" | null>(null);
+  const [pushStatus, setPushStatus] = useState<PushDeviceStatus | "error">("checking");
 
   useEffect(() => {
     let active = true;
@@ -55,6 +62,14 @@ export function Settings() {
         setApartmentId(String(apartmentItems.find((item) => item.is_active)?.id ?? apartmentItems[0]?.id ?? ""));
       })
       .catch(() => active && setError("Не вдалося завантажити налаштування."));
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    getPushDeviceStatus()
+      .then((status) => active && setPushStatus(status))
+      .catch(() => active && setPushStatus("error"));
     return () => { active = false; };
   }, []);
 
@@ -92,6 +107,36 @@ export function Settings() {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function changePushSubscription() {
+    setBusy("push");
+    setError("");
+    setMessage("");
+    try {
+      const status = pushStatus === "subscribed"
+        ? await unsubscribePushDevice()
+        : await subscribePushDevice();
+      setPushStatus(status);
+      if (status === "subscribed") setMessage("Цей пристрій підписано на Push.");
+      else if (status === "unsubscribed") setMessage("Цей пристрій відписано від Push.");
+      else if (status === "denied") setError("Дозвіл на сповіщення заблоковано в браузері.");
+      else if (status === "unsupported") setError("Цей браузер не підтримує Push.");
+    } catch {
+      setError("Не вдалося змінити Push-підписку цього пристрою.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function pushStatusText(): string {
+    if (!settings?.push.enabled) return "Канал Push вимкнено.";
+    if (pushStatus === "checking") return "Перевіряємо Push-підписку цього пристрою…";
+    if (pushStatus === "subscribed") return "Цей пристрій підписано.";
+    if (pushStatus === "unsubscribed") return "Цей пристрій ще не підписано.";
+    if (pushStatus === "denied") return "Дозвіл на сповіщення заблоковано в браузері.";
+    if (pushStatus === "unsupported") return "Цей браузер не підтримує Push.";
+    return "Не вдалося визначити стан Push-підписки.";
   }
 
   async function runImport(dryRun: boolean) {
@@ -164,13 +209,24 @@ export function Settings() {
             <fieldset>
               <legend>Push</legend>
               <label className="checkbox-field"><input type="checkbox" checked={settings.push.enabled} onChange={(event) => patchSettings({ push: { enabled: event.target.checked } })} />Увімкнути Push</label>
-              <p className="muted-text" aria-live="polite">
-                {settings.push.enabled
-                  ? "Цей пристрій ще не підписано."
-                  : "Канал Push вимкнено."}
-              </p>
+              <p className="muted-text" aria-live="polite">{pushStatusText()}</p>
               <div className="form-actions">
-                <button className="secondary-button" type="button" disabled title="Підписка буде доступна після встановлення PWA">Підписати цей пристрій</button>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={
+                    !settings.push.enabled
+                    || busy !== null
+                    || ["checking", "denied", "unsupported"].includes(pushStatus)
+                  }
+                  onClick={changePushSubscription}
+                >
+                  {busy === "push"
+                    ? "Оновлюємо…"
+                    : pushStatus === "subscribed"
+                      ? "Відписати цей пристрій"
+                      : "Підписати цей пристрій"}
+                </button>
               </div>
             </fieldset>
             <div className="form-actions">
