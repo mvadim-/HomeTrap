@@ -148,10 +148,10 @@
 - Create: `backend/app/services/billing_schedule.py`
 - Create: `backend/tests/test_billing_schedule.py`
 
-- [ ] реалізувати `compute_billing_schedule(session, today)`: активні квартири з поточним орендарем (`contract_start <= today AND (contract_end IS NULL OR contract_end >= today)`, максимум один запис на квартиру) → `billing_day` (override або `contract_start.day`, з обрізанням до кінця місяця), `next_billing_date` (≥ `contract_start`), `period`, `invoice_exists`/`invoice_status`
-- [ ] write tests: договір від 31-го у лютому (28/29) і 30-денному місяці, високосний рік, override, договір у майбутньому (не враховується поряд із поточним), договір що закінчився, квартира без орендаря, неактивна квартира
-- [ ] write tests: наявний рахунок за період у кожному статусі → `invoice_exists`/`invoice_status`
-- [ ] run tests - must pass before next task
+- [x] реалізувати `compute_billing_schedule(session, today)`: активні квартири з поточним орендарем (`contract_start <= today AND (contract_end IS NULL OR contract_end >= today)`, максимум один запис на квартиру) → `billing_day` (override або `contract_start.day`, з обрізанням до кінця місяця), `next_billing_date` (≥ `contract_start`), `period`, `invoice_exists`/`invoice_status`
+- [x] write tests: договір від 31-го у лютому (28/29) і 30-денному місяці, високосний рік, override, договір у майбутньому (не враховується поряд із поточним), договір що закінчився, квартира без орендаря, неактивна квартира
+- [x] write tests: наявний рахунок за період у кожному статусі → `invoice_exists`/`invoice_status`
+- [x] run tests - must pass before next task
 
 ### Task 3: Розширення схеми налаштувань із merge defaults
 
