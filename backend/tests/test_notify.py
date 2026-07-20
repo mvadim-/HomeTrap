@@ -175,14 +175,15 @@ def test_daily_pipeline_sends_enabled_billing_reminder(db_session) -> None:
     )
     sender = RecordingSender()
 
-    result = run_daily_notifications(db_session, date(2026, 7, 17), [sender])
+    # July period is billed on 20 Aug; the 3-day window opens on 17 Aug.
+    result = run_daily_notifications(db_session, date(2026, 8, 17), [sender])
 
     assert result.notifications == 1
     assert result.deliveries == 1
     assert sender.messages[0][0] == "Нагадування про виставлення рахунка"
     history = db_session.get(Setting, NOTIFICATION_HISTORY_KEY)
     assert history is not None
-    assert history.value == {f"billing:{apartment.id}:2026-07-01": "2026-07-17"}
+    assert history.value == {f"billing:{apartment.id}:2026-07-01": "2026-08-17"}
 
 
 def test_daily_pipeline_creates_auto_draft_without_delivery_channels(
@@ -226,18 +227,20 @@ def test_daily_pipeline_creates_auto_draft_without_delivery_channels(
         lambda _session, target, period, rate: created.append((target.id, period, rate)),
     )
 
-    result = run_daily_notifications(db_session, date(2026, 7, 20), [])
+    # July period is billed on 20 Aug, the auto-draft day for this tenant.
+    result = run_daily_notifications(db_session, date(2026, 8, 20), [])
 
     assert created == [(apartment.id, date(2026, 7, 1), Decimal("44.680000"))]
     assert result.notifications == 1
     assert result.deliveries == 0
     assert db_session.get(Setting, NOTIFICATION_HISTORY_KEY).value == {
-        f"billing_draft:{apartment.id}:2026-07-01": "2026-07-20"
+        f"billing_draft:{apartment.id}:2026-07-01": "2026-08-20"
     }
 
 
 def test_readings_history_requires_its_own_successful_delivery(db_session) -> None:
-    today = date(2026, 7, 17)
+    # 17 Aug is both the readings day and inside the billing window (billed 20 Aug).
+    today = date(2026, 8, 17)
     apartment = Apartment(
         name="Лісова",
         address="Київ",

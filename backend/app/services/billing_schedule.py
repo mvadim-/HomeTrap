@@ -35,6 +35,13 @@ def _date_for_billing_day(year: int, month: int, billing_day: int) -> date:
     return date(year, month, min(billing_day, last_day))
 
 
+def _period_for_billing_date(billing_date: date) -> date:
+    """Invoices are issued in arrears: the billing day of month M bills month M-1."""
+    if billing_date.month == 1:
+        return date(billing_date.year - 1, 12, 1)
+    return date(billing_date.year, billing_date.month - 1, 1)
+
+
 def _next_billing_date(today: date, billing_day: int) -> date:
     candidate = _date_for_billing_day(today.year, today.month, billing_day)
     if candidate >= today:
@@ -62,11 +69,18 @@ def _billing_dates(
         current,
         _next_billing_date(today, billing_day),
     }
+    contract_start_period = tenant.contract_start.replace(day=1)
+    contract_end_period = (
+        tenant.contract_end.replace(day=1) if tenant.contract_end is not None else None
+    )
     return sorted(
         billing_date
         for billing_date in dates
-        if billing_date >= tenant.contract_start
-        and (tenant.contract_end is None or billing_date <= tenant.contract_end)
+        if _period_for_billing_date(billing_date) >= contract_start_period
+        and (
+            contract_end_period is None
+            or _period_for_billing_date(billing_date) <= contract_end_period
+        )
     )
 
 
@@ -74,13 +88,19 @@ def _compute_billing_schedule_candidates(
     session: Session,
     today: date,
 ) -> list[list[BillingScheduleEntry]]:
+    # Arrears billing issues a contract's final period one month after it ends,
+    # so keep tenants whose contract closed as recently as last month.
+    earliest_billable_end = _period_for_billing_date(today)
     rows = session.execute(
         select(Apartment, Tenant)
         .join(Tenant, Tenant.apartment_id == Apartment.id)
         .where(
             Apartment.is_active.is_(True),
             Tenant.contract_start <= today,
-            (Tenant.contract_end.is_(None) | (Tenant.contract_end >= today)),
+            (
+                Tenant.contract_end.is_(None)
+                | (Tenant.contract_end >= earliest_billable_end)
+            ),
         )
         .order_by(
             Apartment.name,
@@ -104,7 +124,7 @@ def _compute_billing_schedule_candidates(
     invoice_keys: set[tuple[int, date]] = set()
     for apartment, _, _, billing_dates in pending:
         invoice_keys.update(
-            (apartment.id, billing_date.replace(day=1))
+            (apartment.id, _period_for_billing_date(billing_date))
             for billing_date in billing_dates
         )
     if invoice_keys:
@@ -127,7 +147,7 @@ def _compute_billing_schedule_candidates(
     for apartment, tenant, billing_day, billing_dates in pending:
         candidates: list[BillingScheduleEntry] = []
         for billing_date in billing_dates:
-            period = billing_date.replace(day=1)
+            period = _period_for_billing_date(billing_date)
             invoice = invoice_by_apartment_period.get((apartment.id, period))
             is_overdue = billing_date < today and invoice is None
             candidates.append(
@@ -234,7 +254,7 @@ def _create_draft_and_notify(
         return
 
     try:
-        rate = nbu.get_rate(session, today).rate
+        rate = nbu.get_rate(session, entry.period).rate
         billing.create_draft(session, entry.apartment, entry.period, rate)
     except IntegrityError as error:
         session.rollback()

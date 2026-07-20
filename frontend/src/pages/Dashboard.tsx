@@ -11,7 +11,7 @@ import {
   getUpcomingBilling,
 } from "../api/client";
 import { InvoiceStatusBadge } from "../components/InvoiceStatusBadge";
-import { formatDate, formatTenantRent, formatUah } from "../utils/format";
+import { formatDate, formatMonthYear, formatTenantRent, formatUah } from "../utils/format";
 import "./portal.css";
 
 export function Dashboard() {
@@ -105,7 +105,7 @@ export function Dashboard() {
         ) : (
           <div className="table-wrap">
             <table aria-label="Найближчі виставлення" className="services-table upcoming-billing-table">
-              <thead><tr><th>Квартира</th><th>Орендар</th><th>Дата</th><th>Статус рахунка</th></tr></thead>
+              <thead><tr><th>Квартира</th><th>Орендар</th><th>Дата</th><th>Період</th><th>Статус рахунка</th></tr></thead>
               <tbody>
                 {upcomingBilling.map((item) => {
                   const needsWarning = item.is_overdue;
@@ -114,6 +114,7 @@ export function Dashboard() {
                       <td><Link className="upcoming-billing-link" to={billingTarget(item)}>{item.apartment_name}</Link></td>
                       <td>{item.tenant_name}</td>
                       <td>{formatDate(item.billing_date)}</td>
+                      <td>{formatMonthYear(item.period)}</td>
                       <td><InvoiceStatusBadge status={item.invoice_status} /></td>
                     </tr>
                   );
