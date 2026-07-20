@@ -17,7 +17,13 @@ Python runtime-залежності образу зафіксовані точн
 
 3. Замініть усі `change-me` у `.env`: задайте довгий випадковий
    `HOMETRAP_SECRET_KEY` і надійний `ADMIN_PASSWORD`. Не додавайте `.env` до Git і
-   не передавайте його разом із бекапами.
+   не передавайте його разом із бекапами. У production застосунок на старті
+   **перевіряє** ці значення і **аварійно завершується**, якщо вони слабкі:
+
+   - `HOMETRAP_SECRET_KEY` — щонайменше 32 символи, унікальний, без підрядка
+     `change-me`. Згенерувати: `openssl rand -hex 32`.
+   - `ADMIN_PASSWORD` — щонайменше 12 символів, без підрядка `change-me`.
+     Згенерувати: `openssl rand -hex 12`.
    `ADMIN_PASSWORD` використовується лише під час створення першого адміністратора:
    подальша зміна змінної не оновлює bcrypt-хеш у БД. Для ротації спершу зробіть
    бекап, зупиніть сервіс і виконайте одноразову команду (пароль не зберігається в
@@ -30,12 +36,16 @@ Python runtime-залежності образу зафіксовані точн
    unset NEW_ADMIN_PASSWORD
    docker compose --env-file .env -f docker/docker-compose.yml start hometrap
    ```
-4. У Container Manager відкрийте **Project → Create**, виберіть теку репозиторію та
-   файл `docker/docker-compose.yml`, потім виконайте build і запуск. Еквівалент у
-   SSH-консолі:
+4. **Створіть теку `data/`** у корені проєкту (`mkdir -p data` через SSH або через
+   File Station): вона в `.gitignore` й не потрапляє у клон, а Docker на Synology
+   не створює відсутнє джерело bind-mount, тож без неї запуск падає з
+   `Bind mount failed: ... /data does not exist`. Потім у Container Manager
+   відкрийте **Project → Create**, виберіть теку репозиторію та файл
+   `docker/docker-compose.yml` і виконайте build і запуск. Еквівалент у SSH-консолі:
 
    ```sh
    cd /volume1/docker/hometrap
+   mkdir -p data
    docker compose --env-file .env -f docker/docker-compose.yml up -d --build
    docker compose --env-file .env -f docker/docker-compose.yml ps
    ```
