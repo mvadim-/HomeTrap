@@ -239,6 +239,16 @@ export interface ImportReport {
   warnings: string[];
 }
 
+export interface RestoreSummary {
+  added: Record<string, number>;
+  skipped: Record<string, number>;
+}
+
+export interface BackupDownload {
+  blob: Blob;
+  filename: string;
+}
+
 export interface Service {
   id: number;
   apartment_id: number;
@@ -280,7 +290,7 @@ export const browserNavigation = {
   toLogin: () => window.location.assign("/login"),
 };
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function fetchResponse(path: string, options: RequestInit = {}): Promise<Response> {
   const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
@@ -302,6 +312,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
     throw new ApiError(response.status, body?.detail ?? "Помилка запиту");
   }
+
+  return response;
+}
+
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const response = await fetchResponse(path, options);
 
   if (response.status === 204) {
     return undefined as T;
@@ -533,6 +549,23 @@ export function updateNotificationSettings(
 export function testNotification(): Promise<NotificationTestResult> {
   return request<NotificationTestResult>("/api/settings/test-notification", {
     method: "POST",
+  });
+}
+
+export async function downloadBackup(): Promise<BackupDownload> {
+  const response = await fetchResponse("/api/settings/backup");
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
+    ?? "hometrap-backup.zip";
+  return { blob: await response.blob(), filename };
+}
+
+export function restoreBackup(file: File): Promise<RestoreSummary> {
+  const body = new FormData();
+  body.append("file", file);
+  return request<RestoreSummary>("/api/settings/restore", {
+    method: "POST",
+    body,
   });
 }
 

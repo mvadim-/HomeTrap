@@ -6,9 +6,12 @@ import {
   Apartment,
   ImportReport,
   NotificationSettings,
+  RestoreSummary,
+  downloadBackup,
   getApartments,
   getNotificationSettings,
   importApartmentHistory,
+  restoreBackup,
   testNotification,
   updateNotificationSettings,
 } from "../api/client";
@@ -41,15 +44,31 @@ function ImportReportView({ report, dryRun }: { report: ImportReport; dryRun: bo
   );
 }
 
+function RestoreSummaryView({ summary }: { summary: RestoreSummary }) {
+  const added = Object.values(summary.added).reduce((total, count) => total + count, 0);
+  const skipped = Object.values(summary.skipped).reduce((total, count) => total + count, 0);
+  return (
+    <div className="import-report" aria-live="polite">
+      <h3>Результат відновлення</h3>
+      <dl className="import-summary">
+        <div><dt>Додано записів</dt><dd>{added}</dd></div>
+        <div><dt>Пропущено записів</dt><dd>{skipped}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
 export function Settings() {
   const [settings, setSettings] = useState<NotificationSettings | null>(null);
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [apartmentId, setApartmentId] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<{ value: ImportReport; dryRun: boolean } | null>(null);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreSummary, setRestoreSummary] = useState<RestoreSummary | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState<"save" | "test" | "preview" | "import" | "push" | null>(null);
+  const [busy, setBusy] = useState<"save" | "test" | "preview" | "import" | "push" | "backup" | "restore" | null>(null);
   const [pushStatus, setPushStatus] = useState<PushDeviceStatus | "error">("checking");
 
   useEffect(() => {
@@ -156,9 +175,50 @@ export function Settings() {
     }
   }
 
+  async function saveBackup() {
+    setBusy("backup");
+    setError("");
+    setMessage("");
+    try {
+      const backup = await downloadBackup();
+      const url = URL.createObjectURL(backup.blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = backup.filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setMessage("Бекап завантажено.");
+    } catch {
+      setError("Не вдалося завантажити бекап.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runRestore() {
+    if (!restoreFile || !window.confirm(
+      "Імпортувати відсутні дані з цього бекапу? Наявні дані не буде змінено або видалено.",
+    )) return;
+    setBusy("restore");
+    setError("");
+    setMessage("");
+    setRestoreSummary(null);
+    try {
+      setRestoreSummary(await restoreBackup(restoreFile));
+    } catch (caught) {
+      setError(caught instanceof ApiError
+        ? caught.message
+        : "Не вдалося відновити дані з бекапу.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <>
-      <header className="page-header"><div><h1>Налаштування</h1><p>Сповіщення та імпорт історії</p></div></header>
+      <header className="page-header"><div><h1>Налаштування</h1><p>Сповіщення, бекап та імпорт історії</p></div></header>
       {error && <p className="error-message" role="alert">{error}</p>}
       {message && <p className="success-message" role="status">{message}</p>}
 
@@ -235,6 +295,28 @@ export function Settings() {
             </div>
           </form>
         )}
+      </section>
+
+      <section className="section-card settings-section">
+        <div className="section-heading"><div><h2>Бекап і відновлення</h2><p>Повний знімок даних та недеструктивний імпорт</p></div></div>
+        <div className="warning-box">
+          <strong>Зберігайте бекап у безпечному місці</strong>
+          <p>Архів містить приватні дані. Відновлення лише додає відсутні записи — наявні дані не змінюються й не видаляються.</p>
+        </div>
+        <div className="import-form backup-form">
+          <div>
+            <button className="secondary-button" type="button" disabled={busy !== null} onClick={saveBackup}>
+              {busy === "backup" ? "Готуємо бекап…" : "Завантажити бекап"}
+            </button>
+          </div>
+          <label>Файл бекапу<input type="file" accept=".zip,application/zip" onChange={(event) => { setRestoreFile(event.target.files?.[0] ?? null); setRestoreSummary(null); }} /></label>
+          <div className="form-actions">
+            <button className="button" type="button" disabled={!restoreFile || busy !== null} onClick={runRestore}>
+              {busy === "restore" ? "Відновлюємо…" : "Відновити з бекапу"}
+            </button>
+          </div>
+        </div>
+        {restoreSummary && <RestoreSummaryView summary={restoreSummary} />}
       </section>
 
       <section className="section-card settings-section">

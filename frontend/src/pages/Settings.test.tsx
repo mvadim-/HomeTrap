@@ -43,7 +43,10 @@ const apartments: apiClient.Apartment[] = [{
   current_tenant_name: null,
 }];
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 describe("Settings", () => {
   it("explains why import is unavailable without an apartment", async () => {
@@ -77,6 +80,83 @@ describe("Settings", () => {
     expect(screen.getByText("Канал Push вимкнено.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Підписати цей пристрій" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Надіслати тестове повідомлення" })).toBeInTheDocument();
+  });
+
+  it("renders backup and restore controls", async () => {
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+
+    render(<Settings />);
+
+    expect(await screen.findByRole("heading", { name: "Бекап і відновлення" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Завантажити бекап" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Файл бекапу")).toHaveAttribute("accept", ".zip,application/zip");
+    expect(screen.getByRole("button", { name: "Відновити з бекапу" })).toBeDisabled();
+  });
+
+  it("downloads a backup file", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    const blob = new Blob(["backup"], { type: "application/zip" });
+    const download = vi.spyOn(apiClient, "downloadBackup").mockResolvedValue({
+      blob,
+      filename: "hometrap-backup-20260721.zip",
+    });
+    const createObjectURL = vi.fn(() => "blob:backup");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<Settings />);
+    await user.click(await screen.findByRole("button", { name: "Завантажити бекап" }));
+
+    expect(download).toHaveBeenCalledOnce();
+    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(click).toHaveBeenCalledOnce();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:backup");
+    expect(await screen.findByRole("status")).toHaveTextContent("Бекап завантажено");
+  });
+
+  it("confirms restore and shows its summary", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const restore = vi.spyOn(apiClient, "restoreBackup").mockResolvedValue({
+      added: { apartments: 2, tenants: 1 },
+      skipped: { apartments: 1, tenants: 1 },
+    });
+    const file = new File(["backup"], "backup.zip", { type: "application/zip" });
+
+    render(<Settings />);
+    await user.upload(await screen.findByLabelText("Файл бекапу"), file);
+    await user.click(screen.getByRole("button", { name: "Відновити з бекапу" }));
+
+    expect(window.confirm).toHaveBeenCalledOnce();
+    expect(restore).toHaveBeenCalledWith(file);
+    expect(await screen.findByRole("heading", { name: "Результат відновлення" })).toBeInTheDocument();
+    expect(screen.getByText("Додано записів").nextElementSibling).toHaveTextContent("3");
+    expect(screen.getByText("Пропущено записів").nextElementSibling).toHaveTextContent("2");
+  });
+
+  it("shows restore validation errors", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getNotificationSettings").mockResolvedValue(settings);
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(apiClient, "restoreBackup").mockRejectedValue(
+      new apiClient.ApiError(422, "Ревізія бекапу несумісна"),
+    );
+
+    render(<Settings />);
+    await user.upload(
+      await screen.findByLabelText("Файл бекапу"),
+      new File(["backup"], "backup.zip"),
+    );
+    await user.click(screen.getByRole("button", { name: "Відновити з бекапу" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Ревізія бекапу несумісна");
   });
 
   it("saves billing reminder and global Push settings", async () => {
