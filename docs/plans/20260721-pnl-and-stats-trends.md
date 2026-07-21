@@ -177,21 +177,21 @@
 - Create: `backend/alembic/versions/20260721_08_add_expenses.py`
 - Modify: `backend/tests/test_models.py`
 
-- [ ] додати `ExpenseCategory(StrEnum)` та модель `Expense` (nullable
+- [x] додати `ExpenseCategory(StrEnum)` та модель `Expense` (nullable
   `apartment_id` FK→apartments `ondelete="CASCADE"`, `date`, `category` з
   `CheckConstraint`, `amount Numeric(12,2)`, `currency String(3)` default
   `"UAH"`, `notes Text`, `restore_key` unique за зразком `Service`)
-- [ ] додати relationship `Apartment.expenses` (cascade `all, delete-orphan`)
-- [ ] створити міграцію: таблиця `expenses`, індекс `apartment_id`, unique
+- [x] додати relationship `Apartment.expenses` (cascade `all, delete-orphan`)
+- [x] створити міграцію: таблиця `expenses`, індекс `apartment_id`, unique
   `restore_key`; `down_revision` = поточний head; ідемпотентна перевірка
   існування (SQLite-friendly, за зразком `20260721_06/07`)
-- [ ] write tests: створення витрати (квартирна й загальна `NULL`), дефолт
+- [x] write tests: створення витрати (квартирна й загальна `NULL`), дефолт
   `currency=UAH`, дефолт-генерація `restore_key`
-- [ ] write tests: `CheckConstraint` категорії відхиляє невалідне значення;
+- [x] write tests: `CheckConstraint` категорії відхиляє невалідне значення;
   unique `restore_key`; каскад видалення разом із квартирою — прямим
   `session.delete(apartment)` (soft-archive не тригерить каскад), із
   увімкненим SQLite `PRAGMA foreign_keys=ON` як у наявних cascade-тестах
-- [ ] run migration + tests — must pass before task 2
+- [x] run migration + tests — must pass before task 2
 
 ### Task 2: Схеми та CRUD-роутер витрат
 

@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-21 19:45] Task 1: модель Expense + міграція
+
+- `backend/app/models.py` — додано `ExpenseCategory(StrEnum)` (repair/tax/
+  insurance/commission/other) та модель `Expense` (nullable `apartment_id`
+  FK→apartments `ondelete=CASCADE`, `date`, `category` з `CheckConstraint`,
+  `amount Numeric(12,2)`, `currency String(3)` default `UAH`, `notes`,
+  стабільний unique `restore_key` за зразком `Service`); relationship
+  `Apartment.expenses` (cascade `all, delete-orphan`).
+- `backend/alembic/versions/20260721_08_add_expenses.py` — нова ревізія
+  (down_revision `20260721_07`): таблиця `expenses`, індекс `apartment_id`,
+  unique `restore_key`; ідемпотентна перевірка існування (SQLite-friendly).
+- `backend/tests/test_models.py` — тести створення квартирної/загальної
+  витрати, дефолт `currency=UAH`, генерація `restore_key`, `CheckConstraint`
+  категорії, unique `restore_key`, каскад видалення з квартирою; оновлено
+  очікуваний head-revision та перелік таблиць міграції.
+- Деплой: зміна містить міграцію БД — застосується автоматично при старті
+  backend (див. `docs/deploy.md`).
+
 ## [2026-07-21 19:31] План: P&L та розширена статистика (#7 + #10)
 
 - `docs/plans/20260721-pnl-and-stats-trends.md` — новий план реалізації ідеї

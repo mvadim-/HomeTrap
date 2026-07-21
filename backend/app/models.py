@@ -37,6 +37,14 @@ class InvoiceStatus(StrEnum):
     PAID = "paid"
 
 
+class ExpenseCategory(StrEnum):
+    REPAIR = "repair"
+    TAX = "tax"
+    INSURANCE = "insurance"
+    COMMISSION = "commission"
+    OTHER = "other"
+
+
 class Apartment(Base):
     __tablename__ = "apartments"
     __table_args__ = (
@@ -61,6 +69,10 @@ class Apartment(Base):
         cascade="all, delete-orphan",
     )
     tenants: Mapped[list[Tenant]] = relationship(
+        back_populates="apartment",
+        cascade="all, delete-orphan",
+    )
+    expenses: Mapped[list[Expense]] = relationship(
         back_populates="apartment",
         cascade="all, delete-orphan",
     )
@@ -240,6 +252,31 @@ class ExchangeRate(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
     currency: Mapped[str] = mapped_column(String(3))
     rate: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+
+
+class Expense(Base):
+    __tablename__ = "expenses"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('repair', 'tax', 'insurance', 'commission', 'other')",
+            name="ck_expenses_category",
+        ),
+        UniqueConstraint("restore_key", name="uq_expenses_restore_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    restore_key: Mapped[str] = mapped_column(String(32), default=lambda: uuid4().hex)
+    apartment_id: Mapped[int | None] = mapped_column(
+        ForeignKey("apartments.id", ondelete="CASCADE"),
+        index=True,
+    )
+    date: Mapped[date] = mapped_column(Date)
+    category: Mapped[str] = mapped_column(String(20))
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(3), default="UAH")
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    apartment: Mapped[Apartment | None] = relationship(back_populates="expenses")
 
 
 class RestoreAlias(Base):

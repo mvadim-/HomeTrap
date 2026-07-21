@@ -16,6 +16,8 @@ from app.main import create_app
 from app.models import (
     Apartment,
     ExchangeRate,
+    Expense,
+    ExpenseCategory,
     Invoice,
     InvoiceLine,
     InvoiceStatus,
@@ -135,6 +137,91 @@ def test_deleting_apartment_cascades_services_and_tariffs(db_session: Session) -
     assert db_session.scalar(select(func.count()).select_from(Apartment)) == 0
     assert db_session.scalar(select(func.count()).select_from(Service)) == 0
     assert db_session.scalar(select(func.count()).select_from(Tariff)) == 0
+
+
+def test_can_create_apartment_and_general_expense(db_session: Session) -> None:
+    apartment = make_apartment()
+    apartment_expense = Expense(
+        apartment=apartment,
+        date=date(2026, 7, 10),
+        category=ExpenseCategory.REPAIR.value,
+        amount=Decimal("1500.00"),
+        notes="Ремонт крана",
+    )
+    general_expense = Expense(
+        date=date(2026, 7, 5),
+        category=ExpenseCategory.TAX.value,
+        amount=Decimal("800.00"),
+    )
+    db_session.add_all([apartment_expense, general_expense])
+    db_session.commit()
+
+    assert apartment_expense.apartment is apartment
+    assert general_expense.apartment_id is None
+    assert apartment_expense.currency == "UAH"
+    assert general_expense.currency == "UAH"
+    assert len(apartment_expense.restore_key) == 32
+    assert general_expense.restore_key != apartment_expense.restore_key
+
+
+def test_expense_category_check_constraint_rejects_invalid(
+    db_session: Session,
+) -> None:
+    db_session.add(
+        Expense(
+            date=date(2026, 7, 10),
+            category="mortgage",
+            amount=Decimal("100.00"),
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_expense_restore_key_is_unique(db_session: Session) -> None:
+    db_session.add_all(
+        [
+            Expense(
+                restore_key="shared-key",
+                date=date(2026, 7, 10),
+                category=ExpenseCategory.OTHER.value,
+                amount=Decimal("50.00"),
+            ),
+            Expense(
+                restore_key="shared-key",
+                date=date(2026, 7, 11),
+                category=ExpenseCategory.OTHER.value,
+                amount=Decimal("60.00"),
+            ),
+        ]
+    )
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+
+def test_deleting_apartment_cascades_expenses(db_session: Session) -> None:
+    apartment = make_apartment()
+    apartment.expenses.append(
+        Expense(
+            date=date(2026, 7, 10),
+            category=ExpenseCategory.INSURANCE.value,
+            amount=Decimal("300.00"),
+        )
+    )
+    general_expense = Expense(
+        date=date(2026, 7, 5),
+        category=ExpenseCategory.TAX.value,
+        amount=Decimal("800.00"),
+    )
+    db_session.add_all([apartment, general_expense])
+    db_session.commit()
+
+    db_session.delete(apartment)
+    db_session.commit()
+
+    remaining = db_session.scalars(select(Expense)).all()
+    assert [expense.category for expense in remaining] == [ExpenseCategory.TAX.value]
+    assert remaining[0].apartment_id is None
 
 
 def test_can_create_tenant_with_nullable_contract_end(db_session: Session) -> None:
@@ -350,6 +437,7 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         "tenants",
         "tenant_attachments",
         "push_subscriptions",
+        "expenses",
     } <= table_names
     assert invoice_line_columns["service_kind"]["nullable"] is False
     assert "ck_invoice_lines_service_kind" in invoice_line_checks
@@ -411,7 +499,7 @@ def test_restore_key_migration_backfills_existing_duplicate_business_keys(
     assert len({row[0] for row in apartment_keys}) == 2
     assert len({row[0] for row in service_keys}) == 2
     assert all(len(row[0]) == 32 for row in apartment_keys + service_keys)
-    assert revision == ("20260721_07",)
+    assert revision == ("20260721_08",)
 
 
 def test_restore_key_migration_resumes_after_interrupted_column_add(
@@ -449,4 +537,4 @@ def test_restore_key_migration_resumes_after_interrupted_column_add(
     assert apartment_key is not None
     assert len(apartment_key[0]) == 32
     assert "restore_key" in service_columns
-    assert revision == ("20260721_07",)
+    assert revision == ("20260721_08",)
