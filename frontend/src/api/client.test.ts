@@ -1,6 +1,6 @@
 import { afterEach, vi } from "vitest";
 
-import { ApiError, browserNavigation, deleteInvoice, downloadBackup, getCurrentUser, importApartmentHistory, login, logout, restoreBackup, uploadTenantAttachments } from "./client";
+import { ApiError, browserNavigation, createExpense, deleteExpense, deleteInvoice, downloadBackup, getCurrentUser, getExpenses, getPnlStats, importApartmentHistory, login, logout, restoreBackup, updateExpense, uploadTenantAttachments } from "./client";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -104,6 +104,82 @@ describe("API transport", () => {
     expect(options.body).toBeInstanceOf(FormData);
     expect((options.body as FormData).get("file")).toBe(file);
     expect(options.headers).not.toHaveProperty("Content-Type");
+  });
+
+  it("serializes P&L stats period as a months query", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await getPnlStats(4, { months: 24 });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/stats/pnl?apartment_id=4&months=24");
+  });
+
+  it("omits the apartment id for a portfolio P&L request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await getPnlStats(undefined, { date_from: "2026-01-01", date_to: "2026-06-30" });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/stats/pnl?date_from=2026-01-01&date_to=2026-06-30",
+    );
+  });
+
+  it("builds expense list filters for apartment and date range", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await getExpenses({ apartmentId: 2, dateFrom: "2026-01-01", dateTo: "2026-03-31" });
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "/api/expenses?apartment_id=2&date_from=2026-01-01&date_to=2026-03-31",
+    );
+  });
+
+  it("requests all expenses without query when no filters are given", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await getExpenses();
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/expenses");
+  });
+
+  it("creates an expense with a JSON body", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createExpense({
+      apartment_id: 5,
+      date: "2026-07-10",
+      category: "repair",
+      amount: "1200.50",
+      currency: "UAH",
+      notes: null,
+    });
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/expenses");
+    expect(options.method).toBe("POST");
+    expect(JSON.parse(options.body as string)).toEqual({
+      apartment_id: 5,
+      date: "2026-07-10",
+      category: "repair",
+      amount: "1200.50",
+      currency: "UAH",
+      notes: null,
+    });
+  });
+
+  it("patches an expense by id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await updateExpense(9, { amount: "50.00", category: "tax" });
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/expenses/9");
+    expect(options.method).toBe("PATCH");
+    expect(JSON.parse(options.body as string)).toEqual({ amount: "50.00", category: "tax" });
+  });
+
+  it("deletes an expense by id", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(deleteExpense(9)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/expenses/9", expect.objectContaining({
+      method: "DELETE",
+      credentials: "include",
+    }));
   });
 
   it("surfaces restore API validation errors", async () => {

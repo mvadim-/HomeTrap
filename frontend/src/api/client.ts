@@ -139,6 +139,13 @@ export interface UpcomingBillingItem {
 export interface ConsumptionPoint {
   period: string;
   consumed: string;
+  cost: string;
+}
+
+export interface ConsumptionSummary {
+  avg: string;
+  min: string;
+  max: string;
 }
 
 export interface ConsumptionSeries {
@@ -146,6 +153,7 @@ export interface ConsumptionSeries {
   service_name: string;
   unit: string | null;
   values: ConsumptionPoint[];
+  summary: ConsumptionSummary;
 }
 
 export interface ConsumptionStats {
@@ -181,6 +189,58 @@ export interface IncomeStats {
     share_percent: string;
     peak_period: string;
   } | null;
+}
+
+export type ExpenseCategory = "repair" | "tax" | "insurance" | "commission" | "other";
+
+export interface Expense {
+  id: number;
+  apartment_id: number | null;
+  date: string;
+  category: ExpenseCategory;
+  amount: string;
+  currency: string;
+  notes: string | null;
+}
+
+export interface ExpenseCreatePayload {
+  apartment_id?: number | null;
+  date: string;
+  category: ExpenseCategory;
+  amount: string;
+  currency?: string;
+  notes?: string | null;
+}
+
+export type ExpenseUpdatePayload = Partial<ExpenseCreatePayload>;
+
+export interface PnlPoint {
+  period: string;
+  income: string;
+  expenses: string;
+  net: string;
+}
+
+export interface PnlTotals {
+  income: string;
+  expenses_total: string;
+  expenses_by_category: Record<string, string>;
+  net: string;
+  margin_percent: string | null;
+}
+
+export interface PnlUnconverted {
+  count: number;
+  by_currency: Record<string, string>;
+}
+
+export interface PnlStats {
+  scope: "apartment" | "portfolio";
+  apartment_id: number | null;
+  months: number | null;
+  values: PnlPoint[];
+  totals: PnlTotals;
+  unconverted: PnlUnconverted;
 }
 
 export interface NotificationSettings {
@@ -380,6 +440,45 @@ export function getIncomeStats(
   if (apartmentId) query.set("apartment_id", String(apartmentId));
   addStatsPeriod(query, period);
   return request<IncomeStats>(`/api/stats/income?${query.toString()}`);
+}
+
+export function getPnlStats(
+  apartmentId?: number,
+  period: StatsPeriod = { months: 12 },
+): Promise<PnlStats> {
+  const query = new URLSearchParams();
+  if (apartmentId) query.set("apartment_id", String(apartmentId));
+  addStatsPeriod(query, period);
+  return request<PnlStats>(`/api/stats/pnl?${query.toString()}`);
+}
+
+export function getExpenses(
+  filters: { apartmentId?: number; dateFrom?: string; dateTo?: string } = {},
+): Promise<Expense[]> {
+  const query = new URLSearchParams();
+  if (filters.apartmentId) query.set("apartment_id", String(filters.apartmentId));
+  if (filters.dateFrom) query.set("date_from", filters.dateFrom);
+  if (filters.dateTo) query.set("date_to", filters.dateTo);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return request<Expense[]>(`/api/expenses${suffix}`);
+}
+
+export function createExpense(payload: ExpenseCreatePayload): Promise<Expense> {
+  return request<Expense>("/api/expenses", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateExpense(id: number, payload: ExpenseUpdatePayload): Promise<Expense> {
+  return request<Expense>(`/api/expenses/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteExpense(id: number): Promise<void> {
+  return request<void>(`/api/expenses/${id}`, { method: "DELETE" });
 }
 
 export function getApartments(): Promise<Apartment[]> {

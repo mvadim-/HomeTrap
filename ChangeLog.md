@@ -1,5 +1,24 @@
 # ChangeLog
 
+## [2026-07-21 21:35] Task 6: Клієнтські типи й функції API
+
+- `frontend/src/api/client.ts` — додано типи `ExpenseCategory`, `Expense`,
+  `ExpenseCreatePayload`/`ExpenseUpdatePayload`, `PnlStats` (+`PnlPoint`,
+  `PnlTotals`, `PnlUnconverted`); грошові поля — рядки, `margin_percent`
+  nullable, `expenses_by_category`/`by_currency` як `Record<string,string>`.
+  Розширено `ConsumptionPoint` полем `cost` і `ConsumptionSeries` полем
+  `summary` (новий тип `ConsumptionSummary` avg/min/max). Нові функції
+  `getPnlStats` (перевикористовує `addStatsPeriod`, як `getIncomeStats`),
+  `getExpenses` (фільтри apartmentId/dateFrom/dateTo), `createExpense` (POST),
+  `updateExpense` (PATCH), `deleteExpense` (DELETE) — URL/verb за роутером
+  бекенда `/api/expenses`, `/api/stats/pnl`.
+- `frontend/src/api/client.test.ts` — нові тести форми запитів: серіалізація
+  періоду P&L (months / date range), пропуск `apartment_id` для портфеля,
+  фільтри списку витрат (+без фільтрів), тіла create/update, delete 204.
+- `frontend/src/pages/Stats.test.tsx` — оновлено фікстури `getConsumptionStats`
+  (нові обов'язкові поля `cost`/`summary`), щоб tsc-збірка проходила
+  (тести Stats — у межах Task 8/9). [decision]
+
 ## [2026-07-21 21:10] Task 5: Покриття Expense у backup/restore
 
 - `backend/app/services/restore.py` — додано `Expense` до `ENTITY_NAMES` та

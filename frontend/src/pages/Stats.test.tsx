@@ -109,9 +109,10 @@ describe("Stats", () => {
         service_name,
         unit: index === 0 ? "м³" : "кВт·год",
         values: [
-          { period: "2026-05-01", consumed: String(10 + index) },
-          { period: "2026-06-01", consumed: String(12 + index) },
+          { period: "2026-05-01", consumed: String(10 + index), cost: "0" },
+          { period: "2026-06-01", consumed: String(12 + index), cost: "0" },
         ],
+        summary: { avg: String(11 + index), min: String(10 + index), max: String(12 + index) },
       })),
     });
     const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
@@ -174,9 +175,10 @@ describe("Stats", () => {
         service_name: "Газ",
         unit: "м³",
         values: [
-          { period: "2025-09-01", consumed: "12" },
-          { period: "2025-11-01", consumed: "18" },
+          { period: "2025-09-01", consumed: "12", cost: "0" },
+          { period: "2025-11-01", consumed: "18", cost: "0" },
         ],
+        summary: { avg: "15", min: "12", max: "18" },
       }],
     });
     vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
@@ -371,7 +373,8 @@ describe("Stats", () => {
         service_id: 1,
         service_name: "Газ",
         unit: "м³",
-        values: [{ period: "2026-01-01", consumed: "10" }],
+        values: [{ period: "2026-01-01", consumed: "10", cost: "0" }],
+        summary: { avg: "10", min: "10", max: "10" },
       }],
     }));
 
@@ -397,7 +400,8 @@ describe("Stats", () => {
         service_id: 1,
         service_name: "Газ",
         unit: "м³",
-        values: [{ period: "2026-01-01", consumed: "10" }],
+        values: [{ period: "2026-01-01", consumed: "10", cost: "0" }],
+        summary: { avg: "10", min: "10", max: "10" },
       }],
     });
     vi.spyOn(apiClient, "getIncomeStats").mockRejectedValue(new Error("offline"));
@@ -517,7 +521,7 @@ describe("Stats", () => {
     const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
       apartment_id: 1,
       months: null,
-      series: [{ service_id: 1, service_name: "Газ", unit: "м³", values: [{ period: "2025-06-01", consumed: "12" }] }],
+      series: [{ service_id: 1, service_name: "Газ", unit: "м³", values: [{ period: "2025-06-01", consumed: "12", cost: "0" }], summary: { avg: "12", min: "12", max: "12" } }],
     });
     const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
       scope: "portfolio",
@@ -559,7 +563,7 @@ describe("Stats", () => {
     const getConsumptionStats = vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
       apartment_id: 1,
       months: null,
-      series: [{ service_id: 1, service_name: "Газ", unit: "м³", values: [{ period: "2027-02-01", consumed: "12" }] }],
+      series: [{ service_id: 1, service_name: "Газ", unit: "м³", values: [{ period: "2027-02-01", consumed: "12", cost: "0" }], summary: { avg: "12", min: "12", max: "12" } }],
     });
     const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve({
       ...incomeStats(apartmentId),

@@ -285,12 +285,12 @@
 - Modify: `frontend/src/api/client.ts`
 - Modify: `frontend/src/api/client.test.ts`
 
-- [ ] типи `Expense`, `ExpenseCategory`, `PnlStats`; розширити
+- [x] типи `Expense`, `ExpenseCategory`, `PnlStats`; розширити
   `ConsumptionSeries`/`ConsumptionPoint` полями `cost`/`summary`
-- [ ] функції `getExpenses`/`createExpense`/`updateExpense`/`deleteExpense`,
+- [x] функції `getExpenses`/`createExpense`/`updateExpense`/`deleteExpense`,
   `getPnlStats` (перевикористати `addStatsPeriod`)
-- [ ] write tests: форма URL/тіла запитів для нових функцій (фільтри, період)
-- [ ] run tests — must pass before task 7
+- [x] write tests: форма URL/тіла запитів для нових функцій (фільтри, період)
+- [x] run tests — must pass before task 7
 
 ### Task 7: Сторінка CRUD витрат
 
