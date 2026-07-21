@@ -347,18 +347,18 @@
 - [x] run tests — must pass before task 10
 
 ### Task 10: Verify acceptance criteria
-- [ ] verify all requirements from Overview are implemented (CRUD витрат;
+- [x] verify all requirements from Overview are implemented (CRUD витрат;
   P&L дохід/витрати/чистий/маржа по квартирі та портфелю; YoY, дельта,
   avg/min/max, вартість спожитого; backup/restore покриття)
-- [ ] verify edge cases: дохід=0 (маржа null), витрати без курсу
+- [x] verify edge cases: дохід=0 (маржа null), витрати без курсу
   (unconverted), порожні періоди, видалення квартири з витратами, загальні
   витрати (`NULL`)
-- [ ] run full backend suite: `docker compose -f docker/docker-compose.dev.yml
-  run --rm backend pytest` + `ruff check .`
-- [ ] run full frontend suite: `docker compose -f docker/docker-compose.dev.yml
-  run --rm frontend npm test`
-- [ ] verify frontend build: `docker compose -f docker/docker-compose.dev.yml
-  run --rm frontend npm run build`
+- [x] run full backend suite: `docker compose -f docker/docker-compose.dev.yml
+  run --rm backend pytest` + `ruff check .` — **222 passed**, ruff: all checks passed
+- [x] run full frontend suite: `docker compose -f docker/docker-compose.dev.yml
+  run --rm frontend npm test` — **193 passed** (20 files)
+- [x] verify frontend build: `docker compose -f docker/docker-compose.dev.yml
+  run --rm frontend npm run build` — **built OK** (tsc -b && vite build)
 
 ### Task 11: [Final] Update documentation
 - [ ] додати запис у `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, зачеплені
