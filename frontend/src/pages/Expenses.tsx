@@ -3,6 +3,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import {
   ApiError,
   Apartment,
+  EXPENSE_CATEGORY_LABELS,
   Expense,
   ExpenseCategory,
   ExpenseCreatePayload,
@@ -15,17 +16,8 @@ import {
 import { formatDate } from "../utils/format";
 import "./portal.css";
 
-const CATEGORY_OPTIONS: { value: ExpenseCategory; label: string }[] = [
-  { value: "repair", label: "Ремонт" },
-  { value: "tax", label: "Податок" },
-  { value: "insurance", label: "Страхування" },
-  { value: "commission", label: "Комісія" },
-  { value: "other", label: "Інше" },
-];
-
-const CATEGORY_LABELS = Object.fromEntries(
-  CATEGORY_OPTIONS.map((option) => [option.value, option.label]),
-) as Record<ExpenseCategory, string>;
+const CATEGORY_OPTIONS = (Object.entries(EXPENSE_CATEGORY_LABELS) as [ExpenseCategory, string][])
+  .map(([value, label]) => ({ value, label }));
 
 interface ExpenseForm {
   apartmentId: string;
@@ -144,7 +136,7 @@ export function Expenses() {
           <label>Дата<input required type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
           <label>Категорія<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as ExpenseCategory })}>{CATEGORY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label>Сума<input required min="0" step="0.01" type="number" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></label>
-          <label>Валюта<input required value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} /></label>
+          <label>Валюта<input required maxLength={3} value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })} /></label>
           <label>Нотатки<input value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
           <div className="form-actions"><button className="button" type="submit">Зберегти</button><button className="secondary-button" type="button" onClick={() => setShowForm(false)}>Скасувати</button></div>
         </form>
@@ -159,7 +151,7 @@ export function Expenses() {
                   <tr key={expense.id}>
                     <td>{formatDate(expense.date)}</td>
                     <td>{apartmentLabel(expense.apartment_id)}</td>
-                    <td>{CATEGORY_LABELS[expense.category] ?? expense.category}</td>
+                    <td>{EXPENSE_CATEGORY_LABELS[expense.category] ?? expense.category}</td>
                     <td><strong>{formatAmount(expense.amount, expense.currency)}</strong></td>
                     <td>{expense.notes ?? "—"}</td>
                     <td>

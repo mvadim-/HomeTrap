@@ -250,6 +250,7 @@ def pnl_stats(
 
     income_query = select(Invoice.period, Invoice.rent_amount_uah).where(
         Invoice.status.in_([InvoiceStatus.ISSUED.value, InvoiceStatus.PAID.value]),
+        Invoice.period <= _month_start(_today()),
         Invoice.period <= period_end,
     )
     if period_start is not None:

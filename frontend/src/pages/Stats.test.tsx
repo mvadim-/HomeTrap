@@ -1363,6 +1363,100 @@ describe("Stats", () => {
 
     expect(within(heading).getByText("₴")).toBeInTheDocument();
     expect(within(heading).getByText("280")).toBeInTheDocument();
-    expect(await screen.findByLabelText("Зведення споживання: Газ")).toHaveTextContent("280 ₴");
+    const costSummary = await screen.findByLabelText("Зведення споживання: Газ");
+    // avg = (190 + 280) / 2 = 235, min = 190, max = 280 (computed from cost).
+    expect(costSummary).toHaveTextContent("235 ₴");
+    expect(costSummary).toHaveTextContent("190 ₴");
+    expect(costSummary).toHaveTextContent("280 ₴");
+  });
+
+  it("shows a year-over-year delta badge for the same month last year", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: null,
+      series: [{
+        service_id: 1,
+        service_name: "Газ",
+        unit: "м³",
+        values: [
+          { period: "2024-06-01", consumed: "10", cost: "200" },
+          { period: "2025-06-01", consumed: "14", cost: "280" },
+        ],
+        summary: { avg: "12", min: "10", max: "14" },
+      }],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+
+    await user.click(screen.getByRole("button", { name: "Довільний період" }));
+    fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2024-01" } });
+    fireEvent.change(screen.getByLabelText("Період до"), { target: { value: "2025-12" } });
+
+    const gasCard = (await screen.findByRole("img", { name: "Графік споживання: Газ" })).closest("article") as HTMLElement;
+    // Current 2025-06 (14) vs same month last year 2024-06 (10) = +40%.
+    expect(within(gasCard).getByLabelText("Рік до року: зростання на 40%")).toBeInTheDocument();
+  });
+
+  it("shows a downward delta and omits it when the previous month is zero", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: 12,
+      series: [
+        {
+          service_id: 1,
+          service_name: "Газ",
+          unit: "м³",
+          values: [
+            { period: "2026-05-01", consumed: "15", cost: "0" },
+            { period: "2026-06-01", consumed: "12", cost: "0" },
+          ],
+          summary: { avg: "13.5", min: "12", max: "15" },
+        },
+        {
+          service_id: 2,
+          service_name: "Вода",
+          unit: "м³",
+          values: [
+            { period: "2026-05-01", consumed: "0", cost: "0" },
+            { period: "2026-06-01", consumed: "9", cost: "0" },
+          ],
+          summary: { avg: "4.5", min: "0", max: "9" },
+        },
+      ],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+
+    // 15 -> 12 = -20% downward badge.
+    const gasCard = (await screen.findByRole("img", { name: "Графік споживання: Газ" })).closest("article") as HTMLElement;
+    const downBadge = within(gasCard).getByLabelText("До попереднього місяця: зниження на 20%");
+    expect(downBadge).toBeInTheDocument();
+    expect(downBadge).toHaveClass("consumption-delta-down");
+
+    // Previous month is zero -> divide-by-zero guard suppresses the badge.
+    const waterCard = screen.getByRole("img", { name: "Графік споживання: Вода" }).closest("article") as HTMLElement;
+    expect(within(waterCard).queryByLabelText(/До попереднього місяця/)).not.toBeInTheDocument();
+  });
+
+  it("shows an error banner when P&L fails to load", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+    vi.spyOn(apiClient, "getPnlStats").mockRejectedValue(new Error("offline"));
+
+    renderStats();
+
+    expect(await screen.findByText("Не вдалося завантажити P&L.")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Графік P&L/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Підсумки P&L")).not.toBeInTheDocument();
   });
 });

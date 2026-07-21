@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   Apartment,
   ConsumptionSeries,
+  EXPENSE_CATEGORY_LABELS,
   ExpenseCategory,
   IncomeStats,
   PnlStats,
@@ -43,13 +44,6 @@ const KYIV_MONTH_FORMATTER = new Intl.DateTimeFormat("en", {
 const NUMBER_FORMATTERS = [0, 1, 2].map((maximumFractionDigits) => (
   new Intl.NumberFormat("uk-UA", { maximumFractionDigits })
 ));
-const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
-  repair: "Ремонт",
-  tax: "Податок",
-  insurance: "Страхування",
-  commission: "Комісія",
-  other: "Інше",
-};
 const PERIOD_MODES = ["6", "12", "24", "all", "custom"] as const;
 type PeriodMode = typeof PERIOD_MODES[number];
 type StatsFilters = {
@@ -764,6 +758,7 @@ export function Stats() {
   const chartPeriods = chartMonthPeriods(statsPeriod, [
     ...(consumption?.flatMap((series) => series.values.map((point) => point.period)) ?? []),
     ...(income?.values.map((point) => point.period) ?? []),
+    ...(pnl?.values.map((point) => point.period) ?? []),
   ]);
   const tenantStarts: TenantStartMarker[] = scope === "apartment"
     ? tenants.map((tenant) => ({

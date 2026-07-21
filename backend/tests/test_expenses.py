@@ -173,6 +173,62 @@ async def test_expense_filters_by_apartment_and_dates(tmp_path) -> None:
         await _close_client(lifespan, client)
 
 
+async def test_expense_patch_apartment_and_currency(tmp_path) -> None:
+    lifespan, client = await _create_client(tmp_path)
+    try:
+        first = await _create_apartment(client, "Квартира 1")
+        second = await _create_apartment(client, "Квартира 2")
+
+        created = await client.post(
+            "/api/expenses",
+            json=_expense_payload(apartment_id=first["id"]),
+        )
+        expense_id = created.json()["id"]
+
+        # Move to a different valid apartment.
+        moved = await client.patch(
+            f"/api/expenses/{expense_id}",
+            json={"apartment_id": second["id"]},
+        )
+        assert moved.status_code == 200
+        assert moved.json()["apartment_id"] == second["id"]
+
+        # Reset apartment_id back to null (general expense).
+        generalized = await client.patch(
+            f"/api/expenses/{expense_id}",
+            json={"apartment_id": None},
+        )
+        assert generalized.status_code == 200
+        assert generalized.json()["apartment_id"] is None
+
+        # Currency is normalized on update (ExpenseUpdate.validate_currency).
+        normalized = await client.patch(
+            f"/api/expenses/{expense_id}",
+            json={"currency": "usd"},
+        )
+        assert normalized.status_code == 200
+        assert normalized.json()["currency"] == "USD"
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_expense_date_to_filter_is_inclusive(tmp_path) -> None:
+    lifespan, client = await _create_client(tmp_path)
+    try:
+        await client.post("/api/expenses", json=_expense_payload(date="2026-02-28"))
+        await client.post("/api/expenses", json=_expense_payload(date="2026-03-01"))
+
+        # The upper bound is inclusive: an expense dated exactly on date_to is kept.
+        boundary = await client.get(
+            "/api/expenses",
+            params={"date_from": "2026-02-01", "date_to": "2026-02-28"},
+        )
+        assert boundary.status_code == 200
+        assert sorted(row["date"] for row in boundary.json()) == ["2026-02-28"]
+    finally:
+        await _close_client(lifespan, client)
+
+
 async def test_expense_validation_errors(tmp_path) -> None:
     lifespan, client = await _create_client(tmp_path)
     try:

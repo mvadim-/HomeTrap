@@ -193,6 +193,14 @@ export interface IncomeStats {
 
 export type ExpenseCategory = "repair" | "tax" | "insurance" | "commission" | "other";
 
+export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+  repair: "Ремонт",
+  tax: "Податок",
+  insurance: "Страхування",
+  commission: "Комісія",
+  other: "Інше",
+};
+
 export interface Expense {
   id: number;
   apartment_id: number | null;

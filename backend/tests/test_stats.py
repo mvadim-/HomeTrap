@@ -418,6 +418,77 @@ async def test_pnl_not_found_and_auth(tmp_path) -> None:
         await _close(lifespan, client)
 
 
+async def test_pnl_all_time_and_future_custom_range(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        first_id, _, _ = _seed_stats(application)
+        current = _today().replace(day=1)
+        future = _shift_month(current, 3)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            session.add_all(
+                [
+                    Expense(
+                        apartment_id=first_id,
+                        date=current,
+                        category="repair",
+                        amount=Decimal("100.00"),
+                        currency="UAH",
+                    ),
+                    # Future-dated expense, 3 months ahead of the current month.
+                    Expense(
+                        apartment_id=first_id,
+                        date=future,
+                        category="tax",
+                        amount=Decimal("70.00"),
+                        currency="UAH",
+                    ),
+                ]
+            )
+            session.commit()
+        engine.dispose()
+
+        # all_time upper bound = first day of the month AFTER the current month,
+        # so the future expense (3 months ahead) is excluded.
+        all_time = await client.get(
+            "/api/stats/pnl",
+            params={"apartment_id": first_id, "all_time": "true"},
+        )
+        assert all_time.status_code == 200
+        payload = all_time.json()
+        assert payload["months"] is None
+        assert payload["totals"]["expenses_total"] == "100.00"
+        assert payload["totals"]["expenses_by_category"] == {"repair": "100.00"}
+        assert future.isoformat() not in [row["period"] for row in payload["values"]]
+
+        # A custom range whose date_to reaches the future month includes that
+        # expense, while income stays capped at the current month.
+        custom = await client.get(
+            "/api/stats/pnl",
+            params={
+                "apartment_id": first_id,
+                "date_from": current.isoformat(),
+                "date_to": future.isoformat(),
+            },
+        )
+        assert custom.status_code == 200
+        payload = custom.json()
+        assert payload["months"] is None
+        assert payload["totals"]["expenses_total"] == "170.00"
+        assert payload["totals"]["expenses_by_category"] == {
+            "repair": "100.00",
+            "tax": "70.00",
+        }
+        future_point = next(
+            row for row in payload["values"] if row["period"] == future.isoformat()
+        )
+        assert future_point["income"] == "0.00"
+        assert future_point["expenses"] == "70.00"
+        assert future_point["net"] == "-70.00"
+    finally:
+        await _close(lifespan, client)
+
+
 async def test_consumption_groups_metered_services_by_month(tmp_path) -> None:
     application, lifespan, client = await _client(tmp_path)
     try:
