@@ -140,11 +140,11 @@
 - Modify: `backend/app/routers/settings.py`
 - Modify: `backend/tests/test_settings.py` (або новий тест-файл роутера)
 
-- [ ] `GET /api/settings/backup`: admin-only; віддає `.zip`
+- [x] `GET /api/settings/backup`: admin-only; віддає `.zip`
       (`hometrap-backup-<ts>.zip`) стрімом; temp прибирається після віддачі
-- [ ] вміст не логувати
-- [ ] тести: 200 + валідний zip для admin; 401/403 без автентифікації
-- [ ] запустити тести — мають пройти перед наступною задачею
+- [x] вміст не логувати
+- [x] тести: 200 + валідний zip для admin; 401/403 без автентифікації
+- [x] запустити тести — мають пройти перед наступною задачею
 
 ### Task 3: Рушій імпорту (upsert-missing за ключем) + валідація manifest
 

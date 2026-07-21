@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from app.auth import get_db, require_auth
 from app.schemas import NotificationSettings, NotificationTestResponse
+from app.services.backup import build_backup
 from app.services.notify import (
     build_senders,
     get_notification_settings,
@@ -15,6 +20,20 @@ router = APIRouter(
     tags=["settings"],
     dependencies=[Depends(require_auth)],
 )
+
+
+@router.get("/backup", response_class=FileResponse)
+def download_backup(request: Request) -> FileResponse:
+    settings = request.app.state.settings
+    backup_context = build_backup(settings.database_path, settings.uploads_dir)
+    backup_path = backup_context.__enter__()
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return FileResponse(
+        backup_path,
+        media_type="application/zip",
+        filename=f"hometrap-backup-{timestamp}.zip",
+        background=BackgroundTask(backup_context.__exit__, None, None, None),
+    )
 
 
 @router.get("", response_model=NotificationSettings)
