@@ -196,15 +196,24 @@ def require_auth(
     request: Request,
     session: Session = Depends(get_db),
 ) -> User:
-    cookie_value = request.cookies.get(SESSION_COOKIE_NAME)
-    settings: Settings = request.app.state.settings
-    user_id = (
-        _decode_session(cookie_value, settings.secret_key) if cookie_value else None
-    )
-    user = session.get(User, user_id) if user_id is not None else None
+    user = authenticated_user(request, session)
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
     return user
+
+
+def authenticated_user(request: Request, session: Session) -> User | None:
+    cookie_value = request.cookies.get(SESSION_COOKIE_NAME)
+    settings: Settings = request.app.state.settings
+    user_id = (
+        _decode_session(cookie_value, settings.secret_key) if cookie_value else None
+    )
+    return session.get(User, user_id) if user_id is not None else None
+
+
+def is_authenticated(request: Request) -> bool:
+    with request.app.state.session_factory() as session:
+        return authenticated_user(request, session) is not None

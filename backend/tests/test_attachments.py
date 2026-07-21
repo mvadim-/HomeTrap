@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 
 import pytest
@@ -5,13 +6,21 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.db import create_database_engine, create_session_factory
 from app.main import create_app
+from app.models import Tenant
 from app.routers import tenants as tenants_router
 from app.services.storage import (
     attachment_path,
     pending_tenant_file_deletions,
+    recover_tenant_file_deletions,
     save_attachment,
+    stage_tenant_files,
 )
+
+
+def test_attachment_upload_handler_runs_in_fastapi_threadpool() -> None:
+    assert not inspect.iscoroutinefunction(tenants_router.upload_attachments)
 
 
 async def _create_client(tmp_path):
@@ -89,7 +98,9 @@ async def test_upload_download_and_delete_attachments(tmp_path) -> None:
             "contract.pdf",
         ]
         assert [item["size_bytes"] for item in attachments] == [12, 11]
-        stored_files = sorted((settings.uploads_dir / "tenants" / str(tenant["id"])).iterdir())
+        stored_files = sorted(
+            (settings.uploads_dir / "tenants" / str(tenant["id"])).iterdir()
+        )
         assert {path.suffix for path in stored_files} == {".jpg", ".pdf"}
 
         listed = await client.get(f"/api/tenants/{tenant['id']}/attachments")
@@ -117,7 +128,9 @@ async def test_upload_download_and_delete_attachments(tmp_path) -> None:
 
         deleted = await client.delete(f"/api/attachments/{attachments[0]['id']}")
         assert deleted.status_code == 204
-        assert (await client.get(f"/api/attachments/{attachments[0]['id']}")).status_code == 404
+        assert (
+            await client.get(f"/api/attachments/{attachments[0]['id']}")
+        ).status_code == 404
         assert not any(path.suffix == ".jpg" for path in stored_files if path.exists())
     finally:
         await _close_client(lifespan, client)
@@ -252,7 +265,9 @@ async def test_delete_commit_failure_preserves_metadata_and_files(
         monkeypatch.setattr(Session, "commit", original_commit)
 
         assert path.is_file()
-        assert (await client.get(f"/api/tenants/{tenant['id']}/attachments")).status_code == 200
+        assert (
+            await client.get(f"/api/tenants/{tenant['id']}/attachments")
+        ).status_code == 200
     finally:
         await _close_client(lifespan, client)
 
@@ -300,6 +315,65 @@ async def test_tenant_delete_cleanup_failure_can_be_retried(
         assert (
             await client.get(f"/api/tenants/{tenant['id']}/attachments")
         ).status_code == 404
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_startup_recovery_restores_files_when_tenant_delete_did_not_commit(
+    tmp_path,
+) -> None:
+    lifespan, client, settings = await _create_client(tmp_path)
+    try:
+        tenant = await _create_tenant(client)
+        upload = await client.post(
+            f"/api/tenants/{tenant['id']}/attachments",
+            files={"files": ("contract.pdf", b"pdf-content", "application/pdf")},
+        )
+        assert upload.status_code == 201
+        staged = stage_tenant_files(settings.uploads_dir, tenant["id"])
+        assert staged is not None
+        assert not (settings.uploads_dir / "tenants" / str(tenant["id"])).exists()
+
+        engine = create_database_engine(settings.database_path)
+        recover_tenant_file_deletions(
+            settings.uploads_dir,
+            create_session_factory(engine),
+        )
+        engine.dispose()
+
+        restored = settings.uploads_dir / "tenants" / str(tenant["id"])
+        assert next(restored.iterdir()).read_bytes() == b"pdf-content"
+        assert not (settings.uploads_dir / ".deleting").exists()
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_startup_recovery_finishes_files_when_tenant_delete_committed(
+    tmp_path,
+) -> None:
+    lifespan, client, settings = await _create_client(tmp_path)
+    try:
+        tenant = await _create_tenant(client)
+        upload = await client.post(
+            f"/api/tenants/{tenant['id']}/attachments",
+            files={"files": ("contract.pdf", b"pdf-content", "application/pdf")},
+        )
+        assert upload.status_code == 201
+        staged = stage_tenant_files(settings.uploads_dir, tenant["id"])
+        assert staged is not None
+        engine = create_database_engine(settings.database_path)
+        session_factory = create_session_factory(engine)
+        with session_factory() as session:
+            live_tenant = session.get(Tenant, tenant["id"])
+            assert live_tenant is not None
+            session.delete(live_tenant)
+            session.commit()
+
+        recover_tenant_file_deletions(settings.uploads_dir, session_factory)
+        engine.dispose()
+
+        assert not staged.exists()
+        assert not (settings.uploads_dir / ".deleting").exists()
     finally:
         await _close_client(lifespan, client)
 

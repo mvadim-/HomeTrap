@@ -11,6 +11,7 @@ from app.schemas import (
     VapidPublicKeyResponse,
 )
 from app.services.push import get_vapid_public_key
+from app.services.storage import coordinated_write
 
 router = APIRouter(
     prefix="/api/push",
@@ -20,6 +21,7 @@ router = APIRouter(
 
 
 @router.get("/public-key", response_model=VapidPublicKeyResponse)
+@coordinated_write
 def public_key(session: Session = Depends(get_db)) -> dict[str, str]:
     return {"public_key": get_vapid_public_key(session)}
 
@@ -29,6 +31,7 @@ def public_key(session: Session = Depends(get_db)) -> dict[str, str]:
     response_model=PushSubscriptionResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@coordinated_write
 def upsert_subscription(
     payload: PushSubscriptionCreate,
     session: Session = Depends(get_db),
@@ -52,6 +55,7 @@ def upsert_subscription(
 
 
 @router.delete("/subscriptions", status_code=status.HTTP_204_NO_CONTENT)
+@coordinated_write
 def delete_subscription(
     payload: PushSubscriptionDelete,
     session: Session = Depends(get_db),

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import get_db, require_auth
-from app.models import Apartment, InvoiceLine, Service, Tariff
+from app.models import Apartment, InvoiceLine, RestoreAlias, Service, Tariff
 from app.schemas import (
     ServiceCreate,
     ServiceResponse,
@@ -12,6 +12,7 @@ from app.schemas import (
     TariffCreate,
     TariffResponse,
 )
+from app.services.storage import coordinated_write
 
 router = APIRouter(tags=["services"], dependencies=[Depends(require_auth)])
 
@@ -73,6 +74,7 @@ def list_services(
     response_model=ServiceResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@coordinated_write
 def create_service(
     apartment_id: int,
     payload: ServiceCreate,
@@ -101,6 +103,7 @@ def get_service(
     "/api/apartments/{apartment_id}/services/{service_id}",
     response_model=ServiceResponse,
 )
+@coordinated_write
 def update_service(
     apartment_id: int,
     service_id: int,
@@ -118,6 +121,7 @@ def update_service(
     "/api/apartments/{apartment_id}/services/{service_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
+@coordinated_write
 def delete_service(
     apartment_id: int,
     service_id: int,
@@ -134,6 +138,12 @@ def delete_service(
             status_code=status.HTTP_409_CONFLICT,
             detail="Service is used by invoices and can only be deactivated",
         )
+    session.execute(
+        delete(RestoreAlias).where(
+            RestoreAlias.entity_type == "service",
+            RestoreAlias.target_restore_key == service.restore_key,
+        )
+    )
     session.delete(service)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -162,6 +172,7 @@ def list_tariffs(
     response_model=TariffResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@coordinated_write
 def create_tariff(
     service_id: int,
     payload: TariffCreate,

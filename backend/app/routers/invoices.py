@@ -20,6 +20,7 @@ from app.services.billing import (
     update_draft,
 )
 from app.services.nbu import NbuRateUnavailable, get_rate
+from app.services.storage import coordinated_write
 
 router = APIRouter(tags=["invoices"], dependencies=[Depends(require_auth)])
 
@@ -37,6 +38,7 @@ def _billing_http_error(error: BillingError) -> HTTPException:
     response_model=InvoiceResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@coordinated_write
 def create_invoice(
     apartment_id: int,
     payload: InvoiceCreate,
@@ -62,6 +64,7 @@ def create_invoice(
 
 
 @router.put("/api/invoices/{invoice_id}", response_model=InvoiceResponse)
+@coordinated_write
 def update_invoice(
     invoice_id: int,
     payload: InvoiceUpdate,
@@ -80,6 +83,7 @@ def update_invoice(
 
 
 @router.delete("/api/invoices/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
+@coordinated_write
 def delete_invoice(
     invoice_id: int,
     session: Session = Depends(get_db),
@@ -113,6 +117,7 @@ def invoice_detail(
 
 
 @router.post("/api/invoices/{invoice_id}/{action}", response_model=InvoiceResponse)
+@coordinated_write
 def change_invoice_status(
     invoice_id: int,
     action: str,

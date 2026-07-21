@@ -1,6 +1,10 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
+import sqlite3
 
+from alembic import command
+from alembic.config import Config
 import pytest
 from sqlalchemy import delete, func, inspect, select
 from sqlalchemy.exc import IntegrityError
@@ -302,7 +306,8 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
     try:
         table_names = set(inspect(engine).get_table_names())
         invoice_line_columns = {
-            column["name"]: column for column in inspect(engine).get_columns("invoice_lines")
+            column["name"]: column
+            for column in inspect(engine).get_columns("invoice_lines")
         }
         invoice_line_checks = {
             constraint["name"]
@@ -318,6 +323,17 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         push_unique_constraints = inspect(engine).get_unique_constraints(
             "push_subscriptions"
         )
+        apartment_columns = {
+            column["name"]: column
+            for column in inspect(engine).get_columns("apartments")
+        }
+        service_columns = {
+            column["name"]: column for column in inspect(engine).get_columns("services")
+        }
+        apartment_unique_constraints = inspect(engine).get_unique_constraints(
+            "apartments"
+        )
+        service_unique_constraints = inspect(engine).get_unique_constraints("services")
     finally:
         engine.dispose()
 
@@ -343,3 +359,56 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         constraint["column_names"] == ["endpoint"]
         for constraint in push_unique_constraints
     )
+    assert apartment_columns["restore_key"]["nullable"] is False
+    assert service_columns["restore_key"]["nullable"] is False
+    assert any(
+        constraint["column_names"] == ["restore_key"]
+        for constraint in apartment_unique_constraints
+    )
+    assert any(
+        constraint["column_names"] == ["restore_key"]
+        for constraint in service_unique_constraints
+    )
+
+
+def test_restore_key_migration_backfills_existing_duplicate_business_keys(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "pre-restore-keys.db"
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(backend_dir / "alembic.ini")
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{database_path}")
+    command.upgrade(config, "20260718_05")
+    with sqlite3.connect(database_path) as connection:
+        connection.executemany(
+            """INSERT INTO apartments
+               (id, name, address, rent_amount, rent_currency, notes, is_active)
+               VALUES (?, 'Дублікат', 'Київ', 500, 'USD', NULL, 1)""",
+            [(1,), (2,)],
+        )
+        connection.executemany(
+            """INSERT INTO services
+               (id, apartment_id, name, kind, unit, provider_account, sort_order,
+                is_active)
+               VALUES (?, 1, 'Газ', 'fixed', NULL, NULL, 0, 1)""",
+            [(1,), (2,)],
+        )
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        apartment_keys = connection.execute(
+            "SELECT restore_key FROM apartments ORDER BY id"
+        ).fetchall()
+        service_keys = connection.execute(
+            "SELECT restore_key FROM services ORDER BY id"
+        ).fetchall()
+        revision = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone()
+
+    assert len({row[0] for row in apartment_keys}) == 2
+    assert len({row[0] for row in service_keys}) == 2
+    assert all(len(row[0]) == 32 for row in apartment_keys + service_keys)
+    assert revision == ("20260721_07",)

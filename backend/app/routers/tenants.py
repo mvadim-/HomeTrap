@@ -20,6 +20,8 @@ from app.services.storage import (
     MAX_ATTACHMENT_FILES,
     MAX_ATTACHMENT_SIZE,
     attachment_path,
+    coordinated_write,
+    data_store_lock,
     delete_attachment,
     delete_staged_tenant_files,
     pending_tenant_file_deletions,
@@ -126,6 +128,7 @@ def list_tenants(
     response_model=TenantOut,
     status_code=status.HTTP_201_CREATED,
 )
+@coordinated_write
 def create_tenant(
     apartment_id: int,
     payload: TenantIn,
@@ -152,6 +155,7 @@ def create_tenant(
 
 
 @router.put("/api/tenants/{tenant_id}", response_model=TenantOut)
+@coordinated_write
 def update_tenant(
     tenant_id: int,
     payload: TenantIn,
@@ -184,6 +188,7 @@ def update_tenant(
 
 
 @router.post("/api/tenants/{tenant_id}/end-contract", response_model=TenantOut)
+@coordinated_write
 def end_contract(
     tenant_id: int,
     payload: TenantEndContract,
@@ -216,31 +221,32 @@ def delete_tenant(
     session: Session = Depends(get_db),
 ) -> Response:
     uploads_dir = request.app.state.settings.uploads_dir
-    pending_deletions = pending_tenant_file_deletions(uploads_dir, tenant_id)
-    tenant = session.get(Tenant, tenant_id)
-    if tenant is None:
-        if not pending_deletions:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Tenant not found",
-            )
+    with data_store_lock():
+        pending_deletions = pending_tenant_file_deletions(uploads_dir, tenant_id)
+        tenant = session.get(Tenant, tenant_id)
+        if tenant is None:
+            if not pending_deletions:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Tenant not found",
+                )
+            for staged in pending_deletions:
+                delete_staged_tenant_files(uploads_dir, staged)
+            return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+        staged = stage_tenant_files(uploads_dir, tenant_id)
+        if staged is not None:
+            pending_deletions.append(staged)
+        session.delete(tenant)
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            if staged is not None:
+                restore_staged_tenant_files(uploads_dir, tenant_id, staged)
+            raise
         for staged in pending_deletions:
             delete_staged_tenant_files(uploads_dir, staged)
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-    staged = stage_tenant_files(uploads_dir, tenant_id)
-    if staged is not None:
-        pending_deletions.append(staged)
-    session.delete(tenant)
-    try:
-        session.commit()
-    except Exception:
-        session.rollback()
-        if staged is not None:
-            restore_staged_tenant_files(uploads_dir, tenant_id, staged)
-        raise
-    for staged in pending_deletions:
-        delete_staged_tenant_files(uploads_dir, staged)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -249,7 +255,7 @@ def delete_tenant(
     response_model=list[TenantAttachmentOut],
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_attachments(
+def upload_attachments(
     tenant_id: int,
     request: Request,
     files: list[UploadFile] = File(...),
@@ -267,47 +273,50 @@ async def upload_attachments(
             detail=f"No more than {MAX_ATTACHMENT_FILES} attachments are allowed per request",
         )
 
-    saved_paths = []
-    attachments = []
+    prepared_files: list[tuple[UploadFile, str, bytes]] = []
     try:
         for file in files:
             content_type = validate_file_type(file.filename or "", file.content_type)
-            content = await file.read(MAX_ATTACHMENT_SIZE + 1)
+            content = file.file.read(MAX_ATTACHMENT_SIZE + 1)
             if len(content) > MAX_ATTACHMENT_SIZE:
                 raise HTTPException(
                     status_code=status.HTTP_413_CONTENT_TOO_LARGE,
                     detail="Attachment exceeds 10 MB",
                 )
-            stored_name, saved_path = save_attachment(
-                request.app.state.settings.uploads_dir,
-                tenant_id,
-                content_type,
-                content,
-            )
-            saved_paths.append(saved_path)
-            attachment = TenantAttachment(
-                tenant_id=tenant_id,
-                original_name=file.filename,
-                stored_name=stored_name,
-                content_type=content_type,
-                size_bytes=len(content),
-            )
-            session.add(attachment)
-            attachments.append(attachment)
-        session.commit()
+            prepared_files.append((file, content_type, content))
     except ValueError as error:
-        session.rollback()
-        for path in saved_paths:
-            path.unlink(missing_ok=True)
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=str(error),
         ) from error
-    except Exception:
-        session.rollback()
-        for path in saved_paths:
-            path.unlink(missing_ok=True)
-        raise
+
+    saved_paths = []
+    attachments = []
+    with data_store_lock():
+        try:
+            for file, content_type, content in prepared_files:
+                stored_name, saved_path = save_attachment(
+                    request.app.state.settings.uploads_dir,
+                    tenant_id,
+                    content_type,
+                    content,
+                )
+                saved_paths.append(saved_path)
+                attachment = TenantAttachment(
+                    tenant_id=tenant_id,
+                    original_name=file.filename,
+                    stored_name=stored_name,
+                    content_type=content_type,
+                    size_bytes=len(content),
+                )
+                session.add(attachment)
+                attachments.append(attachment)
+            session.commit()
+        except Exception:
+            session.rollback()
+            for path in saved_paths:
+                path.unlink(missing_ok=True)
+            raise
     return attachments
 
 
@@ -369,24 +378,25 @@ def remove_attachment(
     request: Request,
     session: Session = Depends(get_db),
 ) -> Response:
-    attachment = _get_attachment(session, attachment_id)
-    tenant_id = attachment.tenant_id
-    stored_name = attachment.stored_name
-    session.delete(attachment)
-    try:
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
-    try:
-        delete_attachment(
-            request.app.state.settings.uploads_dir,
-            tenant_id,
-            stored_name,
-        )
-    except ValueError as error:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Attachment file not found",
-        ) from error
+    with data_store_lock():
+        attachment = _get_attachment(session, attachment_id)
+        tenant_id = attachment.tenant_id
+        stored_name = attachment.stored_name
+        session.delete(attachment)
+        try:
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        try:
+            delete_attachment(
+                request.app.state.settings.uploads_dir,
+                tenant_id,
+                stored_name,
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Attachment file not found",
+            ) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)

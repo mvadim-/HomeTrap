@@ -1,6 +1,14 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
+from functools import wraps
+import os
 from pathlib import Path
+import re
 from shutil import rmtree
+from threading import RLock
 from uuid import uuid4
+
+from app.models import Tenant
 
 
 ATTACHMENT_TYPES = {
@@ -11,6 +19,45 @@ ATTACHMENT_TYPES = {
 }
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 MAX_ATTACHMENT_FILES = 10
+_DATA_STORE_LOCK = RLock()
+
+
+@contextmanager
+def data_store_lock() -> Iterator[None]:
+    """Serialize database snapshots/imports with attachment filesystem changes."""
+    with _DATA_STORE_LOCK:
+        yield
+
+
+def fsync_directory(path: Path) -> None:
+    """Persist directory-entry changes made inside path."""
+    directory_fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def ensure_directory_durable(path: Path) -> None:
+    """Create a directory tree and persist every newly added parent entry."""
+    missing = []
+    current = path
+    while not current.exists():
+        missing.append(current)
+        current = current.parent
+    for directory in reversed(missing):
+        directory.mkdir()
+        fsync_directory(directory.parent)
+
+
+def coordinated_write(function):
+    """Run a synchronous database mutation under the maintenance lock."""
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        with data_store_lock():
+            return function(*args, **kwargs)
+
+    return wrapped
 
 
 def normalize_content_type(content_type: str | None) -> str:
@@ -48,28 +95,30 @@ def save_attachment(
     content_type: str,
     content: bytes,
 ) -> tuple[str, Path]:
-    stored_name = f"{uuid4().hex}{ATTACHMENT_TYPES[content_type][0]}"
-    target = attachment_path(uploads_dir, tenant_id, stored_name)
-    temporary = target.with_name(f".{stored_name}.tmp")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        temporary.write_bytes(content)
-        temporary.replace(target)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        target.unlink(missing_ok=True)
-        if target.parent.is_dir() and not any(target.parent.iterdir()):
-            target.parent.rmdir()
-        raise
-    return stored_name, target
+    with data_store_lock():
+        stored_name = f"{uuid4().hex}{ATTACHMENT_TYPES[content_type][0]}"
+        target = attachment_path(uploads_dir, tenant_id, stored_name)
+        temporary = target.with_name(f".{stored_name}.tmp")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            temporary.write_bytes(content)
+            temporary.replace(target)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            target.unlink(missing_ok=True)
+            if target.parent.is_dir() and not any(target.parent.iterdir()):
+                target.parent.rmdir()
+            raise
+        return stored_name, target
 
 
 def delete_attachment(uploads_dir: Path, tenant_id: int, stored_name: str) -> None:
-    path = attachment_path(uploads_dir, tenant_id, stored_name)
-    path.unlink(missing_ok=True)
-    tenant_dir = tenant_directory(uploads_dir, tenant_id)
-    if tenant_dir.is_dir() and not any(tenant_dir.iterdir()):
-        tenant_dir.rmdir()
+    with data_store_lock():
+        path = attachment_path(uploads_dir, tenant_id, stored_name)
+        path.unlink(missing_ok=True)
+        tenant_dir = tenant_directory(uploads_dir, tenant_id)
+        if tenant_dir.is_dir() and not any(tenant_dir.iterdir()):
+            tenant_dir.rmdir()
 
 
 def pending_tenant_file_deletions(uploads_dir: Path, tenant_id: int) -> list[Path]:
@@ -85,18 +134,21 @@ def pending_tenant_file_deletions(uploads_dir: Path, tenant_id: int) -> list[Pat
 
 
 def stage_tenant_files(uploads_dir: Path, tenant_id: int) -> Path | None:
-    directory = tenant_directory(uploads_dir, tenant_id)
-    if not directory.is_dir():
-        return None
-    staging_root = _resolve_within(uploads_dir, ".deleting")
-    staging_root.mkdir(parents=True, exist_ok=True)
-    staged = _resolve_within(
-        uploads_dir,
-        ".deleting",
-        f"tenant-{tenant_id}-{uuid4().hex}",
-    )
-    directory.replace(staged)
-    return staged
+    with data_store_lock():
+        directory = tenant_directory(uploads_dir, tenant_id)
+        if not directory.is_dir():
+            return None
+        staging_root = _resolve_within(uploads_dir, ".deleting")
+        ensure_directory_durable(staging_root)
+        staged = _resolve_within(
+            uploads_dir,
+            ".deleting",
+            f"tenant-{tenant_id}-{uuid4().hex}",
+        )
+        directory.replace(staged)
+        fsync_directory(directory.parent)
+        fsync_directory(staging_root)
+        return staged
 
 
 def restore_staged_tenant_files(
@@ -104,17 +156,47 @@ def restore_staged_tenant_files(
     tenant_id: int,
     staged: Path,
 ) -> None:
-    directory = tenant_directory(uploads_dir, tenant_id)
-    directory.parent.mkdir(parents=True, exist_ok=True)
-    staged.replace(directory)
-    staging_root = _resolve_within(uploads_dir, ".deleting")
-    if staging_root.is_dir() and not any(staging_root.iterdir()):
-        staging_root.rmdir()
+    with data_store_lock():
+        directory = tenant_directory(uploads_dir, tenant_id)
+        ensure_directory_durable(directory.parent)
+        if directory.exists():
+            raise RuntimeError("Tenant attachment directory already exists")
+        staged.replace(directory)
+        fsync_directory(staged.parent)
+        fsync_directory(directory.parent)
+        staging_root = _resolve_within(uploads_dir, ".deleting")
+        if staging_root.is_dir() and not any(staging_root.iterdir()):
+            staging_root.rmdir()
+            fsync_directory(staging_root.parent)
 
 
 def delete_staged_tenant_files(uploads_dir: Path, staged: Path) -> None:
-    if staged.is_dir():
-        rmtree(staged)
+    with data_store_lock():
+        if staged.is_dir():
+            rmtree(staged)
+            fsync_directory(staged.parent)
+        staging_root = _resolve_within(uploads_dir, ".deleting")
+        if staging_root.is_dir() and not any(staging_root.iterdir()):
+            staging_root.rmdir()
+            fsync_directory(staging_root.parent)
+
+
+def recover_tenant_file_deletions(uploads_dir: Path, session_factory) -> None:
+    """Resolve tenant directories left in .deleting across process crashes."""
     staging_root = _resolve_within(uploads_dir, ".deleting")
-    if staging_root.is_dir() and not any(staging_root.iterdir()):
-        staging_root.rmdir()
+    if not staging_root.is_dir():
+        return
+    pattern = re.compile(r"tenant-(\d+)-[0-9a-f]{32}")
+    with data_store_lock(), session_factory() as session:
+        for staged in sorted(staging_root.iterdir()):
+            match = pattern.fullmatch(staged.name)
+            if not staged.is_dir() or match is None:
+                continue
+            tenant_id = int(match.group(1))
+            if session.get(Tenant, tenant_id) is None:
+                delete_staged_tenant_files(uploads_dir, staged)
+            else:
+                restore_staged_tenant_files(uploads_dir, tenant_id, staged)
+        if staging_root.is_dir() and not any(staging_root.iterdir()):
+            staging_root.rmdir()
+            fsync_directory(staging_root.parent)

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.services.nbu import NbuRateUnavailable, get_rate
 from app.services.notify import run_daily_notifications
+from app.services.storage import data_store_lock
 
 KYIV_TIMEZONE = ZoneInfo("Europe/Kyiv")
 DAILY_RATE_JOB_ID = "update-daily-nbu-rate"
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def update_daily_rate(session_factory: sessionmaker[Session]) -> None:
     today = datetime.now(KYIV_TIMEZONE).date()
-    with session_factory() as session:
+    with data_store_lock(), session_factory() as session:
         try:
             get_rate(session, today)
         except NbuRateUnavailable:
@@ -28,7 +29,7 @@ def update_daily_rate(session_factory: sessionmaker[Session]) -> None:
 
 def send_daily_notifications(session_factory: sessionmaker[Session]) -> None:
     today = datetime.now(KYIV_TIMEZONE).date()
-    with session_factory() as session:
+    with data_store_lock(), session_factory() as session:
         result = run_daily_notifications(session, today)
         for error in result.errors:
             logger.warning("Notification delivery failed: %s", error)

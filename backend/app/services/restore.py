@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from hashlib import sha256
+import json
+import os
 from pathlib import Path
-from shutil import copyfile
+from shutil import copyfile, rmtree
 import sqlite3
 from typing import Any
+from uuid import uuid4
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import (
@@ -16,12 +20,21 @@ from app.models import (
     ExchangeRate,
     Invoice,
     InvoiceLine,
+    RestoreAlias,
     Service,
     Tariff,
     Tenant,
     TenantAttachment,
 )
-from app.services.storage import attachment_path
+from app.services.storage import (
+    ATTACHMENT_TYPES,
+    MAX_ATTACHMENT_SIZE,
+    attachment_path,
+    data_store_lock,
+    ensure_directory_durable,
+    fsync_directory,
+    validate_file_type,
+)
 
 
 ENTITY_NAMES = (
@@ -86,7 +99,7 @@ def validate_manifest(
 
     try:
         created_at = datetime.fromisoformat(manifest["created_at"])
-    except ValueError as error:
+    except (AttributeError, TypeError, ValueError) as error:
         raise RestoreValidationError(
             "Backup manifest field 'created_at' is invalid"
         ) from error
@@ -127,24 +140,212 @@ def _existing_or_add(
     statement: Any,
     new_entity: Any,
 ) -> Any:
-    existing = live_session.scalar(statement)
-    if existing is not None:
+    existing_rows = live_session.scalars(statement.limit(2)).all()
+    if len(existing_rows) > 1:
+        raise RestoreValidationError(
+            f"Live database contains ambiguous {entity_name} business keys"
+        )
+    if existing_rows:
         summary.skipped[entity_name] += 1
-        return existing
+        return existing_rows[0]
     live_session.add(new_entity)
-    live_session.flush()
     summary.added[entity_name] += 1
     return new_entity
 
 
-def _remove_empty_parents(path: Path, uploads_dir: Path) -> None:
-    parent = path.parent
-    uploads_root = uploads_dir.resolve()
-    while parent != uploads_root and parent.is_relative_to(uploads_root):
-        if not parent.is_dir() or any(parent.iterdir()):
-            break
-        parent.rmdir()
-        parent = parent.parent
+def _stable_existing_or_add(
+    live_session: Session,
+    summary: ImportSummary,
+    entity_name: str,
+    restore_key: str,
+    fallback_statement: Any,
+    allow_fallback: bool,
+    new_entity: Any,
+    claimed_ids: set[int],
+    exact_existing: Any | None,
+) -> Any:
+    _validate_restore_key(restore_key, entity_name)
+    existing = exact_existing
+    if existing is None and allow_fallback:
+        fallback_rows = live_session.scalars(fallback_statement.limit(2)).all()
+        if len(fallback_rows) == 1 and fallback_rows[0].id not in claimed_ids:
+            existing = fallback_rows[0]
+            live_session.add(
+                RestoreAlias(
+                    entity_type=entity_name.removesuffix("s"),
+                    restore_key=restore_key,
+                    target_restore_key=existing.restore_key,
+                )
+            )
+    if existing is not None:
+        summary.skipped[entity_name] += 1
+        result = existing
+    else:
+        live_session.add(new_entity)
+        summary.added[entity_name] += 1
+        result = new_entity
+    claimed_ids.add(result.id)
+    return result
+
+
+def _validate_restore_key(restore_key: object, entity_name: str) -> None:
+    if (
+        not isinstance(restore_key, str)
+        or len(restore_key) != 32
+        or any(character not in "0123456789abcdef" for character in restore_key)
+    ):
+        raise RestoreValidationError(
+            f"Backup contains an invalid {entity_name} restore key"
+        )
+
+
+def _exact_identity_matches(
+    live_session: Session,
+    model: Any,
+    entity_type: str,
+    restore_keys: set[str],
+) -> dict[str, Any]:
+    canonical = {
+        row.restore_key: row
+        for row in live_session.scalars(
+            select(model).where(model.restore_key.in_(restore_keys))
+        )
+    }
+    aliases = live_session.scalars(
+        select(RestoreAlias).where(
+            RestoreAlias.entity_type == entity_type,
+            RestoreAlias.restore_key.in_(restore_keys),
+        )
+    ).all()
+    if not aliases:
+        return canonical
+    targets = {
+        row.restore_key: row
+        for row in live_session.scalars(
+            select(model).where(
+                model.restore_key.in_({alias.target_restore_key for alias in aliases})
+            )
+        )
+    }
+    for alias in aliases:
+        target = targets.get(alias.target_restore_key)
+        if target is None:
+            raise RestoreValidationError("Live database contains a dangling restore alias")
+        existing = canonical.get(alias.restore_key)
+        if existing is not None and existing is not target:
+            raise RestoreValidationError(
+                "Live database contains conflicting restore identities"
+            )
+        canonical[alias.restore_key] = target
+    return canonical
+
+
+def _copy_restore_aliases(
+    source_session: Session,
+    live_session: Session,
+    entity_type: str,
+    source_map: dict[int, Any],
+    source_rows: list[Any],
+) -> None:
+    source_by_key = {row.restore_key: row for row in source_rows}
+    live_canonical = {
+        row.restore_key: row
+        for row in live_session.scalars(select(type(source_rows[0]))).all()
+    } if source_rows else {}
+    live_aliases = {
+        alias.restore_key: alias
+        for alias in live_session.scalars(
+            select(RestoreAlias).where(RestoreAlias.entity_type == entity_type)
+        )
+    }
+    source_aliases = source_session.scalars(
+        select(RestoreAlias).where(RestoreAlias.entity_type == entity_type)
+    ).all()
+    for source_alias in source_aliases:
+        _validate_restore_key(source_alias.restore_key, f"{entity_type} alias")
+        _validate_restore_key(
+            source_alias.target_restore_key,
+            f"{entity_type} alias target",
+        )
+        source_target = source_by_key.get(source_alias.target_restore_key)
+        if source_target is None:
+            raise RestoreValidationError("Backup contains a dangling restore alias")
+        source_collision = source_by_key.get(source_alias.restore_key)
+        if source_collision is not None and source_collision is not source_target:
+            raise RestoreValidationError(
+                "Backup restore alias conflicts with a canonical identity"
+            )
+        target_key = source_map[source_target.id].restore_key
+        if source_alias.restore_key == target_key:
+            continue
+        canonical_collision = live_canonical.get(source_alias.restore_key)
+        if canonical_collision is not None and canonical_collision.restore_key != target_key:
+            raise RestoreValidationError("Restore alias conflicts with live identity")
+        existing = live_aliases.get(source_alias.restore_key)
+        if existing is not None:
+            if existing.target_restore_key != target_key:
+                raise RestoreValidationError("Restore alias conflicts with live identity")
+            continue
+        alias = RestoreAlias(
+            entity_type=entity_type,
+            restore_key=source_alias.restore_key,
+            target_restore_key=target_key,
+        )
+        live_session.add(alias)
+        live_aliases[alias.restore_key] = alias
+
+
+def _source_attachment_path(
+    source: TenantAttachment,
+    backup_uploads_dir: Path,
+) -> Path:
+    try:
+        normalized_type = validate_file_type(source.original_name, source.content_type)
+        if (
+            not source.stored_name
+            or Path(source.stored_name).name != source.stored_name
+            or "\\" in source.stored_name
+            or Path(source.stored_name).suffix.lower()
+            != ATTACHMENT_TYPES[normalized_type][0]
+        ):
+            raise ValueError("Unsafe attachment stored name")
+        source_path = attachment_path(
+            backup_uploads_dir, source.tenant_id, source.stored_name
+        )
+    except (AttributeError, TypeError, ValueError) as error:
+        raise RestoreValidationError("Backup attachment metadata is invalid") from error
+
+    if (
+        isinstance(source.size_bytes, bool)
+        or not isinstance(source.size_bytes, int)
+        or source.size_bytes < 0
+        or source.size_bytes > MAX_ATTACHMENT_SIZE
+    ):
+        raise RestoreValidationError("Backup attachment size is invalid")
+    if not source_path.is_file() or source_path.stat().st_size != source.size_bytes:
+        raise RestoreValidationError(
+            "Backup attachment file is missing or has wrong size"
+        )
+    return source_path
+
+
+def _target_attachment_path(
+    source: TenantAttachment,
+    staged_path: Path,
+    uploads_dir: Path,
+    target_tenant_id: int,
+) -> Path:
+    try:
+        target_path = attachment_path(uploads_dir, target_tenant_id, source.stored_name)
+    except (AttributeError, TypeError, ValueError) as error:
+        raise RestoreValidationError("Backup attachment metadata is invalid") from error
+    if target_path.exists() and (
+        not target_path.is_file()
+        or target_path.stat().st_size != source.size_bytes
+        or _file_sha256(target_path) != _file_sha256(staged_path)
+    ):
+        raise RestoreValidationError("Live attachment path contains different content")
+    return target_path
 
 
 def import_backup(
@@ -159,254 +360,498 @@ def import_backup(
         connect_args={"check_same_thread": False},
     )
     source_session = sessionmaker(bind=source_engine)()
+    store_context = data_store_lock()
+    store_context.__enter__()
     summary = ImportSummary()
-    copied_paths: list[Path] = []
     pending_files: list[tuple[Path, Path]] = []
+    journal_root = uploads_dir / ".restore-journal"
+    journal_dir = journal_root / uuid4().hex
+    committed = False
 
     try:
-        apartment_map: dict[int, Apartment] = {}
-        for source in source_session.scalars(select(Apartment).order_by(Apartment.id)):
-            apartment = _existing_or_add(
-                live_session,
-                summary,
-                "apartments",
-                select(Apartment).where(
-                    Apartment.name == source.name,
-                    Apartment.address == source.address,
-                ),
-                Apartment(
-                    **_copy_columns(
-                        source,
-                        "name",
-                        "address",
-                        "rent_amount",
-                        "rent_currency",
-                        "notes",
-                        "is_active",
-                    )
-                ),
-            )
-            apartment_map[source.id] = apartment
-
-        service_map: dict[int, Service] = {}
-        for source in source_session.scalars(select(Service).order_by(Service.id)):
-            apartment = apartment_map[source.apartment_id]
-            service = _existing_or_add(
-                live_session,
-                summary,
-                "services",
-                select(Service).where(
-                    Service.apartment_id == apartment.id,
-                    Service.name == source.name,
-                ),
-                Service(
-                    apartment_id=apartment.id,
-                    **_copy_columns(
-                        source,
-                        "name",
-                        "kind",
-                        "unit",
-                        "provider_account",
-                        "sort_order",
-                        "is_active",
-                    ),
-                ),
-            )
-            service_map[source.id] = service
-
-        for source in source_session.scalars(select(Tariff).order_by(Tariff.id)):
-            service = service_map[source.service_id]
-            _existing_or_add(
-                live_session,
-                summary,
-                "tariffs",
-                select(Tariff).where(
-                    Tariff.service_id == service.id,
-                    Tariff.valid_from == source.valid_from,
-                ),
-                Tariff(
-                    service_id=service.id,
-                    **_copy_columns(source, "value", "valid_from"),
-                ),
-            )
-
-        tenant_map: dict[int, Tenant] = {}
-        for source in source_session.scalars(select(Tenant).order_by(Tenant.id)):
-            apartment = apartment_map[source.apartment_id]
-            existing = live_session.scalar(
-                select(Tenant).where(
-                    Tenant.apartment_id == apartment.id,
-                    Tenant.full_name == source.full_name,
-                    Tenant.contract_start == source.contract_start,
-                )
-            )
-            if existing is not None:
-                summary.skipped["tenants"] += 1
-                tenant_map[source.id] = existing
-                continue
-            if (
-                source.contract_end is None
-                and live_session.scalar(
-                    select(Tenant).where(
-                        Tenant.apartment_id == apartment.id,
-                        Tenant.contract_end.is_(None),
-                    )
-                )
-                is not None
-            ):
-                summary.skipped["tenants"] += 1
-                continue
-            tenant = Tenant(
-                apartment_id=apartment.id,
-                **_copy_columns(
-                    source,
-                    "full_name",
-                    "phone",
-                    "email",
-                    "contract_start",
-                    "contract_end",
-                    "billing_day",
-                    "notes",
-                ),
-            )
-            live_session.add(tenant)
-            live_session.flush()
-            summary.added["tenants"] += 1
-            tenant_map[source.id] = tenant
-
-        for source in source_session.scalars(
+        ensure_directory_durable(journal_dir)
+        staged_files: dict[int, Path] = {}
+        staged_hashes: dict[Path, str] = {}
+        source_attachments = source_session.scalars(
             select(TenantAttachment).order_by(TenantAttachment.id)
-        ):
-            tenant = tenant_map.get(source.tenant_id)
-            if tenant is None:
-                summary.skipped["tenant_attachments"] += 1
-                continue
-            existing = live_session.scalar(
-                select(TenantAttachment).where(
-                    TenantAttachment.tenant_id == tenant.id,
-                    TenantAttachment.stored_name == source.stored_name,
-                )
-            )
-            if existing is not None:
-                summary.skipped["tenant_attachments"] += 1
-                continue
-            live_session.add(
-                TenantAttachment(
-                    tenant_id=tenant.id,
-                    **_copy_columns(
-                        source,
-                        "original_name",
-                        "stored_name",
-                        "content_type",
-                        "size_bytes",
-                        "uploaded_at",
-                    ),
-                )
-            )
-            summary.added["tenant_attachments"] += 1
-            source_path = attachment_path(
-                backup_uploads_dir, source.tenant_id, source.stored_name
-            )
-            target_path = attachment_path(uploads_dir, tenant.id, source.stored_name)
-            if not target_path.exists():
-                pending_files.append((source_path, target_path))
+        ).all()
+        for source in source_attachments:
+            source_path = _source_attachment_path(source, backup_uploads_dir)
+            staged_path = journal_dir / str(source.id)
+            copyfile(source_path, staged_path)
+            _fsync_file(staged_path)
+            staged_files[source.id] = staged_path
+            staged_hashes[staged_path] = _file_sha256(staged_path)
 
-        invoice_map: dict[int, Invoice] = {}
-        new_invoice_ids: set[int] = set()
-        for source in source_session.scalars(select(Invoice).order_by(Invoice.id)):
-            apartment = apartment_map[source.apartment_id]
-            existing = live_session.scalar(
-                select(Invoice).where(
-                    Invoice.apartment_id == apartment.id,
-                    Invoice.period == source.period,
-                )
-            )
-            if existing is not None:
-                summary.skipped["invoices"] += 1
-                invoice_map[source.id] = existing
-                continue
-            invoice = Invoice(
-                apartment_id=apartment.id,
-                **_copy_columns(
-                    source,
-                    "period",
-                    "status",
-                    "issued_at",
-                    "paid_at",
-                    "exchange_rate",
-                    "rent_amount_usd",
-                    "rent_amount_uah",
-                    "utilities_total",
-                    "grand_total",
-                ),
-            )
-            live_session.add(invoice)
-            live_session.flush()
-            summary.added["invoices"] += 1
-            invoice_map[source.id] = invoice
-            new_invoice_ids.add(source.id)
-
-        for source in source_session.scalars(
-            select(InvoiceLine).order_by(InvoiceLine.id)
-        ):
-            if source.invoice_id not in new_invoice_ids:
-                summary.skipped["invoice_lines"] += 1
-                continue
-            line = InvoiceLine(
-                invoice_id=invoice_map[source.invoice_id].id,
-                service_id=service_map[source.service_id].id,
-                **_copy_columns(
-                    source,
-                    "service_name",
-                    "service_kind",
-                    "prev_reading",
-                    "curr_reading",
-                    "consumed",
-                    "tariff_value",
-                    "amount",
-                ),
-            )
-            live_session.add(line)
-            summary.added["invoice_lines"] += 1
-
-        for source in source_session.scalars(
-            select(ExchangeRate).order_by(ExchangeRate.id)
-        ):
-            _existing_or_add(
+        with live_session.no_autoflush:
+            _import_rows(
+                source_session,
                 live_session,
+                uploads_dir,
+                source_attachments,
+                staged_files,
                 summary,
-                "exchange_rates",
-                select(ExchangeRate).where(
-                    ExchangeRate.date == source.date,
-                    ExchangeRate.currency == source.currency,
-                ),
-                ExchangeRate(**_copy_columns(source, "date", "currency", "rate")),
+                pending_files,
             )
 
         live_session.flush()
-        for source_path, target_path in pending_files:
-            if not source_path.is_file():
-                raise FileNotFoundError(
-                    f"Backup attachment is missing: {source_path.name}"
-                )
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            temporary_path = target_path.with_name(f".{target_path.name}.tmp")
-            try:
-                copyfile(source_path, temporary_path)
-                temporary_path.replace(target_path)
-            except Exception:
-                temporary_path.unlink(missing_ok=True)
-                raise
-            copied_paths.append(target_path)
-
+        journal = []
+        for staged_path, target_path in pending_files:
+            journal.append(
+                {
+                    "staged_name": staged_path.name,
+                    "target": target_path.relative_to(uploads_dir).as_posix(),
+                    "size": staged_path.stat().st_size,
+                    "sha256": staged_hashes[staged_path],
+                }
+            )
+        _write_restore_journal(journal_dir, journal)
+        _finish_restore_journal(
+            journal_dir,
+            uploads_dir,
+            live_session,
+            remove_journal=False,
+        )
         live_session.commit()
+        committed = True
+        try:
+            _remove_restore_journal(journal_dir)
+        except OSError:
+            # The committed database and canonical files are already durable.
+            # Startup recovery can safely remove the leftover journal.
+            pass
         return summary
     except Exception:
-        for path in reversed(copied_paths):
-            path.unlink(missing_ok=True)
-            _remove_empty_parents(path, uploads_dir)
         live_session.rollback()
+        if not committed:
+            try:
+                _finish_restore_journal(journal_dir, uploads_dir, live_session)
+            except Exception:
+                # Preserve the import error. A durable journal remains for startup
+                # recovery if immediate rollback cleanup cannot complete.
+                pass
         raise
     finally:
         source_session.close()
         source_engine.dispose()
+        store_context.__exit__(None, None, None)
+
+
+def _write_restore_journal(journal_dir: Path, entries: list[dict[str, Any]]) -> None:
+    temporary = journal_dir / "journal.json.tmp"
+    journal_path = journal_dir / "journal.json"
+    with temporary.open("w", encoding="utf-8") as target:
+        json.dump({"version": 1, "files": entries}, target, sort_keys=True)
+        target.flush()
+        os.fsync(target.fileno())
+    temporary.replace(journal_path)
+    fsync_directory(journal_dir)
+
+
+def _fsync_file(path: Path) -> None:
+    with path.open("rb") as source:
+        os.fsync(source.fileno())
+
+
+def _finish_restore_journal(
+    journal_dir: Path,
+    uploads_dir: Path,
+    session: Session,
+    *,
+    remove_journal: bool = True,
+) -> None:
+    journal_path = journal_dir / "journal.json"
+    if not journal_path.is_file():
+        if remove_journal:
+            _remove_restore_journal(journal_dir)
+        return
+    try:
+        journal = json.loads(journal_path.read_text(encoding="utf-8"))
+        entries = journal["files"] if journal.get("version") == 1 else None
+        if not isinstance(entries, list):
+            raise ValueError("invalid restore journal")
+        for entry in entries:
+            target = uploads_dir.joinpath(*Path(entry["target"]).parts).resolve()
+            if not target.is_relative_to(uploads_dir.resolve()):
+                raise ValueError("unsafe restore journal target")
+            parts = target.relative_to(uploads_dir.resolve()).parts
+            if len(parts) != 3 or parts[0] != "tenants":
+                raise ValueError("invalid restore journal target")
+            tenant_id = int(parts[1])
+            stored_name = parts[2]
+            row = session.scalar(
+                select(TenantAttachment.id).where(
+                    TenantAttachment.tenant_id == tenant_id,
+                    TenantAttachment.stored_name == stored_name,
+                    TenantAttachment.size_bytes == entry["size"],
+                )
+            )
+            staged = journal_dir / entry["staged_name"]
+            if row is None:
+                if target.exists():
+                    if (
+                        not target.is_file()
+                        or target.stat().st_size != entry["size"]
+                        or _file_sha256(target) != entry["sha256"]
+                    ):
+                        raise RestoreValidationError(
+                            "Orphan restore target contains different content"
+                        )
+                    target.unlink()
+                    fsync_directory(target.parent)
+                    _remove_empty_directories(target.parent, uploads_dir)
+                continue
+            if target.is_file():
+                if (
+                    target.stat().st_size != entry["size"]
+                    or _file_sha256(target) != entry["sha256"]
+                ):
+                    raise RestoreValidationError(
+                        "Restore journal target contains different content"
+                    )
+                continue
+            if not staged.is_file() or _file_sha256(staged) != entry["sha256"]:
+                raise RestoreValidationError("Restore journal file is missing")
+            ensure_directory_durable(target.parent)
+            staged.replace(target)
+            fsync_directory(journal_dir)
+            fsync_directory(target.parent)
+    except Exception:
+        raise
+    if remove_journal:
+        _remove_restore_journal(journal_dir)
+
+
+def _remove_restore_journal(journal_dir: Path) -> None:
+    if journal_dir.is_dir():
+        journal_root = journal_dir.parent
+        rmtree(journal_dir)
+        fsync_directory(journal_root)
+        if not any(journal_root.iterdir()):
+            journal_root.rmdir()
+            fsync_directory(journal_root.parent)
+
+
+def _remove_empty_directories(path: Path, stop: Path) -> None:
+    current = path
+    resolved_stop = stop.resolve()
+    while current.resolve() != resolved_stop and not any(current.iterdir()):
+        parent = current.parent
+        current.rmdir()
+        fsync_directory(parent)
+        current = parent
+
+
+def recover_restore_journals(uploads_dir: Path, session_factory: Any) -> None:
+    """Finish committed restore files and discard journals without matching rows."""
+    journal_root = uploads_dir / ".restore-journal"
+    if not journal_root.is_dir():
+        return
+    with data_store_lock(), session_factory() as session:
+        for journal_dir in sorted(journal_root.iterdir()):
+            if journal_dir.is_dir():
+                _finish_restore_journal(journal_dir, uploads_dir, session)
+        if journal_root.is_dir() and not any(journal_root.iterdir()):
+            journal_root.rmdir()
+            fsync_directory(journal_root.parent)
+
+
+def _import_rows(
+    source_session: Session,
+    live_session: Session,
+    uploads_dir: Path,
+    source_attachments: list[TenantAttachment],
+    staged_files: dict[int, Path],
+    summary: ImportSummary,
+    pending_files: list[tuple[Path, Path]],
+) -> None:
+    next_ids = {
+        model: (live_session.scalar(select(func.max(model.id))) or 0) + 1
+        for model in (Apartment, Service, Tenant, Invoice)
+    }
+
+    def allocate_id(model: Any) -> int:
+        allocated = next_ids[model]
+        next_ids[model] += 1
+        return allocated
+
+    source_apartments = source_session.scalars(
+        select(Apartment).order_by(Apartment.id)
+    ).all()
+    apartment_key_counts = Counter(
+        (source.name, source.address) for source in source_apartments
+    )
+    apartment_map: dict[int, Apartment] = {}
+    apartment_exact = _exact_identity_matches(
+        live_session,
+        Apartment,
+        "apartment",
+        {source.restore_key for source in source_apartments},
+    )
+    claimed_apartment_ids: set[int] = {
+        row.id for row in apartment_exact.values()
+    }
+    for source in source_apartments:
+        apartment_key = (source.name, source.address)
+        apartment = _stable_existing_or_add(
+            live_session,
+            summary,
+            "apartments",
+            source.restore_key,
+            select(Apartment).where(
+                Apartment.name == source.name,
+                Apartment.address == source.address,
+            ),
+            apartment_key_counts[apartment_key] == 1,
+            Apartment(
+                id=allocate_id(Apartment),
+                **_copy_columns(
+                    source,
+                    "restore_key",
+                    "name",
+                    "address",
+                    "rent_amount",
+                    "rent_currency",
+                    "notes",
+                    "is_active",
+                )
+            ),
+            claimed_apartment_ids,
+            apartment_exact.get(source.restore_key),
+        )
+        apartment_map[source.id] = apartment
+
+    _copy_restore_aliases(
+        source_session,
+        live_session,
+        "apartment",
+        apartment_map,
+        source_apartments,
+    )
+
+    source_services = source_session.scalars(select(Service).order_by(Service.id)).all()
+    service_key_counts = Counter(
+        (source.apartment_id, source.name) for source in source_services
+    )
+    service_map: dict[int, Service] = {}
+    service_exact = _exact_identity_matches(
+        live_session,
+        Service,
+        "service",
+        {source.restore_key for source in source_services},
+    )
+    claimed_service_ids: set[int] = {row.id for row in service_exact.values()}
+    for source in source_services:
+        service_key = (source.apartment_id, source.name)
+        apartment = apartment_map[source.apartment_id]
+        service = _stable_existing_or_add(
+            live_session,
+            summary,
+            "services",
+            source.restore_key,
+            select(Service).where(
+                Service.apartment_id == apartment.id,
+                Service.name == source.name,
+            ),
+            service_key_counts[service_key] == 1,
+            Service(
+                id=allocate_id(Service),
+                apartment_id=apartment.id,
+                **_copy_columns(
+                    source,
+                    "restore_key",
+                    "name",
+                    "kind",
+                    "unit",
+                    "provider_account",
+                    "sort_order",
+                    "is_active",
+                ),
+            ),
+            claimed_service_ids,
+            service_exact.get(source.restore_key),
+        )
+        service_map[source.id] = service
+
+    _copy_restore_aliases(
+        source_session,
+        live_session,
+        "service",
+        service_map,
+        source_services,
+    )
+
+    for source in source_session.scalars(select(Tariff).order_by(Tariff.id)):
+        service = service_map[source.service_id]
+        _existing_or_add(
+            live_session,
+            summary,
+            "tariffs",
+            select(Tariff).where(
+                Tariff.service_id == service.id,
+                Tariff.valid_from == source.valid_from,
+            ),
+            Tariff(
+                service_id=service.id,
+                **_copy_columns(source, "value", "valid_from"),
+            ),
+        )
+
+    tenant_map: dict[int, Tenant] = {}
+    tenant_candidates = list(live_session.scalars(select(Tenant)).all())
+    for source in source_session.scalars(select(Tenant).order_by(Tenant.id)):
+        apartment = apartment_map[source.apartment_id]
+        existing = next(
+            (
+                candidate
+                for candidate in tenant_candidates
+                if candidate.apartment_id == apartment.id
+                and candidate.full_name == source.full_name
+                and candidate.contract_start == source.contract_start
+            ),
+            None,
+        )
+        if existing is not None:
+            summary.skipped["tenants"] += 1
+            tenant_map[source.id] = existing
+            continue
+        overlaps = any(
+            candidate.apartment_id == apartment.id
+            and (candidate.contract_end is None or candidate.contract_end >= source.contract_start)
+            and (
+                source.contract_end is None
+                or candidate.contract_start <= source.contract_end
+            )
+            for candidate in tenant_candidates
+        )
+        if overlaps:
+            summary.skipped["tenants"] += 1
+            continue
+        tenant = Tenant(
+            id=allocate_id(Tenant),
+            apartment_id=apartment.id,
+            **_copy_columns(
+                source,
+                "full_name",
+                "phone",
+                "email",
+                "contract_start",
+                "contract_end",
+                "billing_day",
+                "notes",
+            ),
+        )
+        live_session.add(tenant)
+        tenant_candidates.append(tenant)
+        summary.added["tenants"] += 1
+        tenant_map[source.id] = tenant
+
+    for source in source_attachments:
+        tenant = tenant_map.get(source.tenant_id)
+        if tenant is None:
+            summary.skipped["tenant_attachments"] += 1
+            continue
+        staged_path = staged_files[source.id]
+        target_path = _target_attachment_path(
+            source,
+            staged_path,
+            uploads_dir,
+            tenant.id,
+        )
+        existing = live_session.scalar(
+            select(TenantAttachment).where(
+                TenantAttachment.tenant_id == tenant.id,
+                TenantAttachment.stored_name == source.stored_name,
+            )
+        )
+        if existing is not None:
+            summary.skipped["tenant_attachments"] += 1
+            if not target_path.exists():
+                pending_files.append((staged_path, target_path))
+            continue
+        live_session.add(
+            TenantAttachment(
+                tenant_id=tenant.id,
+                **_copy_columns(
+                    source,
+                    "original_name",
+                    "stored_name",
+                    "content_type",
+                    "size_bytes",
+                    "uploaded_at",
+                ),
+            )
+        )
+        summary.added["tenant_attachments"] += 1
+        if not target_path.exists():
+            pending_files.append((staged_path, target_path))
+
+    invoice_map: dict[int, Invoice] = {}
+    new_invoice_ids: set[int] = set()
+    for source in source_session.scalars(select(Invoice).order_by(Invoice.id)):
+        apartment = apartment_map[source.apartment_id]
+        existing = live_session.scalar(
+            select(Invoice).where(
+                Invoice.apartment_id == apartment.id,
+                Invoice.period == source.period,
+            )
+        )
+        if existing is not None:
+            summary.skipped["invoices"] += 1
+            invoice_map[source.id] = existing
+            continue
+        invoice = Invoice(
+            id=allocate_id(Invoice),
+            apartment_id=apartment.id,
+            **_copy_columns(
+                source,
+                "period",
+                "status",
+                "issued_at",
+                "paid_at",
+                "exchange_rate",
+                "rent_amount_usd",
+                "rent_amount_uah",
+                "utilities_total",
+                "grand_total",
+            ),
+        )
+        live_session.add(invoice)
+        summary.added["invoices"] += 1
+        invoice_map[source.id] = invoice
+        new_invoice_ids.add(source.id)
+
+    for source in source_session.scalars(select(InvoiceLine).order_by(InvoiceLine.id)):
+        if source.invoice_id not in new_invoice_ids:
+            summary.skipped["invoice_lines"] += 1
+            continue
+        line = InvoiceLine(
+            invoice_id=invoice_map[source.invoice_id].id,
+            service_id=service_map[source.service_id].id,
+            **_copy_columns(
+                source,
+                "service_name",
+                "service_kind",
+                "prev_reading",
+                "curr_reading",
+                "consumed",
+                "tariff_value",
+                "amount",
+            ),
+        )
+        live_session.add(line)
+        summary.added["invoice_lines"] += 1
+
+    for source in source_session.scalars(
+        select(ExchangeRate).order_by(ExchangeRate.id)
+    ):
+        _existing_or_add(
+            live_session,
+            summary,
+            "exchange_rates",
+            select(ExchangeRate).where(
+                ExchangeRate.date == source.date,
+                ExchangeRate.currency == source.currency,
+            ),
+            ExchangeRate(**_copy_columns(source, "date", "currency", "rate")),
+        )

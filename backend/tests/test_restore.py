@@ -3,11 +3,14 @@ from decimal import Decimal
 from hashlib import sha256
 from pathlib import Path
 import sqlite3
+from threading import Barrier, Thread
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+import app.services.restore as restore_service
+import app.services.storage as storage_service
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory, run_migrations
 from app.models import (
@@ -16,6 +19,7 @@ from app.models import (
     Invoice,
     InvoiceLine,
     PushSubscription,
+    RestoreAlias,
     Service,
     Setting,
     Tariff,
@@ -26,15 +30,21 @@ from app.models import (
 from app.services.restore import (
     RestoreValidationError,
     import_backup,
+    recover_restore_journals,
     validate_manifest,
 )
 from app.services.storage import attachment_path
 
 
-REVISION = "20260718_05"
+def _revision(database_path: Path) -> str:
+    with sqlite3.connect(database_path) as connection:
+        row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+    assert row is not None
+    return str(row[0])
 
 
 def _create_source(tmp_path: Path) -> tuple[Path, Path, dict[str, int]]:
+    tmp_path.mkdir(parents=True, exist_ok=True)
     database_path = tmp_path / "source.db"
     uploads_dir = tmp_path / "source-uploads"
     run_migrations(Settings(database_path=database_path, debug=True))
@@ -135,7 +145,7 @@ def _create_source(tmp_path: Path) -> tuple[Path, Path, dict[str, int]]:
 def _manifest(database_path: Path, **overrides: object) -> dict[str, object]:
     manifest: dict[str, object] = {
         "app_version": "0.1.0",
-        "alembic_revision": REVISION,
+        "alembic_revision": _revision(database_path),
         "created_at": "2026-07-21T10:00:00+00:00",
         "db_sha256": sha256(database_path.read_bytes()).hexdigest(),
     }
@@ -146,7 +156,7 @@ def _manifest(database_path: Path, **overrides: object) -> dict[str, object]:
 def test_validate_manifest_accepts_matching_snapshot(tmp_path: Path) -> None:
     database_path, _, _ = _create_source(tmp_path)
 
-    validate_manifest(_manifest(database_path), REVISION, database_path)
+    validate_manifest(_manifest(database_path), _revision(database_path), database_path)
 
 
 @pytest.mark.parametrize(
@@ -167,19 +177,22 @@ def test_validate_manifest_rejects_invalid_metadata(
 
     with pytest.raises(RestoreValidationError, match=expected_message):
         validate_manifest(
-            _manifest(database_path, **manifest_change), REVISION, database_path
+            _manifest(database_path, **manifest_change),
+            _revision(database_path),
+            database_path,
         )
 
 
 def test_validate_manifest_rejects_database_revision_mismatch(tmp_path: Path) -> None:
     database_path, _, _ = _create_source(tmp_path)
+    expected_revision = _revision(database_path)
     with sqlite3.connect(database_path) as connection:
         connection.execute("UPDATE alembic_version SET version_num = 'forged'")
 
-    manifest = _manifest(database_path)
+    manifest = _manifest(database_path, alembic_revision=expected_revision)
 
     with pytest.raises(RestoreValidationError, match="does not match manifest"):
-        validate_manifest(manifest, REVISION, database_path)
+        validate_manifest(manifest, expected_revision, database_path)
 
 
 def test_import_round_trip_into_empty_database(
@@ -336,33 +349,576 @@ def test_attachment_is_added_to_matching_existing_tenant(
     assert attachment_path(uploads_dir, tenant.id, "contract.pdf").is_file()
 
 
-def test_import_error_rolls_back_database_and_removes_copied_files(
+def test_import_commit_error_rolls_back_database_and_removes_copied_files(
     db_session: Session,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    database_path, backup_uploads, source_ids = _create_source(tmp_path)
-    source_engine = create_database_engine(database_path)
-    source_session = create_session_factory(source_engine)()
-    try:
-        source_session.add(
-            TenantAttachment(
-                tenant_id=source_ids["tenant"],
-                original_name="missing.pdf",
-                stored_name="missing.pdf",
-                content_type="application/pdf",
-                size_bytes=10,
-                uploaded_at=datetime(2026, 1, 2, tzinfo=UTC),
-            )
-        )
-        source_session.commit()
-    finally:
-        source_session.close()
-        source_engine.dispose()
+    database_path, backup_uploads, _ = _create_source(tmp_path)
     uploads_dir = tmp_path / "live-uploads"
 
-    with pytest.raises(FileNotFoundError, match="missing.pdf"):
+    def fail_commit() -> None:
+        raise RuntimeError("forced commit failure")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    with pytest.raises(RuntimeError, match="forced commit failure"):
         import_backup(database_path, backup_uploads, db_session, uploads_dir)
 
     assert db_session.scalar(select(func.count()).select_from(Apartment)) == 0
     assert db_session.scalar(select(func.count()).select_from(TenantAttachment)) == 0
     assert not uploads_dir.exists() or not any(uploads_dir.rglob("*"))
+
+
+def test_import_file_finalization_error_prevents_database_commit(
+    db_session: Session,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live-uploads"
+
+    def fail_finalization(*args, **kwargs) -> None:
+        raise OSError("forced finalization failure")
+
+    monkeypatch.setattr(
+        restore_service,
+        "_finish_restore_journal",
+        fail_finalization,
+    )
+    with pytest.raises(OSError, match="forced finalization failure"):
+        import_backup(database_path, backup_uploads, db_session, uploads_dir)
+
+    assert db_session.scalar(select(func.count()).select_from(Apartment)) == 0
+    assert db_session.scalar(select(func.count()).select_from(TenantAttachment)) == 0
+
+
+def test_startup_recovery_removes_files_from_interrupted_uncommitted_restore(
+    db_session: Session,
+    db_engine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live-uploads"
+
+    def interrupt_commit() -> None:
+        raise SystemExit("simulated process exit")
+
+    monkeypatch.setattr(db_session, "commit", interrupt_commit)
+    with pytest.raises(SystemExit, match="simulated process exit"):
+        import_backup(database_path, backup_uploads, db_session, uploads_dir)
+    db_session.rollback()
+    monkeypatch.undo()
+
+    targets = list((uploads_dir / "tenants").rglob("contract.pdf"))
+    assert len(targets) == 1
+    assert (uploads_dir / ".restore-journal").is_dir()
+
+    recover_restore_journals(uploads_dir, create_session_factory(db_engine))
+
+    assert not targets[0].exists()
+    assert not (uploads_dir / ".restore-journal").exists()
+    assert db_session.scalar(select(func.count()).select_from(TenantAttachment)) == 0
+
+
+def test_import_rejects_dangling_source_restore_alias(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    with Session(source_engine) as source_session:
+        source_session.add(
+            RestoreAlias(
+                entity_type="service",
+                restore_key="a" * 32,
+                target_restore_key="f" * 32,
+            )
+        )
+        source_session.commit()
+    source_engine.dispose()
+
+    with pytest.raises(RestoreValidationError, match="dangling restore alias"):
+        import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    assert db_session.scalar(select(func.count()).select_from(Service)) == 0
+
+
+def test_import_restores_file_for_existing_attachment_row(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live-uploads"
+    import_backup(database_path, backup_uploads, db_session, uploads_dir)
+    tenant = db_session.scalar(select(Tenant))
+    attachment = db_session.scalar(select(TenantAttachment))
+    assert tenant is not None and attachment is not None
+    target = attachment_path(uploads_dir, tenant.id, attachment.stored_name)
+    target.unlink()
+
+    summary = import_backup(database_path, backup_uploads, db_session, uploads_dir)
+
+    assert summary.skipped["tenant_attachments"] == 1
+    assert target.read_bytes() == b"contract-content"
+
+
+def test_import_rejects_unsafe_attachment_metadata(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, source_ids = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    with Session(source_engine) as source_session:
+        attachment = source_session.scalar(select(TenantAttachment))
+        assert attachment is not None
+        attachment.original_name = "payload.html"
+        attachment.stored_name = "payload.html"
+        attachment.content_type = "text/html"
+        attachment.size_bytes = 7
+        source_session.commit()
+    source_engine.dispose()
+    malicious_path = attachment_path(
+        backup_uploads, source_ids["tenant"], "payload.html"
+    )
+    malicious_path.parent.mkdir(parents=True, exist_ok=True)
+    malicious_path.write_bytes(b"<script")
+
+    with pytest.raises(RestoreValidationError, match="metadata is invalid"):
+        import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+
+def test_import_rejects_unsafe_attachment_stored_name(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    with Session(source_engine) as source_session:
+        attachment = source_session.scalar(select(TenantAttachment))
+        assert attachment is not None
+        attachment.stored_name = "../../escaped.pdf"
+        source_session.commit()
+    source_engine.dispose()
+
+    with pytest.raises(RestoreValidationError, match="metadata is invalid"):
+        import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+
+def test_import_rejects_existing_target_with_different_content(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live"
+    target = attachment_path(uploads_dir, 1, "contract.pdf")
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"different-content")
+
+    with pytest.raises(RestoreValidationError, match="different content"):
+        import_backup(database_path, backup_uploads, db_session, uploads_dir)
+
+
+def test_import_skips_overlapping_ended_contract(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    apartment = Apartment(
+        name="Квартира 1",
+        address="Київ, Хрещатик, 1",
+        rent_amount=Decimal("500.00"),
+        rent_currency="USD",
+    )
+    existing = Tenant(
+        apartment=apartment,
+        full_name="Попередній орендар",
+        contract_start=date(2025, 6, 1),
+        contract_end=date(2026, 6, 30),
+    )
+    db_session.add(existing)
+    db_session.commit()
+
+    summary = import_backup(
+        database_path, backup_uploads, db_session, tmp_path / "live"
+    )
+
+    assert summary.skipped["tenants"] == 1
+    assert db_session.scalars(select(Tenant)).all() == [existing]
+
+
+def test_import_preserves_duplicate_apartment_business_keys(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    with Session(source_engine) as source_session:
+        source_session.add(
+            Apartment(
+                name="Квартира 1",
+                address="Київ, Хрещатик, 1",
+                rent_amount=Decimal("600.00"),
+                rent_currency="USD",
+            )
+        )
+        source_session.commit()
+    source_engine.dispose()
+
+    first = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+    second = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    apartments = db_session.scalars(select(Apartment).order_by(Apartment.id)).all()
+    assert first.added["apartments"] == 2
+    assert second.added["apartments"] == 0
+    assert second.skipped["apartments"] == 2
+    assert len(apartments) == 2
+    assert len({apartment.restore_key for apartment in apartments}) == 2
+
+
+def test_import_preserves_duplicate_service_business_keys(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    with Session(source_engine) as source_session:
+        apartment = source_session.scalar(select(Apartment))
+        assert apartment is not None
+        source_session.add(
+            Service(
+                apartment=apartment,
+                name="Електроенергія",
+                kind="fixed",
+                unit=None,
+            )
+        )
+        source_session.commit()
+    source_engine.dispose()
+
+    first = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+    second = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    services = db_session.scalars(select(Service).order_by(Service.id)).all()
+    assert first.added["services"] == 2
+    assert second.added["services"] == 0
+    assert second.skipped["services"] == 2
+    assert len(services) == 2
+    assert len({service.restore_key for service in services}) == 2
+
+
+def test_apartment_fallback_does_not_reuse_row_claimed_by_restore_key(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    existing_key = "1" * 32
+    distinct_key = "2" * 32
+    distinct_service_key = "3" * 32
+    with Session(source_engine) as source_session:
+        source_existing = source_session.scalar(select(Apartment))
+        assert source_existing is not None
+        source_existing.restore_key = existing_key
+        source_distinct = Apartment(
+            restore_key=distinct_key,
+            name="Перейменована квартира",
+            address="Київ, Нова, 2",
+            rent_amount=Decimal("700.00"),
+            rent_currency="USD",
+        )
+        source_distinct.services.append(
+            Service(
+                restore_key=distinct_service_key,
+                name="Водопостачання",
+                kind="fixed",
+            )
+        )
+        source_session.add(source_distinct)
+        source_session.commit()
+
+    live_existing = Apartment(
+        restore_key=existing_key,
+        name="Перейменована квартира",
+        address="Київ, Нова, 2",
+        rent_amount=Decimal("500.00"),
+        rent_currency="USD",
+    )
+    live_new = Apartment(
+        restore_key="4" * 32,
+        name="Квартира 1",
+        address="Київ, Хрещатик, 1",
+        rent_amount=Decimal("600.00"),
+        rent_currency="USD",
+    )
+    db_session.add_all([live_existing, live_new])
+    db_session.commit()
+
+    first = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+    second = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    apartments = db_session.scalars(select(Apartment).order_by(Apartment.id)).all()
+    distinct_service = db_session.scalar(
+        select(Service).where(Service.restore_key == distinct_service_key)
+    )
+    assert first.added["apartments"] == 1
+    assert second.added["apartments"] == 0
+    assert len(apartments) == 3
+    assert live_existing.restore_key == existing_key
+    assert distinct_service is not None
+    assert distinct_service.apartment.restore_key == distinct_key
+
+
+def test_service_fallback_does_not_reuse_row_claimed_by_restore_key(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    apartment_key = "a" * 32
+    existing_key = "b" * 32
+    distinct_key = "c" * 32
+    with Session(source_engine) as source_session:
+        source_apartment = source_session.scalar(select(Apartment))
+        source_existing = source_session.scalar(select(Service))
+        assert source_apartment is not None
+        assert source_existing is not None
+        source_apartment.restore_key = apartment_key
+        source_existing.restore_key = existing_key
+        source_apartment.services.append(
+            Service(
+                restore_key=distinct_key,
+                name="Перейменована послуга",
+                kind="fixed",
+                tariffs=[
+                    Tariff(value=Decimal("7.00000"), valid_from=date(2026, 2, 1))
+                ],
+            )
+        )
+        source_session.commit()
+
+    live_apartment = Apartment(
+        restore_key=apartment_key,
+        name="Квартира 1",
+        address="Київ, Хрещатик, 1",
+        rent_amount=Decimal("500.00"),
+        rent_currency="USD",
+    )
+    live_existing = Service(
+        restore_key=existing_key,
+        apartment=live_apartment,
+        name="Перейменована послуга",
+        kind="fixed",
+    )
+    live_new = Service(
+        restore_key="d" * 32,
+        apartment=live_apartment,
+        name="Електроенергія",
+        kind="metered",
+        unit="кВт·год",
+    )
+    db_session.add_all([live_existing, live_new])
+    db_session.commit()
+
+    first = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+    second = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    services = db_session.scalars(select(Service).order_by(Service.id)).all()
+    distinct_service = db_session.scalar(
+        select(Service).where(Service.restore_key == distinct_key)
+    )
+    assert first.added["services"] == 1
+    assert second.added["services"] == 0
+    assert len(services) == 3
+    assert live_existing.restore_key == existing_key
+    assert distinct_service is not None
+    assert [tariff.value for tariff in distinct_service.tariffs] == [
+        Decimal("7.00000")
+    ]
+
+
+def test_fallback_cannot_claim_row_reserved_by_later_exact_match(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    fallback_key = "5" * 32
+    exact_key = "6" * 32
+    with Session(source_engine) as source_session:
+        first = source_session.scalar(select(Apartment))
+        assert first is not None
+        first.restore_key = fallback_key
+        first.name = "Поточна назва"
+        first.address = "Поточна адреса"
+        source_session.add(
+            Apartment(
+                restore_key=exact_key,
+                name="Стара назва",
+                address="Стара адреса",
+                rent_amount=Decimal("700.00"),
+                rent_currency="USD",
+            )
+        )
+        source_session.commit()
+
+    live = Apartment(
+        restore_key=exact_key,
+        name="Поточна назва",
+        address="Поточна адреса",
+        rent_amount=Decimal("900.00"),
+        rent_currency="USD",
+    )
+    db_session.add(live)
+    db_session.commit()
+
+    summary = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    assert summary.added["apartments"] == 1
+    assert live.restore_key == exact_key
+    assert db_session.scalar(
+        select(Apartment).where(Apartment.restore_key == fallback_key)
+    ) is not None
+
+
+def test_fallback_alias_survives_live_rename_without_overwriting_identity(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    source_engine = create_database_engine(database_path)
+    with Session(source_engine) as source_session:
+        source = source_session.scalar(select(Apartment))
+        assert source is not None
+        source.restore_key = "7" * 32
+        source_session.commit()
+    live = Apartment(
+        restore_key="8" * 32,
+        name="Квартира 1",
+        address="Київ, Хрещатик, 1",
+        rent_amount=Decimal("999.00"),
+        rent_currency="USD",
+    )
+    db_session.add(live)
+    db_session.commit()
+
+    first = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+    live.name = "Перейменована локально"
+    db_session.commit()
+    second = import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    assert first.skipped["apartments"] == 1
+    assert second.added["apartments"] == 0
+    assert live.restore_key == "8" * 32
+    assert db_session.scalar(select(func.count()).select_from(Apartment)) == 1
+
+
+def test_import_stages_attachment_bytes_before_live_database_flush(
+    db_session: Session,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    flush_count = 0
+    original_flush = db_session.flush
+    original_copyfile = restore_service.copyfile
+
+    def tracked_flush(*args, **kwargs) -> None:
+        nonlocal flush_count
+        flush_count += 1
+        original_flush(*args, **kwargs)
+
+    def tracked_copyfile(source: Path, target: Path) -> Path:
+        assert flush_count == 0
+        return original_copyfile(source, target)
+
+    monkeypatch.setattr(db_session, "flush", tracked_flush)
+    monkeypatch.setattr(restore_service, "copyfile", tracked_copyfile)
+
+    import_backup(database_path, backup_uploads, db_session, tmp_path / "live")
+
+    assert flush_count >= 1
+
+
+def test_startup_recovery_cleans_journal_after_committed_restore(
+    db_session: Session,
+    db_engine,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live"
+    monkeypatch.setattr(restore_service, "_remove_restore_journal", lambda *args: None)
+
+    import_backup(database_path, backup_uploads, db_session, uploads_dir)
+
+    attachment = db_session.scalar(select(TenantAttachment))
+    assert attachment is not None
+    target = attachment_path(uploads_dir, attachment.tenant_id, attachment.stored_name)
+    assert target.read_bytes() == b"contract-content"
+    assert (uploads_dir / ".restore-journal").is_dir()
+    monkeypatch.undo()
+    recover_restore_journals(uploads_dir, create_session_factory(db_engine))
+    assert target.read_bytes() == b"contract-content"
+    assert not (uploads_dir / ".restore-journal").exists()
+
+
+def test_restore_fsyncs_new_directory_entries(
+    db_session: Session,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live"
+    synced: list[Path] = []
+
+    def track_fsync(path: Path) -> None:
+        synced.append(path)
+
+    monkeypatch.setattr(storage_service, "fsync_directory", track_fsync)
+    monkeypatch.setattr(restore_service, "fsync_directory", track_fsync)
+
+    import_backup(database_path, backup_uploads, db_session, uploads_dir)
+
+    attachment = db_session.scalar(select(TenantAttachment))
+    assert attachment is not None
+    target = attachment_path(uploads_dir, attachment.tenant_id, attachment.stored_name)
+    assert uploads_dir.parent in synced
+    assert uploads_dir in synced
+    assert target.parent.parent in synced
+    assert target.parent in synced
+
+
+def test_parallel_imports_are_serialized_and_idempotent(tmp_path: Path) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path / "source")
+    live_database = tmp_path / "live.db"
+    run_migrations(Settings(database_path=live_database, debug=True))
+    live_engine = create_database_engine(live_database)
+    session_factory = create_session_factory(live_engine)
+    uploads_dir = tmp_path / "live-uploads"
+    barrier = Barrier(2)
+    errors: list[Exception] = []
+    summaries = []
+
+    def worker() -> None:
+        with session_factory() as session:
+            barrier.wait(timeout=5)
+            try:
+                summaries.append(
+                    import_backup(database_path, backup_uploads, session, uploads_dir)
+                )
+            except Exception as error:
+                errors.append(error)
+
+    threads = [Thread(target=worker), Thread(target=worker)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10)
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(summaries) == 2
+    with session_factory() as session:
+        assert session.scalar(select(func.count()).select_from(Apartment)) == 1
+        assert session.scalar(select(func.count()).select_from(TenantAttachment)) == 1
+    live_engine.dispose()

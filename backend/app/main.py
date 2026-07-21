@@ -6,8 +6,10 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.auth import LoginRateLimiter, ensure_admin
+from app.constants import APP_VERSION
 from app.config import Settings, get_settings, validate_production_settings
 from app.db import create_database_engine, create_session_factory, run_migrations
+from app.middleware import RestoreUploadGuardMiddleware
 from app.routers.apartments import router as apartments_router
 from app.routers.auth import router as auth_router
 from app.routers.billing import router as billing_router
@@ -20,8 +22,8 @@ from app.routers.stats import router as stats_router
 from app.routers.settings import router as settings_router
 from app.routers.tenants import router as tenants_router
 from app.services.scheduler import start_scheduler
-
-APP_VERSION = "0.1.0"
+from app.services.restore import recover_restore_journals
+from app.services.storage import recover_tenant_file_deletions
 
 
 def add_frontend(application: FastAPI, static_dir: Path) -> None:
@@ -39,7 +41,10 @@ def add_frontend(application: FastAPI, static_dir: Path) -> None:
             raise HTTPException(status_code=404)
 
         requested_file = (static_dir / path).resolve()
-        if requested_file.is_relative_to(static_dir.resolve()) and requested_file.is_file():
+        if (
+            requested_file.is_relative_to(static_dir.resolve())
+            and requested_file.is_file()
+        ):
             return FileResponse(requested_file)
         return FileResponse(index_file)
 
@@ -54,6 +59,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine = create_database_engine(resolved_settings.database_path)
         application.state.session_factory = create_session_factory(engine)
         ensure_admin(application.state.session_factory, resolved_settings)
+        recover_restore_journals(
+            resolved_settings.uploads_dir,
+            application.state.session_factory,
+        )
+        recover_tenant_file_deletions(
+            resolved_settings.uploads_dir,
+            application.state.session_factory,
+        )
         scheduler = (
             start_scheduler(application.state.session_factory)
             if resolved_settings.scheduler_enabled
@@ -75,6 +88,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = resolved_settings
     application.state.login_rate_limiter = LoginRateLimiter()
+    application.add_middleware(RestoreUploadGuardMiddleware)
     application.include_router(auth_router)
     application.include_router(apartments_router)
     application.include_router(tenants_router)

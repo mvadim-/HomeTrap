@@ -1,5 +1,103 @@
 # ChangeLog
 
+## [2026-07-21 15:19] Crash-safe backup, restore і видалення tenant
+
+- `backend/app/services/{restore,storage}.py`, `backend/app/main.py` — restore тепер
+  durably створює journal і всі батьківські каталоги, переміщує та fsync-ить файли до
+  DB commit, а startup recovery завершує committed операції або прибирає orphan-файли;
+  `.deleting` tenant-каталоги також автоматично відновлюються чи видаляються за станом БД.
+- `backend/app/routers/services.py`, `backend/app/services/restore.py` — hard delete
+  послуги прибирає її restore aliases, а імпорт відхиляє невалідні, dangling і
+  конфліктні source aliases до commit.
+- `backend/app/services/backup.py` — preflight обходить uploads потоково без повної
+  матеріалізації/сортування, зупиняється на member quota та заздалегідь враховує
+  manifest, ZIP headers, central directory і EOCD разом із верхньою межею SQLite.
+- `backend/tests/test_{apartments,attachments,backup,restore}.py` — додано регресії
+  alias cleanup/validation, помилки фіналізації, crash до DB commit, directory fsync,
+  startup recovery tenant delete і bounded/metadata-aware backup preflight.
+- Docker-перевірка: backend — 200 тестів passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed; `git diff --check` — passed.
+- Зміна призначена для production backend. Перед розгортанням зробіть ручний архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; recovery
+  виконується автоматично на старті, автоматичний деплой не виконувався.
+
+## [2026-07-21 15:02] Атомарний restore та ранні backup-квоти
+
+- `backend/app/services/restore.py`, `backend/app/models.py`, міграція
+  `20260721_07_restore_aliases.py` — exact/alias identity резервується до fallback,
+  stable live `restore_key` більше не перезаписується; merge планується до єдиного
+  write-flush, а файловий durable journal завершується або відкидається на startup.
+- `backend/app/services/storage.py`, DB-mutating routers і scheduler — усі production
+  writers координуються зі snapshot/restore через спільний lock у sync worker-thread,
+  тому check/insert і довші maintenance-операції не конкурують за SQLite write-lock.
+- `backend/app/services/backup.py` — розмір БД/uploads і кількість ZIP members
+  перевіряються до `VACUUM INTO` та створення архіву; неможливий backup завершується
+  контрольованим `BackupLimitError` без великих temp-файлів.
+- `backend/tests/test_{backup,models,restore}.py` — додано регресії order-independent
+  exact/fallback, alias після перейменування, пізнього flush, раннього quota reject та
+  startup recovery committed attachment journal.
+- Docker-перевірка: backend — 192 тести passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed; `git diff --check` — passed.
+- Зміна призначена для production backend. Перед розгортанням зробіть ручний архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; Alembic-міграція
+  і recovery journal виконуються автоматично на старті, автоматичний деплой не виконувався.
+
+## [2026-07-21 14:29] Коректний 413 і безпечне fallback-зіставлення restore
+
+- `backend/app/middleware.py`, `backend/tests/test_settings.py` — перевищення ліміту
+  chunked multipart тепер повертає `413`, навіть коли FastAPI перехоплює помилку
+  парсингу; Starlette гарантовано закриває вже створені spool-файли.
+- `backend/app/services/restore.py`, `backend/tests/test_restore.py` — fallback для
+  квартир і послуг не може повторно зайняти live-рядок, уже зіставлений з іншим
+  source `restore_key`; збережено ідемпотентність та коректний ремап дочірніх даних.
+- Docker-перевірка: backend — 189 тестів passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed.
+- Зміна призначена для production backend. Перед розгортанням зробіть ручний архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; автоматичний
+  деплой не виконувався.
+
+## [2026-07-21 14:12] Усунення критичних ризиків backup/restore
+
+- `backend/app/{middleware,auth,main}.py`, `backend/app/routers/settings.py` —
+  restore-запити автентифікуються й обмежуються за сирим розміром на ASGI-рівні до
+  multipart parsing; chunked body також контролюється потоково.
+- `backend/app/services/{backup,backup_limits,restore}.py` — успішно створений ZIP
+  гарантовано відповідає restore-квотам; вкладення staging-копіюються до відкриття
+  live SQLite write transaction, а фінальне переміщення лишається атомарним.
+- `backend/app/models.py`, `backend/alembic/versions/20260721_06_restore_keys.py` —
+  квартири й послуги отримали унікальні стабільні restore-ключі: допустимі дублікати
+  бізнес-полів зберігаються та ідемпотентно відновлюються.
+- `backend/app/routers/tenants.py` — multipart attachment upload переведено у
+  синхронний FastAPI handler, тому очікування shared lock не блокує event loop.
+- `backend/tests/test_{attachments,backup,models,restore,settings}.py`, план,
+  `docs/deploy.md`, `CLAUDE.md` — додано регресії раннього upload guard, квот,
+  дублікатів, staging до flush і schema constraints; уточнено production deploy.
+- Docker-перевірка: backend — 186 тестів passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed.
+- Зміна призначена для production backend. Перед розгортанням зробіть ручний архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; Alembic
+  міграція застосовується автоматично, автоматичний деплой не виконувався.
+
+## [2026-07-21 13:46] Захист бекапу й відновлення після code review
+
+- `backend/app/services/{backup,restore,storage}.py`, `backend/app/routers/{settings,tenants}.py`
+  — синхронізовано SQLite snapshot/restore з файловими мутаціями вкладень; додано
+  потокові квоти ZIP, безпечне розпакування, перевірку бізнес-ключів, інтервалів
+  договорів і метаданих/вмісту вкладень; blocking restore виконується у threadpool.
+- `backend/app/constants.py`, `backend/app/main.py` — версію застосунку винесено з
+  `main` у незалежний модуль без runtime-імпорту.
+- `backend/tests/test_{backup,restore,settings}.py`, `frontend/src/api/client.test.ts`
+  — додано конкурентні, rollback, zip-bomb/zip-slip, interrupted-download і
+  fetch-рівневі регресії; тестову lifecycle-обгортку API спрощено до context manager.
+- `frontend/src/pages/Settings.tsx`, `docs/deploy.md`, `CLAUDE.md`, план і backlog —
+  уточнено секретність архіву, обов'язковий ручний DR-бекап перед оновленням,
+  ресурсні ліміти та інваріанти супроводу backup/restore.
+- Docker-перевірка: backend — 177 тестів passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed.
+- Зміна призначена для production backend і frontend. Для розгортання спочатку
+  зробіть ручний архів усього `data/`, потім виконайте rebuild/restart за
+  `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-21 13:24] Завершення документації бекапу та відновлення
 
 - `README.md` і `CLAUDE.md` перевірено: опис користувацької можливості вже додано

@@ -4,12 +4,12 @@ from datetime import date
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event
+from sqlalchemy import event, select
 
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
-from app.models import Invoice, InvoiceLine
+from app.models import Invoice, InvoiceLine, RestoreAlias, Service
 
 
 async def _create_client(tmp_path):
@@ -169,7 +169,7 @@ async def test_apartment_routes_require_auth_and_return_404(tmp_path) -> None:
 
 
 async def test_service_crud_is_sorted_and_validated(tmp_path) -> None:
-    _, lifespan, client = await _create_client(tmp_path)
+    application, lifespan, client = await _create_client(tmp_path)
     try:
         apartment = (
             await client.post("/api/apartments", json=_apartment_payload())
@@ -189,6 +189,19 @@ async def test_service_crud_is_sorted_and_validated(tmp_path) -> None:
             ),
         )
         assert earlier_response.status_code == 201
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            deleted_service = session.get(Service, earlier_response.json()["id"])
+            assert deleted_service is not None
+            session.add(
+                RestoreAlias(
+                    entity_type="service",
+                    restore_key="a" * 32,
+                    target_restore_key=deleted_service.restore_key,
+                )
+            )
+            session.commit()
+        engine.dispose()
 
         services_response = await client.get(
             f"/api/apartments/{apartment['id']}/services"
@@ -210,6 +223,10 @@ async def test_service_crud_is_sorted_and_validated(tmp_path) -> None:
             f"{earlier_response.json()['id']}"
         )
         assert delete_response.status_code == 204
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            assert session.scalar(select(RestoreAlias)) is None
+        engine.dispose()
 
         assert (
             await client.get(f"/api/apartments/{apartment['id']}/services/999")

@@ -40,6 +40,22 @@ Always provide deployment instructions for any code that is meant to run in prod
   instead of registering additional APScheduler jobs. Keep production at one Uvicorn
   worker so the in-process scheduler does not duplicate delivery.
 
+### Backup And Restore Invariants
+
+- In-app restore is compatible only with a backup whose Alembic revision exactly
+  matches the live database revision; use a manual archive of all `data/` for DR or
+  rollback across application/schema updates.
+- Every model or Alembic schema change must review and update restore business keys,
+  copied fields, `ENTITY_NAMES`, intentional exclusions, and round-trip tests. New
+  persistent data must never be silently omitted from backup/restore coverage.
+- Apartment and service `restore_key` values are stable import identities. Preserve
+  them in migrations, snapshots, and restore copies so supported duplicate display
+  names/addresses remain recoverable and repeated imports stay idempotent.
+- Keep SQLite snapshot creation, restore import, and attachment filesystem mutations
+  under the shared data-store lock so database rows and files stay consistent. Stage
+  attachment bytes before the live SQLite write transaction to keep writer blocking
+  bounded.
+
 ### Frontend Styling Conventions
 
 - Treat `frontend/src/theme.css` as the source of truth for light and dark design

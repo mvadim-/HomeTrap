@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import (
     JSON,
@@ -38,8 +39,12 @@ class InvoiceStatus(StrEnum):
 
 class Apartment(Base):
     __tablename__ = "apartments"
+    __table_args__ = (
+        UniqueConstraint("restore_key", name="uq_apartments_restore_key"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    restore_key: Mapped[str] = mapped_column(String(32), default=lambda: uuid4().hex)
     name: Mapped[str] = mapped_column(String(200))
     address: Mapped[str] = mapped_column(String(500))
     rent_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
@@ -121,9 +126,11 @@ class Service(Base):
     __tablename__ = "services"
     __table_args__ = (
         CheckConstraint("kind IN ('metered', 'fixed')", name="ck_services_kind"),
+        UniqueConstraint("restore_key", name="uq_services_restore_key"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    restore_key: Mapped[str] = mapped_column(String(32), default=lambda: uuid4().hex)
     apartment_id: Mapped[int] = mapped_column(
         ForeignKey("apartments.id", ondelete="CASCADE"),
         index=True,
@@ -165,7 +172,9 @@ class Invoice(Base):
     __tablename__ = "invoices"
     __table_args__ = (
         UniqueConstraint("apartment_id", "period", name="uq_invoices_apartment_period"),
-        CheckConstraint("status IN ('draft', 'issued', 'paid')", name="ck_invoices_status"),
+        CheckConstraint(
+            "status IN ('draft', 'issued', 'paid')", name="ck_invoices_status"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -231,6 +240,22 @@ class ExchangeRate(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
     currency: Mapped[str] = mapped_column(String(3))
     rate: Mapped[Decimal] = mapped_column(Numeric(12, 6))
+
+
+class RestoreAlias(Base):
+    __tablename__ = "restore_aliases"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "restore_key", name="uq_restore_alias_key"),
+        CheckConstraint(
+            "entity_type IN ('apartment', 'service')",
+            name="ck_restore_alias_entity_type",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(20))
+    restore_key: Mapped[str] = mapped_column(String(32))
+    target_restore_key: Mapped[str] = mapped_column(String(32))
 
 
 class User(Base):

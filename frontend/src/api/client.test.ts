@@ -1,6 +1,6 @@
 import { afterEach, vi } from "vitest";
 
-import { ApiError, browserNavigation, deleteInvoice, getCurrentUser, importApartmentHistory, login, logout, uploadTenantAttachments } from "./client";
+import { ApiError, browserNavigation, deleteInvoice, downloadBackup, getCurrentUser, importApartmentHistory, login, logout, restoreBackup, uploadTenantAttachments } from "./client";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -68,5 +68,52 @@ describe("API transport", () => {
     const redirect = vi.spyOn(browserNavigation, "toLogin").mockImplementation(() => undefined);
     await expect(getCurrentUser()).rejects.toEqual(new ApiError(401, "Потрібна авторизація"));
     expect(redirect).toHaveBeenCalledOnce();
+  });
+
+  it("downloads a backup with credentials and parses its filename", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("backup", {
+      status: 200,
+      headers: {
+        "Content-Disposition": "attachment; filename=\"snapshot.zip\"",
+        "Content-Type": "application/zip",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const download = await downloadBackup();
+    expect(download.filename).toBe("snapshot.zip");
+    expect(download.blob).toEqual(expect.objectContaining({
+      size: 6,
+      type: "application/zip",
+    }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/settings/backup", expect.objectContaining({
+      credentials: "include",
+    }));
+  });
+
+  it("restores a backup as multipart without a manual content type", async () => {
+    const summary = { added: { apartments: 1 }, skipped: { apartments: 0 } };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(summary), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["backup"], "backup.zip", { type: "application/zip" });
+
+    await expect(restoreBackup(file)).resolves.toEqual(summary);
+    const options = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/settings/restore");
+    expect(options.credentials).toBe("include");
+    expect(options.body).toBeInstanceOf(FormData);
+    expect((options.body as FormData).get("file")).toBe(file);
+    expect(options.headers).not.toHaveProperty("Content-Type");
+  });
+
+  it("surfaces restore API validation errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ detail: "Backup archive exceeds the upload size limit" }),
+      { status: 413 },
+    )));
+
+    await expect(restoreBackup(new File(["backup"], "backup.zip"))).rejects.toEqual(
+      new ApiError(413, "Backup archive exceeds the upload size limit"),
+    );
   });
 });
