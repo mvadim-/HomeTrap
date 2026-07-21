@@ -10,6 +10,7 @@ const navigation = [
   { to: "/", label: "Дашборд", end: true },
   { to: "/apartments", label: "Квартири" },
   { to: "/invoices", label: "Рахунки" },
+  { to: "/expenses", label: "Витрати" },
   { to: "/stats", label: "Статистика" },
   { to: "/settings", label: "Налаштування" },
 ];

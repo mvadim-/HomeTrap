@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import { ApartmentDetail } from "./pages/ApartmentDetail";
 import { Apartments } from "./pages/Apartments";
 import { Dashboard } from "./pages/Dashboard";
+import { Expenses } from "./pages/Expenses";
 import { InvoiceEdit } from "./pages/InvoiceEdit";
 import { Invoices } from "./pages/Invoices";
 import { Login } from "./pages/Login";
@@ -46,6 +47,7 @@ export function App() {
           <Route path="apartments/:apartmentId" element={<ApartmentDetail />} />
           <Route path="invoices" element={<Invoices />} />
           <Route path="invoices/:invoiceId" element={<InvoiceEdit />} />
+          <Route path="expenses" element={<Expenses />} />
           <Route path="stats" element={<Stats />} />
           <Route path="settings" element={<Settings />} />
         </Route>
