@@ -437,6 +437,15 @@ async def test_consumption_groups_metered_services_by_month(tmp_path) -> None:
             "10.000",
             "12.000",
         ]
+        assert [point["cost"] for point in payload["series"][0]["values"]] == [
+            "100.00",
+            "200.00",
+        ]
+        assert payload["series"][0]["summary"] == {
+            "avg": "11.000",
+            "min": "10.000",
+            "max": "12.000",
+        }
 
         engine = create_database_engine(application.state.settings.database_path)
         with create_session_factory(engine)() as session:
@@ -477,6 +486,12 @@ async def test_consumption_groups_metered_services_by_month(tmp_path) -> None:
             point["consumed"]
             for point in without_draft.json()["series"][0]["values"]
         ] == ["10.000"]
+        # Single month: avg == min == max.
+        assert without_draft.json()["series"][0]["summary"] == {
+            "avg": "10.000",
+            "min": "10.000",
+            "max": "10.000",
+        }
     finally:
         await _close(lifespan, client)
 

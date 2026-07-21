@@ -280,6 +280,13 @@ class UpcomingBillingResponse(ApiSchema):
 class ConsumptionPoint(ApiSchema):
     period: date
     consumed: Decimal
+    cost: Decimal
+
+
+class ConsumptionSummary(ApiSchema):
+    avg: Decimal
+    min: Decimal
+    max: Decimal
 
 
 class ConsumptionSeries(ApiSchema):
@@ -287,6 +294,7 @@ class ConsumptionSeries(ApiSchema):
     service_name: str
     unit: str | None
     values: list[ConsumptionPoint]
+    summary: ConsumptionSummary
 
 
 class ConsumptionStats(ApiSchema):

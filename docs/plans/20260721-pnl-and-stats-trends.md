@@ -249,12 +249,12 @@
 - Modify: `backend/app/schemas.py`
 - Modify: `backend/tests/test_stats.py`
 
-- [ ] додати `cost` (= `InvoiceLine.amount`) у кожну точку `consumption`
+- [x] додати `cost` (= `InvoiceLine.amount`) у кожну точку `consumption`
   (розширити SELECT) і зведення `summary:{avg,min,max}` по `consumed` у серію
-- [ ] зберегти зворотну сумісність наявних полів `ConsumptionSeries`/`Point`
-- [ ] write tests: серія містить `cost` і коректні `avg/min/max`; порожня
+- [x] зберегти зворотну сумісність наявних полів `ConsumptionSeries`/`Point`
+- [x] write tests: серія містить `cost` і коректні `avg/min/max`; порожня
   історія → серії немає (як зараз); один місяць → avg=min=max
-- [ ] run tests — must pass before task 5
+- [x] run tests — must pass before task 5
 
 ### Task 5: Покриття Expense у backup/restore (інваріант)
 

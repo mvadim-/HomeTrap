@@ -109,6 +109,7 @@ def consumption_stats(
             Service.unit,
             Invoice.period,
             InvoiceLine.consumed,
+            InvoiceLine.amount,
         )
         .join(InvoiceLine, InvoiceLine.service_id == Service.id)
         .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
@@ -126,7 +127,7 @@ def consumption_stats(
     rows = session.execute(query).all()
 
     series: dict[int, dict[str, object]] = {}
-    for service_id, name, unit, period, consumed in rows:
+    for service_id, name, unit, period, consumed, amount in rows:
         item = series.setdefault(
             service_id,
             {
@@ -136,7 +137,18 @@ def consumption_stats(
                 "values": [],
             },
         )
-        item["values"].append({"period": period, "consumed": consumed})
+        item["values"].append({"period": period, "consumed": consumed, "cost": amount})
+
+    for item in series.values():
+        consumed_values = [point["consumed"] for point in item["values"]]
+        total = sum(consumed_values, Decimal("0"))
+        avg = (total / len(consumed_values)).quantize(Decimal("0.001"))
+        item["summary"] = {
+            "avg": avg,
+            "min": min(consumed_values),
+            "max": max(consumed_values),
+        }
+
     return {
         "apartment_id": apartment_id,
         "months": response_months,
