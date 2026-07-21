@@ -1,6 +1,10 @@
 #!/bin/sh
 # synology-update.sh — безпечне оновлення HomeTrap на Synology:
-#   git pull -> бекап data/ -> rebuild+restart -> health-check -> прибирання бекапів.
+#   перевірка оновлень -> бекап data/ -> git pull -> rebuild+restart ->
+#   health-check -> ротація бекапів.
+#
+# Бекап робиться ПЕРШИМ (до git pull і rebuild) — це знімок відомо-справного
+# стану до будь-яких змін.
 #
 # Запуск (користувач у docker-групі):   sh synology-update.sh
 # Якщо docker потребує root:             SUDO=sudo sh synology-update.sh
@@ -33,27 +37,37 @@ mkdir -p data "$HOMETRAP_BACKUP_DIR"
 
 DC="$SUDO docker compose --env-file .env -f docker/docker-compose.yml"
 PORT="$(sed -n 's/^HOMETRAP_PORT=//p' .env | head -n1)"; PORT="${PORT:-8000}"
+
+# 2) Чи є що оновлювати (fetch, без змін робочого дерева) ----------------------
+log "Перевіряю оновлення (git fetch)"
+git fetch --quiet || die "git fetch не вдався (мережа/креденшали?)"
+LOCAL="$(git rev-parse @)"
+REMOTE="$(git rev-parse '@{u}' 2>/dev/null || git rev-parse origin/main)"
+if [ "$LOCAL" = "$REMOTE" ]; then
+  log "Уже актуально ($(git rev-parse --short @)) — бекап і rebuild не потрібні."
+  exit 0
+fi
+
+# 3) Бекап data/ ПЕРШИМ — до будь-яких змін (консистентно, з зупиненим контейнером)
 TS="$(date +%Y%m%d-%H%M%S)"
 BACKUP_FILE="$HOMETRAP_BACKUP_DIR/hometrap-$TS.tar.gz"
-
-# 2) Останні зміни ------------------------------------------------------------
-log "Отримую останні зміни (git pull --ff-only)"
-BEFORE="$(git rev-parse --short HEAD)"
-git pull --ff-only || die "git pull не вдався (розбіжність гілок?) — розберіться вручну"
-AFTER="$(git rev-parse --short HEAD)"
-log "Версія: $BEFORE -> $AFTER"
-
-# 3) Бекап data/ ДО оновлення (консистентно — із зупиненим контейнером) --------
-log "Бекап data/ -> $BACKUP_FILE"
+log "Бекап data/ (знімок до оновлення) -> $BACKUP_FILE"
 $DC stop hometrap || true
 tar -czf "$BACKUP_FILE" data || die "Не вдалося створити бекап"
 log "Бекап готовий ($(du -h "$BACKUP_FILE" | cut -f1))"
 
-# 4) Rebuild + запуск (міграції Alembic застосуються на старті) ----------------
+# 4) Тягнемо зміни ------------------------------------------------------------
+BEFORE="$(git rev-parse --short @)"
+log "git pull --ff-only"
+git pull --ff-only || die "git pull не вдався (розбіжність гілок?). Бекап: $BACKUP_FILE"
+AFTER="$(git rev-parse --short @)"
+log "Версія: $BEFORE -> $AFTER"
+
+# 5) Rebuild + запуск (міграції Alembic застосуються на старті) ----------------
 log "Rebuild і запуск контейнера"
 $DC up -d --build || die "up --build не вдався — дивіться '$DC logs hometrap'. Бекап: $BACKUP_FILE"
 
-# 5) Чекаємо healthy ----------------------------------------------------------
+# 6) Чекаємо healthy ----------------------------------------------------------
 log "Чекаю healthy (до ${HOMETRAP_HEALTH_TIMEOUT}s)"
 WAITED=0
 while :; do
@@ -69,7 +83,7 @@ while :; do
 done
 log "Health OK: $(curl -fsS "http://127.0.0.1:$PORT/api/health")"
 
-# 6) Прибирання старих бекапів (лишаємо останні N) ----------------------------
+# 7) Прибирання старих бекапів (лишаємо останні N) ----------------------------
 log "Лишаю останні $HOMETRAP_KEEP_BACKUPS бекапів у $HOMETRAP_BACKUP_DIR"
 ls -1t "$HOMETRAP_BACKUP_DIR"/hometrap-*.tar.gz 2>/dev/null \
   | tail -n +"$((HOMETRAP_KEEP_BACKUPS + 1))" \
@@ -78,5 +92,5 @@ ls -1t "$HOMETRAP_BACKUP_DIR"/hometrap-*.tar.gz 2>/dev/null \
     done
 
 log "Готово: $BEFORE -> $AFTER. Бекап: $BACKUP_FILE"
-printf '\nВідкат за потреби:\n  %s stop hometrap\n  tar -xzf %s -C %s\n  %s up -d\n' \
-  "$DC" "$BACKUP_FILE" "$HOMETRAP_DIR" "$DC"
+printf '\nВідкат за потреби (код + дані):\n  git reset --hard %s\n  %s stop hometrap\n  tar -xzf %s -C %s\n  %s up -d --build\n' \
+  "$BEFORE" "$DC" "$BACKUP_FILE" "$HOMETRAP_DIR" "$DC"

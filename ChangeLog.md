@@ -2,10 +2,11 @@
 
 ## [2026-07-21 17:39] Скрипт оновлення для Synology
 
-- `synology-update.sh` — новий скрипт безпечного оновлення на Synology: `git pull`
-  → бекап `data/` ДО міграцій → `up -d --build` → очікування `healthy` → ротація
-  старих бекапів; наприкінці друкує підказку відкату. Конфігурується через оточення
-  (`HOMETRAP_DIR`, `HOMETRAP_BACKUP_DIR`, `HOMETRAP_KEEP_BACKUPS`,
+- `synology-update.sh` — новий скрипт безпечного оновлення на Synology: `git fetch`
+  (якщо нема нового — вихід без простою) → **бекап `data/` першим**, до будь-яких
+  змін → `git pull --ff-only` → `up -d --build` → очікування `healthy` → ротація
+  старих бекапів; наприкінці друкує підказку відкату (код + дані). Конфігурується
+  через оточення (`HOMETRAP_DIR`, `HOMETRAP_BACKUP_DIR`, `HOMETRAP_KEEP_BACKUPS`,
   `HOMETRAP_HEALTH_TIMEOUT`, `SUDO`).
 - `docs/deploy.md` — у розділ «Оновлення» додано покажчик на скрипт.
 - Операційний хелпер; production-код застосунку не зачеплено.
