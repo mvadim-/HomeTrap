@@ -1,5 +1,15 @@
 # ChangeLog
 
+## [2026-07-21 12:44] Сервіс створення резервної копії
+
+- `backend/app/services/backup.py` — додано консистентний SQLite-знімок через
+  `VACUUM INTO`, ZIP із базою, uploads і manifest та автоматичне очищення
+  тимчасових файлів.
+- `backend/tests/test_backup.py` — додано перевірки структури архіву, manifest,
+  SHA-256, читабельності знімка, порожньої uploads-теки та прибирання temp-файлів.
+- Зміна призначена для production backend. Для розгортання на Synology виконати
+  rebuild і restart за `docs/deploy.md`; автоматичний деплой не виконувався.
+
 ## [2026-07-21 11:11] План: бекап і недеструктивне відновлення (#1)
 
 - `docs/plans/20260720-backup-and-restore.md` — новий план реалізації ідеї #1:

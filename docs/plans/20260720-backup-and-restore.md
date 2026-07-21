@@ -125,14 +125,14 @@
 - Create: `backend/app/services/backup.py`
 - Create: `backend/tests/test_backup.py`
 
-- [ ] `build_backup(database_path, uploads_dir) -> Path`: `VACUUM INTO` тимчасова
+- [x] `build_backup(database_path, uploads_dir) -> Path`: `VACUUM INTO` тимчасова
       копія БД; зібрати `.zip` (`hometrap.db`, `uploads/…`, `manifest.json`)
-- [ ] `manifest`: `app_version` (з `APP_VERSION`), `alembic_revision` (SELECT з
+- [x] `manifest`: `app_version` (з `APP_VERSION`), `alembic_revision` (SELECT з
       `alembic_version`), `created_at` (UTC), `db_sha256`
-- [ ] прибирання тимчасових файлів (context manager / try-finally)
-- [ ] тести: архів містить db+uploads+manifest; поля manifest; sha256 збігається;
+- [x] прибирання тимчасових файлів (context manager / try-finally)
+- [x] тести: архів містить db+uploads+manifest; поля manifest; sha256 збігається;
       порожня `uploads/` не ламає
-- [ ] запустити тести — мають пройти перед наступною задачею
+- [x] запустити тести — мають пройти перед наступною задачею
 
 ### Task 2: Ендпоінт завантаження бекапу
 
