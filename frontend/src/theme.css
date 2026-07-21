@@ -25,6 +25,9 @@
   --chart-tenant-marker: #9c6644;
   --chart-expense: #c65b3c;
   --chart-net: #37474f;
+  --chart-yoy: #9aa4a0;
+  --chart-delta-up: #b45c3a;
+  --chart-delta-down: #2f8f68;
   --radius-sm: 10px;
   --radius-md: 12px;
   --radius-lg: 24px;
@@ -55,6 +58,9 @@
   --chart-tenant-marker: #d6a36f;
   --chart-expense: #d3694a;
   --chart-net: #b7c2c8;
+  --chart-yoy: #7f8983;
+  --chart-delta-up: #dd8a68;
+  --chart-delta-down: #4fae86;
   --shadow-card: none;
 }
 
@@ -83,6 +89,9 @@
     --chart-tenant-marker: #d6a36f;
     --chart-expense: #d3694a;
     --chart-net: #b7c2c8;
+    --chart-yoy: #7f8983;
+    --chart-delta-up: #dd8a68;
+    --chart-delta-down: #4fae86;
     --shadow-card: none;
   }
 }

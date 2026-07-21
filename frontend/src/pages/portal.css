@@ -1056,6 +1056,57 @@
   background: var(--color-bg);
 }
 
+.consumption-unit-switch {
+  align-self: flex-start;
+}
+
+.consumption-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.consumption-delta {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.consumption-delta-up {
+  color: var(--chart-delta-up);
+}
+
+.consumption-delta-down {
+  color: var(--chart-delta-down);
+}
+
+.consumption-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.consumption-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.consumption-summary dt {
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.consumption-summary dd {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
 .chart-tooltip rect {
   fill: var(--color-text);
   stroke: var(--color-border);

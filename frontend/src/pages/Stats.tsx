@@ -303,10 +303,42 @@ function scaleTicks(max: number, step: number): number[] {
   return Array.from({ length: Math.round(max / step) + 1 }, (_, index) => index * step);
 }
 
-function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods: string[] }) {
+function shiftMonthKey(monthKey: string, delta: number): string {
+  const [year, month] = monthKey.split("-").map(Number);
+  const total = year * 12 + (month - 1) + delta;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
+}
+
+type ConsumptionMode = "units" | "cost";
+type ConsumptionDelta = { percent: number; direction: "up" | "down" };
+
+function ConsumptionDeltaBadge({ delta, label }: { delta: ConsumptionDelta; label: string }) {
+  const magnitude = numberLabel(Math.abs(delta.percent), 1);
+  const arrow = delta.direction === "up" ? "▲" : "▼";
+  const sign = delta.direction === "up" ? "+" : "−";
+  const trend = delta.direction === "up" ? "зростання" : "зниження";
+  return (
+    <span
+      className={`consumption-delta consumption-delta-${delta.direction}`}
+      aria-label={`${label}: ${trend} на ${magnitude}%`}
+    >
+      <span aria-hidden="true">{arrow} {sign}{magnitude}%</span>
+    </span>
+  );
+}
+
+function MiniLineChart({ series, periods, mode }: { series: ConsumptionSeries; periods: string[]; mode: ConsumptionMode }) {
+  const metricOf = (point: ConsumptionSeries["values"][number]) => (
+    mode === "units" ? Number(point.consumed) : Number(point.cost)
+  );
+  const displayUnit = mode === "units" ? (series.unit ?? "од.") : "₴";
+  const formatValue = (value: number) => `${numberLabel(value)} ${displayUnit}`;
   const pointsByPeriod = new Map(series.values.map((point) => [point.period.slice(0, 7), point]));
+  const periodKeys = periods.map((period) => period.slice(0, 7));
+  const periodKeySet = new Set(periodKeys);
+  const showYoy = periodKeys.some((key) => periodKeySet.has(shiftMonthKey(key, -12)));
   const slots = periods.map((period) => pointsByPeriod.get(period.slice(0, 7)) ?? null);
-  const values = series.values.map((point) => Number(point.consumed));
+  const values = series.values.map(metricOf);
   const scale = niceScale(Math.max(...values, 1));
   const ticks = scaleTicks(scale.max, scale.step);
   const plotWidth = CHART_WIDTH - PADDING.left - PADDING.right;
@@ -321,7 +353,23 @@ function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods
     }
     const command = previousPoint ? "L" : "M";
     previousPoint = true;
-    return `${command} ${x(index)} ${y(Number(point.consumed))}`;
+    return `${command} ${x(index)} ${y(metricOf(point))}`;
+  }).filter(Boolean).join(" ");
+  const yoyValues = showYoy
+    ? periodKeys.map((key) => {
+      const priorPoint = pointsByPeriod.get(shiftMonthKey(key, -12));
+      return priorPoint ? metricOf(priorPoint) : null;
+    })
+    : periodKeys.map(() => null);
+  let previousYoy = false;
+  const yoyPath = yoyValues.map((value, index) => {
+    if (value === null) {
+      previousYoy = false;
+      return "";
+    }
+    const command = previousYoy ? "L" : "M";
+    previousYoy = true;
+    return `${command} ${x(index)} ${y(value)}`;
   }).filter(Boolean).join(" ");
   const baseline = PADDING.top + plotHeight;
   const areaPaths: string[] = [];
@@ -330,7 +378,7 @@ function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods
   slots.forEach((point, index) => {
     if (point) {
       if (areaPoints.length === 0) areaStart = index;
-      areaPoints.push(`${areaPoints.length === 0 ? "M" : "L"} ${x(index)} ${y(Number(point.consumed))}`);
+      areaPoints.push(`${areaPoints.length === 0 ? "M" : "L"} ${x(index)} ${y(metricOf(point))}`);
     }
     if ((!point || index === slots.length - 1) && areaPoints.length > 0) {
       const areaEnd = point && index === slots.length - 1 ? index : index - 1;
@@ -339,13 +387,44 @@ function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods
     }
   });
   const color = seriesColor(series.service_name);
+  const currentPoint = series.values.at(-1) ?? null;
+  const currentValue = currentPoint ? metricOf(currentPoint) : 0;
+  const currentKey = currentPoint ? currentPoint.period.slice(0, 7) : null;
+  const deltaFor = (offset: number): ConsumptionDelta | null => {
+    if (!currentPoint || !currentKey) return null;
+    const comparePoint = pointsByPeriod.get(shiftMonthKey(currentKey, offset));
+    if (!comparePoint) return null;
+    const compareValue = metricOf(comparePoint);
+    if (compareValue === 0) return null;
+    const percent = ((metricOf(currentPoint) - compareValue) / compareValue) * 100;
+    return { percent, direction: percent >= 0 ? "up" : "down" };
+  };
+  const monthDelta = deltaFor(-1);
+  const yearDelta = deltaFor(-12);
+  const summary = mode === "units"
+    ? {
+      avg: Number(series.summary.avg),
+      min: Number(series.summary.min),
+      max: Number(series.summary.max),
+    }
+    : {
+      avg: values.reduce((total, value) => total + value, 0) / (values.length || 1),
+      min: Math.min(...values),
+      max: Math.max(...values),
+    };
 
   return (
     <article className="consumption-card">
       <div className="chart-card-heading">
-        <div><h3>{series.service_name}</h3><span>{series.unit ?? "од."}</span></div>
-        <strong>{numberLabel(values.at(-1) ?? 0)}</strong>
+        <div><h3>{series.service_name}</h3><span>{displayUnit}</span></div>
+        <strong>{numberLabel(currentValue)}</strong>
       </div>
+      {(monthDelta || yearDelta) && (
+        <div className="consumption-deltas">
+          {monthDelta && <ConsumptionDeltaBadge delta={monthDelta} label="До попереднього місяця" />}
+          {yearDelta && <ConsumptionDeltaBadge delta={yearDelta} label="Рік до року" />}
+        </div>
+      )}
       <svg className="mini-chart" role="img" aria-label={`Графік споживання: ${series.service_name}`} viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}>
         {ticks.slice(1).map((tick) => (
           <g key={tick}>
@@ -356,28 +435,58 @@ function MiniLineChart({ series, periods }: { series: ConsumptionSeries; periods
         <line className="chart-axis" x1={PADDING.left} x2={CHART_WIDTH - PADDING.right} y1={baseline} y2={baseline} />
         <text className="chart-label" x="25" y={baseline + 4}>0</text>
         {areaPaths.map((areaPath, index) => <path key={index} className="chart-area" d={areaPath} fill={color} fillOpacity="0.13" />)}
+        {yoyPath && (
+          <path
+            className="chart-yoy-line"
+            d={yoyPath}
+            fill="none"
+            stroke="var(--chart-yoy)"
+            strokeDasharray="4 4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            aria-label="Той самий місяць торік"
+          >
+            <title>Той самий місяць торік</title>
+          </path>
+        )}
         {path && <path className="chart-line" d={path} fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />}
+        {showYoy && yoyValues.map((value, index) => (value === null ? null : (
+          <circle
+            key={`yoy-${periods[index]}`}
+            className="chart-yoy-point"
+            cx={x(index)}
+            cy={y(value)}
+            r="2.5"
+            fill="var(--chart-yoy)"
+          />
+        )))}
         {slots.map((point, index) => (
           <g key={periods[index]} className={point ? "chart-month-slot" : "chart-month-slot chart-month-slot-empty"} data-period={periods[index]}>
             {point && (
             <circle
               className="chart-point"
               cx={x(index)}
-              cy={y(Number(point.consumed))}
+              cy={y(metricOf(point))}
               fill={color}
-              r={point === series.values.at(-1) ? 5 : 3}
-              stroke={point === series.values.at(-1) ? "var(--color-surface)" : undefined}
-              strokeWidth={point === series.values.at(-1) ? 2 : undefined}
+              r={point === currentPoint ? 5 : 3}
+              stroke={point === currentPoint ? "var(--color-surface)" : undefined}
+              strokeWidth={point === currentPoint ? 2 : undefined}
               tabIndex={0}
-              aria-label={`${monthLabel(point.period)}: ${numberLabel(Number(point.consumed))} ${series.unit ?? "од."}`}
+              aria-label={`${monthLabel(point.period)}: ${numberLabel(metricOf(point))} ${displayUnit}`}
             >
-              <title>{monthLabel(point.period)}: {numberLabel(Number(point.consumed))} {series.unit ?? "од."}</title>
+              <title>{monthLabel(point.period)}: {numberLabel(metricOf(point))} {displayUnit}</title>
             </circle>
             )}
             <text className="chart-label month-label" textAnchor="middle" x={x(index)} y={CHART_HEIGHT - 8}>{monthLabel(periods[index])}</text>
           </g>
         ))}
       </svg>
+      <dl className="consumption-summary" aria-label={`Зведення споживання: ${series.service_name}`}>
+        <div><dt>Сер.</dt><dd>{formatValue(summary.avg)}</dd></div>
+        <div><dt>Мін</dt><dd>{formatValue(summary.min)}</dd></div>
+        <div><dt>Макс</dt><dd>{formatValue(summary.max)}</dd></div>
+      </dl>
     </article>
   );
 }
@@ -615,6 +724,7 @@ export function Stats() {
   const [consumption, setConsumption] = useState<ConsumptionSeries[] | null>(null);
   const [consumptionLoading, setConsumptionLoading] = useState(false);
   const [consumptionError, setConsumptionError] = useState("");
+  const [consumptionMode, setConsumptionMode] = useState<ConsumptionMode>("units");
   const [income, setIncome] = useState<IncomeStats | null>(null);
   const [incomeLoading, setIncomeLoading] = useState(false);
   const [incomeError, setIncomeError] = useState("");
@@ -861,7 +971,15 @@ export function Stats() {
       </section>
 
       <section className="section-card stats-section">
-        <div className="section-heading"><div><h2>Споживання</h2><p>Показники лічильників по вибраній квартирі</p></div></div>
+        <div className="section-heading">
+          <div><h2>Споживання</h2><p>Показники лічильників по вибраній квартирі</p></div>
+          {consumption && consumption.length > 0 && (
+            <div className="scope-switch consumption-unit-switch" role="group" aria-label="Одиниці споживання">
+              <button className={consumptionMode === "units" ? "active" : ""} type="button" aria-pressed={consumptionMode === "units"} onClick={() => setConsumptionMode("units")}>Одиниці</button>
+              <button className={consumptionMode === "cost" ? "active" : ""} type="button" aria-pressed={consumptionMode === "cost"} onClick={() => setConsumptionMode("cost")}>₴</button>
+            </div>
+          )}
+        </div>
         {statsPeriod === null ? (
           <p className="empty-state">Оберіть початок і завершення періоду.</p>
         ) : consumptionLoading ? (
@@ -869,7 +987,7 @@ export function Stats() {
         ) : consumptionError ? (
           <p className="error-message">{consumptionError}</p>
         ) : consumption && consumption.length > 0 ? (
-          <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} periods={chartPeriods} />)}</div>
+          <div className="consumption-grid">{consumption.map((series) => <MiniLineChart key={series.service_id} series={series} periods={chartPeriods} mode={consumptionMode} />)}</div>
         ) : (
           <p className="empty-state">Ще немає історії споживання для цієї квартири.</p>
         )}

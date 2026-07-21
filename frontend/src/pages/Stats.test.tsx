@@ -1229,4 +1229,140 @@ describe("Stats", () => {
     expect(marginTile).toHaveTextContent("неповний показник");
     expect(marginTile).toHaveTextContent("66,67%*");
   });
+
+  it("shows a year-over-year overlay only when the range spans the previous year", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: null,
+      series: [{
+        service_id: 1,
+        service_name: "Газ",
+        unit: "м³",
+        values: [
+          { period: "2024-06-01", consumed: "10", cost: "200" },
+          { period: "2025-06-01", consumed: "14", cost: "280" },
+        ],
+        summary: { avg: "12", min: "10", max: "14" },
+      }],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+
+    const defaultChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    expect(defaultChart.querySelector(".chart-yoy-line")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Довільний період" }));
+    fireEvent.change(screen.getByLabelText("Період від"), { target: { value: "2024-01" } });
+    fireEvent.change(screen.getByLabelText("Період до"), { target: { value: "2025-12" } });
+
+    const spanningChart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    await waitFor(() => expect(spanningChart.querySelector(".chart-yoy-line")).toBeInTheDocument());
+    expect(spanningChart.querySelector(".chart-yoy-line title")).toHaveTextContent("Той самий місяць торік");
+  });
+
+  it("shows month-over-month deltas and omits them without a previous month", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: 12,
+      series: [
+        {
+          service_id: 1,
+          service_name: "Газ",
+          unit: "м³",
+          values: [
+            { period: "2026-05-01", consumed: "10", cost: "0" },
+            { period: "2026-06-01", consumed: "15", cost: "0" },
+          ],
+          summary: { avg: "12.5", min: "10", max: "15" },
+        },
+        {
+          service_id: 2,
+          service_name: "Вода",
+          unit: "м³",
+          values: [
+            { period: "2026-04-01", consumed: "8", cost: "0" },
+            { period: "2026-06-01", consumed: "9", cost: "0" },
+          ],
+          summary: { avg: "8.5", min: "8", max: "9" },
+        },
+      ],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+
+    const gasCard = (await screen.findByRole("img", { name: "Графік споживання: Газ" })).closest("article") as HTMLElement;
+    expect(within(gasCard).getByLabelText("До попереднього місяця: зростання на 50%")).toBeInTheDocument();
+
+    const waterCard = screen.getByRole("img", { name: "Графік споживання: Вода" }).closest("article") as HTMLElement;
+    expect(within(waterCard).queryByLabelText(/До попереднього місяця/)).not.toBeInTheDocument();
+  });
+
+  it("shows the avg/min/max summary for each service", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: 12,
+      series: [{
+        service_id: 1,
+        service_name: "Газ",
+        unit: "м³",
+        values: [
+          { period: "2026-05-01", consumed: "10", cost: "0" },
+          { period: "2026-06-01", consumed: "15", cost: "0" },
+        ],
+        summary: { avg: "12", min: "10", max: "15" },
+      }],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+
+    const summary = await screen.findByLabelText("Зведення споживання: Газ");
+    expect(summary).toHaveTextContent("Сер.");
+    expect(summary).toHaveTextContent("12 м³");
+    expect(summary).toHaveTextContent("10 м³");
+    expect(summary).toHaveTextContent("15 м³");
+  });
+
+  it("switches the consumption display between units and hryvnia", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({
+      apartment_id: 1,
+      months: 12,
+      series: [{
+        service_id: 1,
+        service_name: "Газ",
+        unit: "м³",
+        values: [
+          { period: "2026-05-01", consumed: "10", cost: "190" },
+          { period: "2026-06-01", consumed: "15", cost: "280" },
+        ],
+        summary: { avg: "12", min: "10", max: "15" },
+      }],
+    });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+
+    renderStats();
+
+    const chart = await screen.findByRole("img", { name: "Графік споживання: Газ" });
+    const heading = chart.closest("article")!.querySelector(".chart-card-heading") as HTMLElement;
+    expect(within(heading).getByText("м³")).toBeInTheDocument();
+    expect(within(heading).getByText("15")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "₴" }));
+
+    expect(within(heading).getByText("₴")).toBeInTheDocument();
+    expect(within(heading).getByText("280")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Зведення споживання: Газ")).toHaveTextContent("280 ₴");
+  });
 });
