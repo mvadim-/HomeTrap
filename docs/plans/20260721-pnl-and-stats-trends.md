@@ -223,24 +223,24 @@
 - Modify: `backend/app/services/nbu.py`
 - Modify: `backend/tests/test_stats.py`
 
-- [ ] додати read-only helper збереженого курсу (останній `ExchangeRate` ≤
+- [x] додати read-only helper збереженого курсу (останній `ExchangeRate` ≤
   дати, без фетчу/запису) — у `nbu.py` поруч із `get_rate`
-- [ ] схема `PnlStats` (`values`, `totals` з `expenses_by_category`, `net`,
+- [x] схема `PnlStats` (`values`, `totals` з `expenses_by_category`, `net`,
   `margin_percent`, `unconverted`)
-- [ ] ендпойнт `GET /api/stats/pnl` (той самий контракт періоду й
+- [x] ендпойнт `GET /api/stats/pnl` (той самий контракт періоду й
   `apartment_id`/portfolio, що `/income`): дохід = `rent_amount_uah`
   ISSUED/PAID; витрати за категоріями зведені в грн; помісячні точки
   `{period, income, expenses, net}`; маржа лише коли дохід>0
-- [ ] коректно рахувати «неконвертовані» витрати (немає збереженого курсу) —
+- [x] коректно рахувати «неконвертовані» витрати (немає збереженого курсу) —
   окреме поле, не тихий нуль; фільтр дат витрат через межу «< перше число
   наступного місяця» (див. Technical Details), групування за місяцем
-- [ ] write tests: дохід лише з оренди (комуналка виключена); суми витрат за
+- [x] write tests: дохід лише з оренди (комуналка виключена); суми витрат за
   категоріями; конвертація UAH/валюта; чистий і маржа; помісячний тренд;
   масштаб квартира vs портфель
-- [ ] write tests: **витрата серед/у кінці поточного місяця потрапляє в
+- [x] write tests: **витрата серед/у кінці поточного місяця потрапляє в
   період** (регресія на межу місяця); край — немає витрат; дохід=0 →
   `margin_percent=null`; відсутній курс → потрапляє в `unconverted`
-- [ ] run tests — must pass before task 4
+- [x] run tests — must pass before task 4
 
 ### Task 4: Розширене споживання (вартість, avg/min/max) — backend
 

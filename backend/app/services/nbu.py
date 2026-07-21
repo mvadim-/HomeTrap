@@ -73,6 +73,28 @@ class NbuClient:
         return rate
 
 
+def get_stored_rate(
+    session: Session,
+    target_date: date,
+    currency: str = DEFAULT_CURRENCY,
+) -> Decimal | None:
+    """Return the latest stored rate with date <= target_date, or None.
+
+    Read-only: never fetches from the network and never writes to the DB.
+    Suitable for aggregations (e.g. P&L) that must not mutate state.
+    """
+    stored = session.scalar(
+        select(ExchangeRate)
+        .where(
+            ExchangeRate.currency == currency,
+            ExchangeRate.date <= target_date,
+        )
+        .order_by(ExchangeRate.date.desc())
+        .limit(1)
+    )
+    return stored.rate if stored is not None else None
+
+
 def get_rate(
     session: Session,
     target_date: date,

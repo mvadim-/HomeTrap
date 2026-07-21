@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
-from app.models import Apartment, Invoice, InvoiceLine, Service
+from app.models import Apartment, ExchangeRate, Expense, Invoice, InvoiceLine, Service
 from app.routers.stats import _today
 
 
@@ -205,6 +205,217 @@ def _seed_stats(application) -> tuple[int, int, int]:
         result = first.id, second.id, empty.id
     engine.dispose()
     return result
+
+
+def _seed_pnl_expenses(application, first_id: int) -> None:
+    current = _today().replace(day=1)
+    previous = _shift_month(current, -1)
+    engine = create_database_engine(application.state.settings.database_path)
+    with create_session_factory(engine)() as session:
+        # Only USD rates are ever stored; store it dated at the current month so
+        # a USD expense in the previous month has no stored rate <= its date.
+        session.add(
+            ExchangeRate(date=current, currency="USD", rate=Decimal("40.000000"))
+        )
+        session.add_all(
+            [
+                Expense(
+                    apartment_id=first_id,
+                    date=current,
+                    category="repair",
+                    amount=Decimal("300.00"),
+                    currency="UAH",
+                ),
+                # Mid/end-of-month expense: regression for the month-boundary
+                # date filter (a naive `date <= period_end` would drop it).
+                Expense(
+                    apartment_id=first_id,
+                    date=current.replace(day=28),
+                    category="tax",
+                    amount=Decimal("100.00"),
+                    currency="UAH",
+                ),
+                Expense(
+                    apartment_id=first_id,
+                    date=current,
+                    category="insurance",
+                    amount=Decimal("10.00"),
+                    currency="USD",
+                ),
+                # Non-USD, non-UAH currency: never convertible -> unconverted.
+                Expense(
+                    apartment_id=first_id,
+                    date=current,
+                    category="other",
+                    amount=Decimal("50.00"),
+                    currency="EUR",
+                ),
+                Expense(
+                    apartment_id=first_id,
+                    date=previous,
+                    category="repair",
+                    amount=Decimal("200.00"),
+                    currency="UAH",
+                ),
+                # USD expense with no stored rate <= its date -> unconverted.
+                Expense(
+                    apartment_id=first_id,
+                    date=previous,
+                    category="tax",
+                    amount=Decimal("5.00"),
+                    currency="USD",
+                ),
+                # General expense (portfolio-wide, not tied to an apartment).
+                Expense(
+                    apartment_id=None,
+                    date=current,
+                    category="commission",
+                    amount=Decimal("500.00"),
+                    currency="UAH",
+                ),
+            ]
+        )
+        session.commit()
+    engine.dispose()
+
+
+async def test_pnl_apartment_and_portfolio(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        first_id, second_id, _ = _seed_stats(application)
+        _seed_pnl_expenses(application, first_id)
+        current = _today().replace(day=1)
+        previous = _shift_month(current, -1)
+
+        apartment = await client.get(
+            "/api/stats/pnl",
+            params={"apartment_id": first_id, "months": 2},
+        )
+        assert apartment.status_code == 200
+        payload = apartment.json()
+        assert payload["scope"] == "apartment"
+        assert payload["apartment_id"] == first_id
+        # Income is rent only (utilities excluded): previous 1000 + current 1100.
+        assert payload["totals"]["income"] == "2100.00"
+        # Converted expenses: current 300+100(day28)+400(USD*40)=800; previous 200.
+        assert payload["totals"]["expenses_total"] == "1000.00"
+        assert payload["totals"]["expenses_by_category"] == {
+            "repair": "500.00",
+            "tax": "100.00",
+            "insurance": "400.00",
+        }
+        assert payload["totals"]["net"] == "1100.00"
+        assert payload["totals"]["margin_percent"] == "52.38"
+        # EUR 50 (current) and USD 5 (previous, no stored rate) are unconverted.
+        assert payload["unconverted"] == {
+            "count": 2,
+            "by_currency": {"EUR": "50.00", "USD": "5.00"},
+        }
+        assert payload["values"] == [
+            {
+                "period": previous.isoformat(),
+                "income": "1000.00",
+                "expenses": "200.00",
+                "net": "800.00",
+            },
+            {
+                "period": current.isoformat(),
+                "income": "1100.00",
+                "expenses": "800.00",
+                "net": "300.00",
+            },
+        ]
+
+        portfolio = await client.get("/api/stats/pnl", params={"months": 2})
+        assert portfolio.status_code == 200
+        payload = portfolio.json()
+        assert payload["scope"] == "portfolio"
+        assert payload["apartment_id"] is None
+        assert payload["totals"]["income"] == "4100.00"
+        # Adds the general commission expense (500) to the apartment expenses.
+        assert payload["totals"]["expenses_total"] == "1500.00"
+        assert payload["totals"]["expenses_by_category"] == {
+            "repair": "500.00",
+            "tax": "100.00",
+            "insurance": "400.00",
+            "commission": "500.00",
+        }
+        assert payload["totals"]["net"] == "2600.00"
+        assert payload["totals"]["margin_percent"] == "63.41"
+        assert payload["values"][-1] == {
+            "period": current.isoformat(),
+            "income": "3100.00",
+            "expenses": "1300.00",
+            "net": "1800.00",
+        }
+
+        # Second apartment has income but no expenses of its own.
+        second = await client.get(
+            "/api/stats/pnl",
+            params={"apartment_id": second_id, "months": 2},
+        )
+        assert second.status_code == 200
+        payload = second.json()
+        assert payload["totals"]["income"] == "2000.00"
+        assert payload["totals"]["expenses_total"] == "0.00"
+        assert payload["totals"]["expenses_by_category"] == {}
+        assert payload["totals"]["margin_percent"] == "100.00"
+        assert payload["unconverted"] == {"count": 0, "by_currency": {}}
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_pnl_margin_null_when_no_income(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        _, _, empty_id = _seed_stats(application)
+        current = _today().replace(day=1)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            session.add(
+                Expense(
+                    apartment_id=empty_id,
+                    date=current,
+                    category="repair",
+                    amount=Decimal("100.00"),
+                    currency="UAH",
+                )
+            )
+            session.commit()
+        engine.dispose()
+
+        response = await client.get(
+            "/api/stats/pnl",
+            params={"apartment_id": empty_id, "months": 2},
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["totals"]["income"] == "0.00"
+        assert payload["totals"]["expenses_total"] == "100.00"
+        assert payload["totals"]["net"] == "-100.00"
+        assert payload["totals"]["margin_percent"] is None
+        assert payload["values"] == [
+            {
+                "period": current.isoformat(),
+                "income": "0.00",
+                "expenses": "100.00",
+                "net": "-100.00",
+            }
+        ]
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_pnl_not_found_and_auth(tmp_path) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        assert (
+            await client.get("/api/stats/pnl", params={"apartment_id": 999})
+        ).status_code == 404
+        client.cookies.clear()
+        assert (await client.get("/api/stats/pnl")).status_code == 401
+    finally:
+        await _close(lifespan, client)
 
 
 async def test_consumption_groups_metered_services_by_month(tmp_path) -> None:

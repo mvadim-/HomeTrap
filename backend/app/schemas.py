@@ -323,6 +323,35 @@ class IncomeStats(ApiSchema):
     top_service: TopServiceStats | None
 
 
+class PnlPoint(ApiSchema):
+    period: date
+    income: Decimal
+    expenses: Decimal
+    net: Decimal
+
+
+class PnlTotals(ApiSchema):
+    income: Decimal
+    expenses_total: Decimal
+    expenses_by_category: dict[str, Decimal]
+    net: Decimal
+    margin_percent: Decimal | None
+
+
+class PnlUnconverted(ApiSchema):
+    count: int
+    by_currency: dict[str, Decimal]
+
+
+class PnlStats(ApiSchema):
+    scope: str
+    apartment_id: int | None
+    months: int | None
+    values: list[PnlPoint]
+    totals: PnlTotals
+    unconverted: PnlUnconverted
+
+
 class DashboardAttentionItem(ApiSchema):
     invoice_id: int
     apartment_id: int

@@ -1,5 +1,26 @@
 # ChangeLog
 
+## [2026-07-21 20:35] Task 3: P&L-агрегація та /api/stats/pnl
+
+- `backend/app/services/nbu.py` — додано read-only helper `get_stored_rate`
+  (останній `ExchangeRate` ≤ дати для валюти; без фетчу/запису), придатний для
+  агрегацій, що не мають мутувати стан.
+- `backend/app/schemas.py` — додано `PnlStats` (+`PnlPoint`, `PnlTotals`,
+  `PnlUnconverted`): `values`, `totals` з `expenses_by_category`, `net`,
+  `margin_percent` (nullable), `unconverted{count,by_currency}`.
+- `backend/app/routers/stats.py` — новий ендпойнт `GET /api/stats/pnl` (той
+  самий контракт періоду й `apartment_id`/portfolio, що `/income`): дохід =
+  `rent_amount_uah` ISSUED/PAID (комуналка виключена); витрати зводяться в грн
+  (UAH як є; USD за збереженим курсом `≤ date`), не-UAH/не-USD та без курсу →
+  `unconverted` і виключені з `expenses_total`; фільтр дат витрат із верхньою
+  межею «< перше число місяця після `period_end`»; групування за місяцем;
+  маржа лише коли дохід>0.
+- `backend/tests/test_stats.py` — тести P&L: квартира vs портфель, дохід лише
+  з оренди, суми за категоріями, UAH/USD-конвертація, неконвертовані (EUR та
+  USD без курсу), помісячний тренд, регресія на витрату в кінці місяця,
+  дохід=0 → `margin_percent=null`, край без витрат, `404`/`401`.
+- Лише backend; міграцій не додано.
+
 ## [2026-07-21 20:10] Task 2: схеми та CRUD-роутер витрат
 
 - `backend/app/schemas.py` — додано `ExpenseCreate`/`ExpenseUpdate`/
