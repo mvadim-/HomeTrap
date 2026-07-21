@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.models import (
     Apartment,
     ExchangeRate,
+    Expense,
     Invoice,
     InvoiceLine,
     RestoreAlias,
@@ -46,6 +47,7 @@ ENTITY_NAMES = (
     "invoices",
     "invoice_lines",
     "exchange_rates",
+    "expenses",
 )
 
 
@@ -579,6 +581,7 @@ def _import_rows(
     _import_invoices(context)
     _import_invoice_lines(context)
     _import_exchange_rates(context)
+    _import_expenses(context)
 
 
 @dataclass
@@ -895,4 +898,30 @@ def _import_exchange_rates(context: ImportContext) -> None:
                 ExchangeRate.currency == source.currency,
             ),
             ExchangeRate(**_copy_columns(source, "date", "currency", "rate")),
+        )
+
+
+def _import_expenses(context: ImportContext) -> None:
+    for source in context.source_session.scalars(select(Expense).order_by(Expense.id)):
+        _validate_restore_key(source.restore_key, "expenses")
+        apartment_id = None
+        if source.apartment_id is not None:
+            apartment_id = context.apartment_map[source.apartment_id].id
+        _existing_or_add(
+            context.live_session,
+            context.summary,
+            "expenses",
+            select(Expense).where(Expense.restore_key == source.restore_key),
+            Expense(
+                apartment_id=apartment_id,
+                **_copy_columns(
+                    source,
+                    "restore_key",
+                    "date",
+                    "category",
+                    "amount",
+                    "currency",
+                    "notes",
+                ),
+            ),
         )

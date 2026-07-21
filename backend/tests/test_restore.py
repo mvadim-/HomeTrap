@@ -16,6 +16,7 @@ from app.db import create_database_engine, create_session_factory, run_migration
 from app.models import (
     Apartment,
     ExchangeRate,
+    Expense,
     Invoice,
     InvoiceLine,
     PushSubscription,
@@ -43,7 +44,7 @@ def _revision(database_path: Path) -> str:
     return str(row[0])
 
 
-def _create_source(tmp_path: Path) -> tuple[Path, Path, dict[str, int]]:
+def _create_source(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     database_path = tmp_path / "source.db"
     uploads_dir = tmp_path / "source-uploads"
@@ -105,10 +106,28 @@ def _create_source(tmp_path: Path) -> tuple[Path, Path, dict[str, int]]:
             tariff_value=Decimal("4.32000"),
             amount=Decimal("432.00"),
         )
+        apartment_expense = Expense(
+            apartment=apartment,
+            date=date(2026, 6, 10),
+            category="repair",
+            amount=Decimal("1500.00"),
+            currency="UAH",
+            notes="Ремонт крана",
+        )
+        general_expense = Expense(
+            apartment=None,
+            date=date(2026, 6, 20),
+            category="tax",
+            amount=Decimal("250.00"),
+            currency="UAH",
+            notes="Загальний податок",
+        )
         session.add_all(
             [
                 tenant,
                 line,
+                apartment_expense,
+                general_expense,
                 ExchangeRate(
                     date=date(2026, 6, 1),
                     currency="USD",
@@ -129,6 +148,9 @@ def _create_source(tmp_path: Path) -> tuple[Path, Path, dict[str, int]]:
             "service": service.id,
             "tenant": tenant.id,
             "invoice": invoice.id,
+            "apartment_expense": apartment_expense.id,
+            "apartment_expense_key": apartment_expense.restore_key,
+            "general_expense_key": general_expense.restore_key,
         }
     finally:
         session.close()
@@ -213,6 +235,7 @@ def test_import_round_trip_into_empty_database(
         "invoices": 1,
         "invoice_lines": 1,
         "exchange_rates": 1,
+        "expenses": 2,
     }
     assert set(summary.skipped.values()) == {0}
     apartment = db_session.scalar(select(Apartment))
@@ -235,6 +258,57 @@ def test_import_round_trip_into_empty_database(
     assert db_session.scalar(select(func.count()).select_from(User)) == 0
     assert db_session.scalar(select(func.count()).select_from(Setting)) == 0
     assert db_session.scalar(select(func.count()).select_from(PushSubscription)) == 0
+
+
+def test_import_round_trips_expenses_with_remapped_apartment(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, source_ids = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live-uploads"
+
+    summary = import_backup(database_path, backup_uploads, db_session, uploads_dir)
+
+    assert summary.added["expenses"] == 2
+    assert summary.skipped["expenses"] == 0
+    apartment = db_session.scalar(select(Apartment))
+    assert apartment is not None
+    expenses = db_session.scalars(select(Expense).order_by(Expense.date)).all()
+    assert len(expenses) == 2
+    apartment_expense = db_session.scalar(
+        select(Expense).where(
+            Expense.restore_key == source_ids["apartment_expense_key"]
+        )
+    )
+    general_expense = db_session.scalar(
+        select(Expense).where(Expense.restore_key == source_ids["general_expense_key"])
+    )
+    assert apartment_expense is not None
+    assert apartment_expense.apartment_id == apartment.id
+    assert apartment_expense.category == "repair"
+    assert apartment_expense.amount == Decimal("1500.00")
+    assert apartment_expense.currency == "UAH"
+    assert apartment_expense.notes == "Ремонт крана"
+    assert general_expense is not None
+    assert general_expense.apartment_id is None
+    assert general_expense.category == "tax"
+    assert general_expense.amount == Decimal("250.00")
+
+
+def test_import_expenses_is_idempotent(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path)
+    uploads_dir = tmp_path / "live-uploads"
+
+    first = import_backup(database_path, backup_uploads, db_session, uploads_dir)
+    second = import_backup(database_path, backup_uploads, db_session, uploads_dir)
+
+    assert first.added["expenses"] == 2
+    assert second.added["expenses"] == 0
+    assert second.skipped["expenses"] == 2
+    assert db_session.scalar(select(func.count()).select_from(Expense)) == 2
 
 
 def test_import_keeps_existing_values_and_is_idempotent(
@@ -289,6 +363,7 @@ def test_import_keeps_existing_values_and_is_idempotent(
         "invoices": 1,
         "invoice_lines": 1,
         "exchange_rates": 1,
+        "expenses": 2,
     }
 
 

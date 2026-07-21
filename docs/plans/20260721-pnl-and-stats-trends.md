@@ -263,21 +263,21 @@
 - Modify: `backend/tests/test_restore.py`
 - Modify: `backend/tests/test_backup.py`
 
-- [ ] додати `"expenses"` до `ENTITY_NAMES`
-- [ ] `_import_expenses` — ідентичність за `restore_key`: **exact match →
+- [x] додати `"expenses"` до `ENTITY_NAMES`
+- [x] `_import_expenses` — ідентичність за `restore_key`: **exact match →
   пропуск** (merge-only, як `tariffs`/`invoices`/`exchange_rates`; БЕЗ
   оновлення live-рядків), ремапінг `apartment_id` через `apartment_map`,
   `NULL` → загальна витрата; підключити в `_import_rows`
-- [ ] **не** пре-алокувати id (Expense — leaf-сутність без дочірніх посилань;
+- [x] **не** пре-алокувати id (Expense — leaf-сутність без дочірніх посилань;
   покладаємось на autoincrement, як `Tariff`/`InvoiceLine`/`ExchangeRate`)
-- [ ] звірити чек-лист інваріанту CLAUDE.md: бізнес-ключі, copied fields,
+- [x] звірити чек-лист інваріанту CLAUDE.md: бізнес-ключі, copied fields,
   `ENTITY_NAMES`, свідомі виключення (чек-вкладення відкладено — витрати чеків
   не мають)
-- [ ] write tests (round-trip): витрата (квартирна й загальна) переживає
+- [x] write tests (round-trip): витрата (квартирна й загальна) переживає
   export→import; `restore_key` збережено; ремапінг квартири коректний;
   повторний import ідемпотентний (без дублів)
-- [ ] write tests: підрахунки `ImportSummary.added["expenses"]` коректні
-- [ ] run tests — must pass before task 6
+- [x] write tests: підрахунки `ImportSummary.added["expenses"]` коректні
+- [x] run tests — must pass before task 6
 
 ### Task 6: Клієнтські типи й функції API
 

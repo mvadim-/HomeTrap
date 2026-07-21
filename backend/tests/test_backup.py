@@ -67,8 +67,12 @@ def test_build_backup_snapshot_is_a_readable_database(
         revision = connection.execute(
             "SELECT version_num FROM alembic_version"
         ).fetchone()
+        expenses_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='expenses'"
+        ).fetchone()
 
     assert revision is not None
+    assert expenses_table is not None
 
 
 def test_build_backup_supports_empty_uploads_and_cleans_temporary_files(

@@ -1,5 +1,22 @@
 # ChangeLog
 
+## [2026-07-21 21:10] Task 5: Покриття Expense у backup/restore
+
+- `backend/app/services/restore.py` — додано `Expense` до `ENTITY_NAMES` та
+  імпортів; новий merge-only `_import_expenses` (ідентичність за `restore_key`:
+  exact match → пропуск, без оновлення live-рядків; ремапінг `apartment_id`
+  через `apartment_map`, `NULL` → загальна витрата; без пре-алокації id —
+  autoincrement, як leaf-сутності `Tariff`/`InvoiceLine`/`ExchangeRate`);
+  підключено в `_import_rows` після `_import_exchange_rates`.
+- `backend/tests/test_restore.py` — `_create_source` тепер сіє квартирну й
+  загальну (`NULL`) витрати; нові round-trip тести (збереження `restore_key`,
+  ремапінг квартири, `NULL` → загальна) та ідемпотентність (повторний import
+  без дублів); оновлено exact-dict-асерти на `expenses`.
+- `backend/tests/test_backup.py` — перевірка наявності таблиці `expenses` у
+  знімку архіву (повний SQLite-копі).
+- `backend/tests/test_settings.py` — оновлено exact-dict-асерти restore-summary
+  на ключ `expenses`.
+
 ## [2026-07-21 20:35] Task 3: P&L-агрегація та /api/stats/pnl
 
 - `backend/app/services/nbu.py` — додано read-only helper `get_stored_rate`

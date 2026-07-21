@@ -228,6 +228,7 @@ async def test_restore_backup_merges_missing_rows_and_preserves_existing(
                 "invoices": 0,
                 "invoice_lines": 0,
                 "exchange_rates": 0,
+                "expenses": 0,
             },
             "skipped": {
                 "apartments": 1,
@@ -238,6 +239,7 @@ async def test_restore_backup_merges_missing_rows_and_preserves_existing(
                 "invoices": 0,
                 "invoice_lines": 0,
                 "exchange_rates": 0,
+                "expenses": 0,
             },
         }
         apartments = (await client.get("/api/apartments")).json()
