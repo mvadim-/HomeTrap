@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from io import BytesIO
 import json
 from pathlib import Path
+from random import Random
 import re
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -212,6 +213,78 @@ async def test_restore_backup_merges_missing_rows_and_preserves_existing(
         assert preserved["notes"] == "Локальне значення"
     finally:
         await _close_client(lifespan, client)
+
+
+async def test_large_backup_round_trip_restores_attachment(tmp_path: Path) -> None:
+    attachment_content = Random(20260721).randbytes(9 * 1024 * 1024)
+    source_lifespan, source_client, _source_settings = await _create_client(
+        tmp_path / "source"
+    )
+    try:
+        await _login(source_client)
+        apartment_response = await source_client.post(
+            "/api/apartments",
+            json=_apartment_payload("Великий архів", "700.00"),
+        )
+        assert apartment_response.status_code == 201
+        tenant_response = await source_client.post(
+            f"/api/apartments/{apartment_response.json()['id']}/tenants",
+            json={
+                "full_name": "Олена Велика",
+                "phone": None,
+                "email": None,
+                "contract_start": "2026-01-01",
+                "contract_end": None,
+                "billing_day": 1,
+                "notes": None,
+            },
+        )
+        assert tenant_response.status_code == 201
+        upload_response = await source_client.post(
+            f"/api/tenants/{tenant_response.json()['id']}/attachments",
+            files={
+                "files": (
+                    "large-contract.pdf",
+                    attachment_content,
+                    "application/pdf",
+                )
+            },
+        )
+        assert upload_response.status_code == 201
+
+        backup_response = await source_client.get("/api/settings/backup")
+
+        assert backup_response.status_code == 200
+        assert len(backup_response.content) > 9 * 1024 * 1024
+        backup = backup_response.content
+    finally:
+        await _close_client(source_lifespan, source_client)
+
+    target_lifespan, target_client, _target_settings = await _create_client(
+        tmp_path / "target"
+    )
+    try:
+        await _login(target_client)
+
+        restore_response = await target_client.post(
+            "/api/settings/restore",
+            files={"file": ("large-backup.zip", backup, "application/zip")},
+        )
+
+        assert restore_response.status_code == 200
+        assert restore_response.json()["added"]["tenant_attachments"] == 1
+        apartments = (await target_client.get("/api/apartments")).json()
+        tenants = (
+            await target_client.get(f"/api/apartments/{apartments[0]['id']}/tenants")
+        ).json()
+        attachments = (
+            await target_client.get(f"/api/tenants/{tenants[0]['id']}/attachments")
+        ).json()
+        downloaded = await target_client.get(f"/api/attachments/{attachments[0]['id']}")
+        assert downloaded.status_code == 200
+        assert downloaded.content == attachment_content
+    finally:
+        await _close_client(target_lifespan, target_client)
 
 
 async def test_restore_backup_requires_authentication(tmp_path: Path) -> None:
