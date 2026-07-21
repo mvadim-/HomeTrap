@@ -315,17 +315,17 @@
 - Modify: `frontend/src/theme.css`
 - Modify: `frontend/src/pages/Stats.test.tsx`
 
-- [ ] секція «P&L»: плитки дохід / витрати / чистий / маржа за період+масштаб;
+- [x] секція «P&L»: плитки дохід / витрати / чистий / маржа за період+масштаб;
   помісячний графік (дохід vs витрати; чистий лінією) з `<title>`/`aria-label`;
   розбивка витрат за категоріями
-- [ ] завантаження `getPnlStats` за зразком наявних ефектів (cleanup,
+- [x] завантаження `getPnlStats` за зразком наявних ефектів (cleanup,
   залежність від `apartmentId`/`scope`/`statsPeriod`); при `unconverted.count>0`
   — показ «неконвертовано» і **явна позначка `net`/`margin` як неповних**
-- [ ] нові кольори — токени в усі три блоки `theme.css`
-- [ ] write tests: рендер P&L (мок `getPnlStats`), зміна масштабу/періоду,
+- [x] нові кольори — токени в усі три блоки `theme.css`
+- [x] write tests: рендер P&L (мок `getPnlStats`), зміна масштабу/періоду,
   порожній P&L, повідомлення про неконвертовані витрати + позначка неповних
   net/margin
-- [ ] run tests — must pass before task 9
+- [x] run tests — must pass before task 9
 
 ### Task 9: Тренди й порівняння споживання (frontend)
 

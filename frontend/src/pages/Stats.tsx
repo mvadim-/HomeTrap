@@ -4,13 +4,16 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   Apartment,
   ConsumptionSeries,
+  ExpenseCategory,
   IncomeStats,
+  PnlStats,
   StatsPeriod,
   Tenant,
   getApartments,
   getConsumptionStats,
   getIncomeStats,
   getInvoices,
+  getPnlStats,
   getTenants,
 } from "../api/client";
 import { formatUah } from "../utils/format";
@@ -40,6 +43,13 @@ const KYIV_MONTH_FORMATTER = new Intl.DateTimeFormat("en", {
 const NUMBER_FORMATTERS = [0, 1, 2].map((maximumFractionDigits) => (
   new Intl.NumberFormat("uk-UA", { maximumFractionDigits })
 ));
+const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+  repair: "Ремонт",
+  tax: "Податок",
+  insurance: "Страхування",
+  commission: "Комісія",
+  other: "Інше",
+};
 const PERIOD_MODES = ["6", "12", "24", "all", "custom"] as const;
 type PeriodMode = typeof PERIOD_MODES[number];
 type StatsFilters = {
@@ -494,6 +504,95 @@ function IncomeChart({ stats, periods, tenantStarts }: {
   );
 }
 
+function PnlChart({ stats, periods }: { stats: PnlStats; periods: string[] }) {
+  const width = 760;
+  const height = 270;
+  const padding = { top: 28, right: 18, bottom: 38, left: 56 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const pointsByPeriod = new Map(stats.values.map((point) => [point.period.slice(0, 7), point]));
+  const numbers = stats.values.flatMap((point) => [Number(point.income), Number(point.expenses), Number(point.net)]);
+  const posMax = Math.max(...numbers, 1);
+  const negMin = Math.min(...numbers, 0);
+  const topScale = niceScale(posMax);
+  const bottomScale = negMin < 0 ? niceScale(-negMin) : { max: 0, step: topScale.step };
+  const totalMax = topScale.max + bottomScale.max;
+  const zeroY = padding.top + (topScale.max / totalMax) * plotHeight;
+  const y = (value: number) => zeroY - (value / totalMax) * plotHeight;
+  const slotWidth = plotWidth / Math.max(periods.length, 1);
+  const barWidth = Math.min(20, slotWidth * 0.32);
+  const gap = 3;
+  const topTicks = scaleTicks(topScale.max, topScale.step);
+  const bottomTicks = bottomScale.max > 0
+    ? scaleTicks(bottomScale.max, bottomScale.step).slice(1).map((tick) => -tick)
+    : [];
+  const netPath = periods.map((period, index) => {
+    const point = pointsByPeriod.get(period.slice(0, 7));
+    if (!point) return null;
+    const cx = padding.left + slotWidth * index + slotWidth / 2;
+    return { cx, cy: y(Number(point.net)), point };
+  });
+  const linePath = netPath
+    .map((entry, index) => (entry ? `${index === 0 || !netPath[index - 1] ? "M" : "L"} ${entry.cx} ${entry.cy}` : ""))
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <svg className="income-chart pnl-chart" role="img" aria-label="Графік P&L: дохід, витрати, чистий" viewBox={`0 0 ${width} ${height}`}>
+      {[...topTicks, ...bottomTicks].map((tick) => (
+        <g key={tick}>
+          <line className="chart-gridline" x1={padding.left} x2={width - padding.right} y1={y(tick)} y2={y(tick)} />
+          <text className="chart-label chart-tick-label" x="4" y={y(tick) + 4}>{numberLabel(tick, 0)} ₴</text>
+        </g>
+      ))}
+      <line className="chart-axis" x1={padding.left} x2={width - padding.right} y1={zeroY} y2={zeroY} />
+      {periods.map((period, index) => {
+        const center = padding.left + slotWidth * index + slotWidth / 2;
+        const point = pointsByPeriod.get(period.slice(0, 7));
+        if (!point) {
+          return (
+            <g key={period} className="chart-month-slot chart-month-slot-empty" data-period={period}>
+              <text className="chart-label month-label" textAnchor="middle" x={center} y={height - 11}>{monthLabel(period)}</text>
+            </g>
+          );
+        }
+        const income = Number(point.income);
+        const expenses = Number(point.expenses);
+        const incomeX = center - gap / 2 - barWidth;
+        const expenseX = center + gap / 2;
+        return (
+          <g key={point.period} className="chart-month-slot" data-period={point.period}>
+            <rect className="pnl-income" fill="var(--chart-rent)" stroke="var(--color-surface)" strokeWidth="1.5" x={incomeX} y={y(income)} width={barWidth} height={Math.abs(zeroY - y(income))} tabIndex={0} aria-label={`${monthLabel(point.period)}, дохід: ${formatUah(point.income)}`}>
+              <title>{monthLabel(point.period)} · Дохід: {formatUah(point.income)}</title>
+            </rect>
+            <rect className="pnl-expense" fill="var(--chart-expense)" stroke="var(--color-surface)" strokeWidth="1.5" x={expenseX} y={y(expenses)} width={barWidth} height={Math.abs(zeroY - y(expenses))} tabIndex={0} aria-label={`${monthLabel(point.period)}, витрати: ${formatUah(point.expenses)}`}>
+              <title>{monthLabel(point.period)} · Витрати: {formatUah(point.expenses)}</title>
+            </rect>
+            <text className="chart-label month-label" textAnchor="middle" x={center} y={height - 11}>{monthLabel(period)}</text>
+          </g>
+        );
+      })}
+      {linePath && <path className="pnl-net-line" d={linePath} fill="none" stroke="var(--chart-net)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" />}
+      {netPath.map((entry) => (entry ? (
+        <circle
+          key={entry.point.period}
+          className="pnl-net-point"
+          cx={entry.cx}
+          cy={entry.cy}
+          r="3.5"
+          fill="var(--chart-net)"
+          stroke="var(--color-surface)"
+          strokeWidth="1.5"
+          tabIndex={0}
+          aria-label={`${monthLabel(entry.point.period)}, чистий: ${formatUah(entry.point.net)}`}
+        >
+          <title>{monthLabel(entry.point.period)} · Чистий: {formatUah(entry.point.net)}</title>
+        </circle>
+      ) : null))}
+    </svg>
+  );
+}
+
 export function Stats() {
   const [apartments, setApartments] = useState<Apartment[]>([]);
   const [apartmentsLoaded, setApartmentsLoaded] = useState(false);
@@ -519,6 +618,9 @@ export function Stats() {
   const [income, setIncome] = useState<IncomeStats | null>(null);
   const [incomeLoading, setIncomeLoading] = useState(false);
   const [incomeError, setIncomeError] = useState("");
+  const [pnl, setPnl] = useState<PnlStats | null>(null);
+  const [pnlLoading, setPnlLoading] = useState(false);
+  const [pnlError, setPnlError] = useState("");
   const [topServiceInvoice, setTopServiceInvoice] = useState<{
     id: number;
     apartmentId: number;
@@ -633,6 +735,25 @@ export function Stats() {
       .then((stats) => active && setIncome(stats))
       .catch(() => active && setIncomeError("Не вдалося завантажити статистику доходу."))
       .finally(() => active && setIncomeLoading(false));
+    return () => { active = false; };
+  }, [apartmentId, scope, statsPeriod]);
+
+  useEffect(() => {
+    if (scope === "apartment" && apartmentId === null) return;
+    if (statsPeriod === null) {
+      setPnl(null);
+      setPnlLoading(false);
+      setPnlError("");
+      return;
+    }
+    let active = true;
+    setPnl(null);
+    setPnlLoading(true);
+    setPnlError("");
+    getPnlStats(scope === "apartment" ? apartmentId ?? undefined : undefined, statsPeriod)
+      .then((stats) => active && setPnl(stats))
+      .catch(() => active && setPnlError("Не вдалося завантажити P&L."))
+      .finally(() => active && setPnlLoading(false));
     return () => { active = false; };
   }, [apartmentId, scope, statsPeriod]);
 
@@ -798,6 +919,74 @@ export function Stats() {
           </>
         ) : (
           <p className="empty-state">Ще немає історії доходу за вибраний період.</p>
+        )}
+      </section>
+
+      <section className="section-card stats-section" aria-label="P&L">
+        <div className="section-heading"><div><h2>P&amp;L</h2><p>Дохід, витрати та чистий результат помісячно</p></div></div>
+        {statsPeriod === null ? (
+          <p className="empty-state">Оберіть початок і завершення періоду.</p>
+        ) : pnlLoading ? (
+          <p className="muted-text">Завантажуємо P&amp;L…</p>
+        ) : pnlError ? (
+          <p className="error-message">{pnlError}</p>
+        ) : pnl === null ? (
+          <p className="muted-text">Завантажуємо P&amp;L…</p>
+        ) : pnl.values.length > 0 ? (
+          <>
+            <div className="stats-summary-grid pnl-summary-grid" aria-label="Підсумки P&L">
+              <article className="stats-summary-tile"><span>Дохід</span><strong>{formatUah(pnl.totals.income)}</strong></article>
+              <article className="stats-summary-tile"><span>Витрати</span><strong>{formatUah(pnl.totals.expenses_total)}</strong></article>
+              <article className="stats-summary-tile">
+                <span>Чистий</span>
+                <strong>{formatUah(pnl.totals.net)}{pnl.unconverted.count > 0 ? "*" : ""}</strong>
+                {pnl.unconverted.count > 0 && <small className="pnl-incomplete-note">неповний показник</small>}
+              </article>
+              <article className="stats-summary-tile">
+                <span>Маржа</span>
+                <strong>{pnl.totals.margin_percent === null ? "—" : `${numberLabel(Number(pnl.totals.margin_percent))}%${pnl.unconverted.count > 0 ? "*" : ""}`}</strong>
+                {pnl.unconverted.count > 0 && pnl.totals.margin_percent !== null && <small className="pnl-incomplete-note">неповний показник</small>}
+              </article>
+            </div>
+            {pnl.unconverted.count > 0 && (
+              <p className="pnl-unconverted-note" role="note">
+                {`${pnl.unconverted.count} витрат неконвертовано (немає збереженого курсу): `}
+                {Object.entries(pnl.unconverted.by_currency)
+                  .map(([currency, amount]) => `${numberLabel(Number(amount))} ${currency}`)
+                  .join(", ")}
+                {" — їх виключено з витрат, тож чистий і маржа неповні (оптимістичні)."}
+              </p>
+            )}
+            <div className="chart-legend pnl-legend">
+              <span><i className="pnl-income-swatch" />Дохід</span>
+              <span><i className="pnl-expense-swatch" />Витрати</span>
+              <span><i className="pnl-net-swatch" />Чистий</span>
+            </div>
+            <PnlChart stats={pnl} periods={chartPeriods} />
+            {Object.keys(pnl.totals.expenses_by_category).length > 0 && (
+              <div className="pnl-breakdown">
+                <h3>Витрати за категоріями</h3>
+                <ul className="pnl-category-breakdown">
+                  {(Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[])
+                    .filter((category) => Number(pnl.totals.expenses_by_category[category] ?? 0) > 0)
+                    .map((category) => {
+                      const amount = Number(pnl.totals.expenses_by_category[category]);
+                      const total = Number(pnl.totals.expenses_total);
+                      const percent = total > 0 ? (amount / total) * 100 : 0;
+                      return (
+                        <li key={category}>
+                          <span className="pnl-category-label">{EXPENSE_CATEGORY_LABELS[category]}</span>
+                          <span className="pnl-category-bar" aria-hidden="true"><i style={{ width: `${percent}%` }} /></span>
+                          <strong>{formatUah(amount)}</strong>
+                        </li>
+                      );
+                    })}
+                </ul>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="empty-state">Ще немає даних P&amp;L за вибраний період.</p>
         )}
       </section>
     </>

@@ -1,5 +1,34 @@
 # ChangeLog
 
+## [2026-07-21 21:55] Task 8: Секція P&L на сторінці Статистики
+
+- `frontend/src/pages/Stats.tsx` — нова секція «P&L» після секції «Дохід»,
+  що перевикористовує наявні фільтри періоду/масштабу/квартири. Додано
+  завантаження `getPnlStats` окремим `useEffect` (cleanup, залежності
+  `apartmentId`/`scope`/`statsPeriod`; портфель → без `apartmentId`) зі
+  станами loading/error/empty. Плитки Дохід/Витрати/Чистий/Маржа
+  (`margin_percent=null → «—»`), помісячний графік `PnlChart` (згруповані
+  стовпці дохід vs витрати + чистий лінією, підтримка від'ємного чистого,
+  `role="img"`/`aria-label`, `<title>` на сегментах) та розбивка витрат за
+  категоріями. При `unconverted.count>0` — банер-`note` зі списком валют і
+  **явна позначка `*` + «неповний показник»** біля плиток чистого й маржі.
+- `frontend/src/theme.css` — нові токени `--chart-expense` та `--chart-net`
+  у всіх трьох блоках (light `:root`, `:root[data-theme="dark"]`,
+  `@media (prefers-color-scheme: dark)`); дохід і категорійні смуги
+  перевикористовують наявні `--chart-rent`/`--chart-expense`.
+- `frontend/src/pages/portal.css` — стилі `.pnl-summary-grid`,
+  `.pnl-unconverted-note`, легенда/свотчі P&L, бари `.pnl-income`/`.pnl-expense`,
+  лінія/точки чистого, `.pnl-category-breakdown`; додано `.pnl-summary-grid`
+  у колапс сітки при `max-width:900px`.
+- `frontend/src/pages/Stats.test.tsx` — хелпери `pnlStats`/`emptyPnlStats`,
+  дефолтний мок `getPnlStats` у `beforeEach`; нові тести: рендер плиток+графіка+
+  розбивки, перезавантаження при зміні масштабу/періоду, порожній P&L,
+  позначка неповних net/margin при неконвертованих витратах. Оновлено наявний
+  тест «clears an incomplete custom range» (2→3 повідомлення про період —
+  секція P&L додає третє). [decision]
+- Суто фронтенд-зміна; деплой — разом із загальним релізом фічі (див. план,
+  Post-Completion). Окремих кроків розгортання не потребує.
+
 ## [2026-07-21 21:35] Task 6: Клієнтські типи й функції API
 
 - `frontend/src/api/client.ts` — додано типи `ExpenseCategory`, `Expense`,

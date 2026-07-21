@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, vi } from "vitest";
@@ -88,8 +88,34 @@ function incomeStats(apartmentId?: number): apiClient.IncomeStats {
   };
 }
 
+function pnlStats(overrides: Partial<apiClient.PnlStats> = {}): apiClient.PnlStats {
+  return {
+    scope: "portfolio",
+    apartment_id: null,
+    months: 12,
+    values: [{ period: "2026-06-01", income: "15000.00", expenses: "5000.00", net: "10000.00" }],
+    totals: {
+      income: "15000.00",
+      expenses_total: "5000.00",
+      expenses_by_category: { repair: "3000.00", tax: "2000.00" },
+      net: "10000.00",
+      margin_percent: "66.67",
+    },
+    unconverted: { count: 0, by_currency: {} },
+    ...overrides,
+  };
+}
+
+function emptyPnlStats(): apiClient.PnlStats {
+  return pnlStats({
+    values: [],
+    totals: { income: "0.00", expenses_total: "0.00", expenses_by_category: {}, net: "0.00", margin_percent: null },
+  });
+}
+
 beforeEach(() => {
   vi.spyOn(apiClient, "getTenants").mockResolvedValue([]);
+  vi.spyOn(apiClient, "getPnlStats").mockResolvedValue(emptyPnlStats());
 });
 
 afterEach(() => {
@@ -723,7 +749,7 @@ describe("Stats", () => {
     expect(await screen.findByLabelText("Період від")).toHaveValue("");
     expect(screen.getByLabelText("Період до")).toHaveValue("");
     expect(screen.getByRole("button", { name: "Довільний період" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getAllByText("Оберіть початок і завершення періоду.")).toHaveLength(2);
+    expect(screen.getAllByText("Оберіть початок і завершення періоду.")).toHaveLength(3);
     expect(getConsumptionStats).not.toHaveBeenCalled();
     expect(getIncomeStats).not.toHaveBeenCalled();
     await waitFor(() => {
@@ -1111,5 +1137,96 @@ describe("Stats", () => {
     expect(screen.queryByRole("link", { name: /Найбільша стаття/ })).not.toBeInTheDocument();
     expect(screen.getByText("Найбільша стаття").closest("article")).toHaveClass("stats-summary-tile");
     expect(screen.queryByText(/не вдалося завантажити рахунки/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the P&L summary tiles, trend chart and category breakdown", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+    vi.spyOn(apiClient, "getPnlStats").mockResolvedValue(pnlStats());
+
+    renderStats();
+
+    const pnlChart = await screen.findByRole("img", { name: /Графік P&L/ });
+    expect(pnlChart.querySelector(".pnl-income")).toHaveAttribute("fill", "var(--chart-rent)");
+    expect(pnlChart.querySelector(".pnl-expense")).toHaveAttribute("fill", "var(--chart-expense)");
+    expect(pnlChart.querySelector(".pnl-net-line")).toHaveAttribute("stroke", "var(--chart-net)");
+    expect(pnlChart.innerHTML).not.toMatch(/NaN/);
+
+    const pnlSummary = screen.getByLabelText("Підсумки P&L");
+    expect(pnlSummary).toHaveTextContent("Дохід");
+    expect(pnlSummary).toHaveTextContent("15 000,00 ₴");
+    expect(pnlSummary).toHaveTextContent("Витрати");
+    expect(pnlSummary).toHaveTextContent("10 000,00 ₴");
+    expect(pnlSummary).toHaveTextContent("66,67%");
+    expect(pnlSummary).not.toHaveTextContent("неповний показник");
+
+    expect(screen.getByText("Витрати за категоріями")).toBeInTheDocument();
+    const breakdown = screen.getByText("Витрати за категоріями").closest(".pnl-breakdown");
+    expect(breakdown).toHaveTextContent("Ремонт");
+    expect(breakdown).toHaveTextContent("Податок");
+    expect(breakdown).not.toHaveTextContent("Страхування");
+  });
+
+  it("reloads P&L when the scope and period change", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve(incomeStats(apartmentId)));
+    const getPnlStats = vi.spyOn(apiClient, "getPnlStats").mockImplementation((apartmentId) => (
+      Promise.resolve(pnlStats(apartmentId === undefined ? {} : { scope: "apartment", apartment_id: apartmentId }))
+    ));
+
+    renderStats();
+
+    await screen.findByRole("img", { name: /Графік P&L/ });
+    await waitFor(() => expect(getPnlStats).toHaveBeenLastCalledWith(undefined, { months: 12 }));
+
+    await user.click(screen.getByRole("button", { name: "Квартира" }));
+    await waitFor(() => expect(getPnlStats).toHaveBeenLastCalledWith(1, { months: 12 }));
+
+    await user.click(screen.getByRole("button", { name: "6 міс" }));
+    await waitFor(() => expect(getPnlStats).toHaveBeenLastCalledWith(1, { months: 6 }));
+  });
+
+  it("shows an empty P&L state without a chart", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+    vi.spyOn(apiClient, "getPnlStats").mockResolvedValue(emptyPnlStats());
+
+    renderStats();
+
+    expect(await screen.findByText("Ще немає даних P&L за вибраний період.")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Графік P&L/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Підсумки P&L")).not.toBeInTheDocument();
+  });
+
+  it("flags the net and margin as incomplete when expenses are unconverted", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+    vi.spyOn(apiClient, "getPnlStats").mockResolvedValue(pnlStats({
+      unconverted: { count: 2, by_currency: { EUR: "300.00" } },
+    }));
+
+    renderStats();
+
+    const note = await screen.findByRole("note");
+    expect(note).toHaveTextContent(/2 витрат неконвертовано/);
+    expect(note).toHaveTextContent(/300 EUR/);
+    expect(note).toHaveTextContent(/чистий і маржа неповні/);
+
+    const pnlSummary = screen.getByLabelText("Підсумки P&L");
+    const netTile = within(pnlSummary).getByText("Чистий").closest("article");
+    const marginTile = within(pnlSummary).getByText("Маржа").closest("article");
+    expect(netTile).toHaveTextContent("неповний показник");
+    expect(netTile).toHaveTextContent("10 000,00 ₴*");
+    expect(marginTile).toHaveTextContent("неповний показник");
+    expect(marginTile).toHaveTextContent("66,67%*");
   });
 });

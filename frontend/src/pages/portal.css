@@ -1213,6 +1213,94 @@
   stroke-width: 2;
 }
 
+.pnl-summary-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.pnl-incomplete-note {
+  color: var(--color-warning);
+}
+
+.pnl-unconverted-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
+  font-size: 0.85rem;
+}
+
+.pnl-income-swatch {
+  background: var(--chart-rent);
+}
+
+.pnl-expense-swatch {
+  background: var(--chart-expense);
+}
+
+.pnl-net-swatch {
+  background: var(--chart-net);
+}
+
+.pnl-income,
+.pnl-expense,
+.pnl-net-point {
+  cursor: help;
+}
+
+.pnl-income:focus,
+.pnl-expense:focus,
+.pnl-net-point:focus {
+  outline: none;
+  filter: brightness(1.12);
+  stroke: var(--color-text);
+  stroke-width: 2;
+}
+
+.pnl-breakdown {
+  margin-top: 18px;
+}
+
+.pnl-breakdown h3 {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+}
+
+.pnl-category-breakdown {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pnl-category-breakdown li {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.pnl-category-label {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.pnl-category-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: var(--color-surface-muted);
+}
+
+.pnl-category-bar i {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 5px;
+  background: var(--chart-expense);
+}
+
 @media (max-width: 900px) {
   .dashboard-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1222,6 +1310,7 @@
   .detail-grid,
   .consumption-grid,
   .stats-summary-grid,
+  .pnl-summary-grid,
   .schedule-grid,
   .import-summary {
     grid-template-columns: 1fr;
