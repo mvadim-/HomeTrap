@@ -412,3 +412,41 @@ def test_restore_key_migration_backfills_existing_duplicate_business_keys(
     assert len({row[0] for row in service_keys}) == 2
     assert all(len(row[0]) == 32 for row in apartment_keys + service_keys)
     assert revision == ("20260721_07",)
+
+
+def test_restore_key_migration_resumes_after_interrupted_column_add(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "interrupted-restore-keys.db"
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(backend_dir / "alembic.ini")
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{database_path}")
+    command.upgrade(config, "20260718_05")
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO apartments
+               (id, name, address, rent_amount, rent_currency, notes, is_active)
+               VALUES (1, 'Квартира', 'Київ', 500, 'USD', NULL, 1)"""
+        )
+        connection.execute(
+            "ALTER TABLE apartments ADD COLUMN restore_key VARCHAR(32)"
+        )
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        apartment_key = connection.execute(
+            "SELECT restore_key FROM apartments WHERE id = 1"
+        ).fetchone()
+        service_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(services)")
+        }
+        revision = connection.execute(
+            "SELECT version_num FROM alembic_version"
+        ).fetchone()
+
+    assert apartment_key is not None
+    assert len(apartment_key[0]) == 32
+    assert "restore_key" in service_columns
+    assert revision == ("20260721_07",)

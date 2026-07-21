@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-21 16:22] Відновлювана міграція restore-ключів
+
+- `backend/alembic/versions/20260721_06_restore_keys.py` — міграція перевіряє
+  фактичний стан колонок та unique constraints, заповнює лише відсутні ключі й
+  безпечно продовжується після частково виконаного SQLite DDL.
+- `backend/tests/test_models.py` — додано регресію стану з доданою nullable
+  `apartments.restore_key`, але старою Alembic-ревізією.
+- Docker-перевірка: backend — 206 тестів passed, `ruff check .` — passed; реальна
+  dev-БД оновлена до `20260721_07`, health endpoint повертає `200`.
+- Зміна призначена для production backend. Перед розгортанням зробіть ручний архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; міграція
+  автоматично завершить частково застосований стан, автоматичний деплой не виконувався.
+
 ## [2026-07-21 16:05] Канонічні колізії шляхів restore-архіву
 
 - `backend/app/services/restore_archive.py` — перевірка дублікатів ZIP-членів тепер

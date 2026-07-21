@@ -16,37 +16,57 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _ensure_restore_key(table_name: str, constraint_name: str) -> None:
+    bind = op.get_bind()
+    columns = {
+        column["name"]: column
+        for column in sa.inspect(bind).get_columns(table_name)
+    }
+    if "restore_key" not in columns:
+        op.add_column(
+            table_name,
+            sa.Column("restore_key", sa.String(length=32), nullable=True),
+        )
+        columns = {
+            column["name"]: column
+            for column in sa.inspect(bind).get_columns(table_name)
+        }
+
+    op.execute(
+        sa.text(
+            f"UPDATE {table_name} "
+            "SET restore_key = lower(hex(randomblob(16))) "
+            "WHERE restore_key IS NULL"
+        )
+    )
+    unique_exists = any(
+        constraint["column_names"] == ["restore_key"]
+        for constraint in sa.inspect(bind).get_unique_constraints(table_name)
+    )
+    if columns["restore_key"]["nullable"] or not unique_exists:
+        with op.batch_alter_table(table_name) as batch_op:
+            if columns["restore_key"]["nullable"]:
+                batch_op.alter_column(
+                    "restore_key",
+                    existing_type=sa.String(length=32),
+                    nullable=False,
+                )
+            if not unique_exists:
+                batch_op.create_unique_constraint(
+                    constraint_name,
+                    ["restore_key"],
+                )
+
+
 def upgrade() -> None:
-    op.add_column(
+    _ensure_restore_key(
         "apartments",
-        sa.Column("restore_key", sa.String(length=32), nullable=True),
+        "uq_apartments_restore_key",
     )
-    op.execute("UPDATE apartments SET restore_key = lower(hex(randomblob(16)))")
-    with op.batch_alter_table("apartments") as batch_op:
-        batch_op.alter_column(
-            "restore_key",
-            existing_type=sa.String(length=32),
-            nullable=False,
-        )
-        batch_op.create_unique_constraint(
-            "uq_apartments_restore_key",
-            ["restore_key"],
-        )
-    op.add_column(
+    _ensure_restore_key(
         "services",
-        sa.Column("restore_key", sa.String(length=32), nullable=True),
+        "uq_services_restore_key",
     )
-    op.execute("UPDATE services SET restore_key = lower(hex(randomblob(16)))")
-    with op.batch_alter_table("services") as batch_op:
-        batch_op.alter_column(
-            "restore_key",
-            existing_type=sa.String(length=32),
-            nullable=False,
-        )
-        batch_op.create_unique_constraint(
-            "uq_services_restore_key",
-            ["restore_key"],
-        )
 
 
 def downgrade() -> None:
