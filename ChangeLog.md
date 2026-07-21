@@ -13,6 +13,19 @@
   усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; міграція
   автоматично завершить частково застосований стан, автоматичний деплой не виконувався.
 
+## [2026-07-21 16:20] Завершення плану backup/restore
+
+- `docs/plans/completed/20260720-backup-and-restore.md` — план backup/restore
+  підготовлено до перенесення в каталог завершених планів після успішних
+  review/finalize циклів.
+- `docs/improvements-backlog.md` — посилання реалізованої функції синхронізовано з
+  канонічним шляхом завершеного плану.
+- Фінальна Docker-перевірка: backend — 205 тестів passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed.
+- Зміна призначена для production. Перед розгортанням зробіть ручний DR-архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; автоматичний
+  деплой не виконувався.
+
 ## [2026-07-21 16:05] Канонічні колізії шляхів restore-архіву
 
 - `backend/app/services/restore_archive.py` — перевірка дублікатів ZIP-членів тепер
