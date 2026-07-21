@@ -77,6 +77,12 @@ docker compose --env-file .env -f docker/docker-compose.yml up -d --build
 docker compose --env-file .env -f docker/docker-compose.yml ps
 ```
 
+Ці кроки (pull → бекап `data/` перед міграціями → rebuild+restart → очікування
+healthy → ротація бекапів) автоматизує скрипт
+[`synology-update.sh`](../synology-update.sh) у корені репозиторію:
+`sh synology-update.sh` (або `SUDO=sudo sh synology-update.sh`, якщо docker
+потребує root).
+
 Команда `up -d --build` перебудовує production-образ із backend і frontend та
 перезапускає контейнер. Міграції Alembic, включно з таблицею Push-підписок і днем
 виставлення орендаря та стабільними ключами backup/restore для квартир і послуг,
