@@ -201,19 +201,19 @@
 - Modify: `backend/app/main.py`
 - Create: `backend/tests/test_expenses.py`
 
-- [ ] схеми `ExpenseCreate`/`ExpenseUpdate`/`ExpenseResponse` (валідація
+- [x] схеми `ExpenseCreate`/`ExpenseUpdate`/`ExpenseResponse` (валідація
   `amount > 0`, `currency` 3 літери, `category` з enum, `apartment_id`
   опційний)
-- [ ] роутер `expenses.py`: `GET /api/expenses` (фільтри `apartment_id`,
+- [x] роутер `expenses.py`: `GET /api/expenses` (фільтри `apartment_id`,
   діапазон дат), `POST`, `PATCH/{id}`, `DELETE/{id}` — через
   `write_session`/`get_write_db` за зразком `tenants.py`; `404` для
   неіснуючої квартири/витрати
-- [ ] зареєструвати роутер у `main.py`
-- [ ] write tests: CRUD-happy-path, фільтр за квартирою й датами, загальна
+- [x] зареєструвати роутер у `main.py`
+- [x] write tests: CRUD-happy-path, фільтр за квартирою й датами, загальна
   витрата (`apartment_id=null`)
-- [ ] write tests: помилки — `amount<=0`, невалідна категорія/валюта,
+- [x] write tests: помилки — `amount<=0`, невалідна категорія/валюта,
   неіснуюча квартира (`404`), неіснуюча витрата (`404`)
-- [ ] run tests — must pass before task 3
+- [x] run tests — must pass before task 3
 
 ### Task 3: P&L-агрегація та ендпойнт /api/stats/pnl
 

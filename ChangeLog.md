@@ -1,5 +1,23 @@
 # ChangeLog
 
+## [2026-07-21 20:10] Task 2: схеми та CRUD-роутер витрат
+
+- `backend/app/schemas.py` — додано `ExpenseCreate`/`ExpenseUpdate`/
+  `ExpenseResponse` (валідація `amount > 0`, `currency` 3 літери з
+  нормалізацією до верхнього регістру, `category` з `ExpenseCategory`,
+  опційний `apartment_id`). `ExpenseUpdate` — часткове оновлення
+  (`exclude_unset`). Додано аліас `date_type`, щоб поле `date` не затіняло тип.
+- `backend/app/routers/expenses.py` — новий роутер за зразком `tenants.py`:
+  `GET /api/expenses` (фільтри `apartment_id`, `date_from`/`date_to`),
+  `POST`, `PATCH/{id}`, `DELETE/{id}` через `get_write_db`; `404` для
+  неіснуючої квартири/витрати.
+- `backend/app/main.py` — зареєстровано `expenses_router`.
+- `backend/tests/test_expenses.py` — CRUD-happy-path, дефолт/нормалізація
+  валюти, загальна витрата (`apartment_id=null`), фільтри за квартирою й
+  датами, помилки валідації (`amount<=0`, категорія, валюта), `404`
+  (квартира/витрата), вимога авторизації.
+- Лише backend; міграцій не додано (таблиця з Task 1).
+
 ## [2026-07-21 19:45] Task 1: модель Expense + міграція
 
 - `backend/app/models.py` — додано `ExpenseCategory(StrEnum)` (repair/tax/

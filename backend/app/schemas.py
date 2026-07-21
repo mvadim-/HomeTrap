@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date
+from datetime import date as date_type
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -15,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.models import ServiceKind
+from app.models import ExpenseCategory, ServiceKind
 
 
 class ApiSchema(BaseModel):
@@ -122,6 +124,50 @@ class ServiceResponse(ServiceBase):
     id: int
     apartment_id: int
     is_active: bool
+
+
+def _normalize_currency(value: str) -> str:
+    if not value.isalpha():
+        raise ValueError("currency must be 3 letters")
+    return value.upper()
+
+
+class ExpenseBase(ApiSchema):
+    apartment_id: int | None = None
+    date: date
+    category: ExpenseCategory
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: str = Field(default="UAH", min_length=3, max_length=3)
+    notes: str | None = None
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        return _normalize_currency(value)
+
+
+class ExpenseCreate(ExpenseBase):
+    pass
+
+
+class ExpenseUpdate(ApiSchema):
+    apartment_id: int | None = None
+    date: date_type | None = None
+    category: ExpenseCategory | None = None
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    notes: str | None = None
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _normalize_currency(value)
+
+
+class ExpenseResponse(ExpenseBase):
+    id: int
 
 
 class TariffCreate(ApiSchema):
