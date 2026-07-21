@@ -4,10 +4,9 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.auth import get_db, require_auth
+from app.auth import get_write_db, require_auth
 from app.schemas import ExchangeRateResponse
 from app.services.nbu import NbuRateUnavailable, get_rate
-from app.services.storage import coordinated_write
 
 router = APIRouter(
     prefix="/api/rates",
@@ -17,8 +16,7 @@ router = APIRouter(
 
 
 @router.get("/current", response_model=ExchangeRateResponse)
-@coordinated_write
-def current_rate(session: Session = Depends(get_db)) -> dict:
+def current_rate(session: Session = Depends(get_write_db)) -> dict:
     today = datetime.now(ZoneInfo("Europe/Kyiv")).date()
     try:
         result = get_rate(session, today)

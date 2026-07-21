@@ -30,10 +30,10 @@ from app.services.storage import (
     ATTACHMENT_TYPES,
     MAX_ATTACHMENT_SIZE,
     attachment_path,
-    data_store_lock,
     ensure_directory_durable,
     fsync_directory,
     validate_file_type,
+    write_session,
 )
 
 
@@ -360,7 +360,7 @@ def import_backup(
         connect_args={"check_same_thread": False},
     )
     source_session = sessionmaker(bind=source_engine)()
-    store_context = data_store_lock()
+    store_context = write_session(live_session)
     store_context.__enter__()
     summary = ImportSummary()
     pending_files: list[tuple[Path, Path]] = []
@@ -465,59 +465,56 @@ def _finish_restore_journal(
         if remove_journal:
             _remove_restore_journal(journal_dir)
         return
-    try:
-        journal = json.loads(journal_path.read_text(encoding="utf-8"))
-        entries = journal["files"] if journal.get("version") == 1 else None
-        if not isinstance(entries, list):
-            raise ValueError("invalid restore journal")
-        for entry in entries:
-            target = uploads_dir.joinpath(*Path(entry["target"]).parts).resolve()
-            if not target.is_relative_to(uploads_dir.resolve()):
-                raise ValueError("unsafe restore journal target")
-            parts = target.relative_to(uploads_dir.resolve()).parts
-            if len(parts) != 3 or parts[0] != "tenants":
-                raise ValueError("invalid restore journal target")
-            tenant_id = int(parts[1])
-            stored_name = parts[2]
-            row = session.scalar(
-                select(TenantAttachment.id).where(
-                    TenantAttachment.tenant_id == tenant_id,
-                    TenantAttachment.stored_name == stored_name,
-                    TenantAttachment.size_bytes == entry["size"],
-                )
+    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    entries = journal["files"] if journal.get("version") == 1 else None
+    if not isinstance(entries, list):
+        raise ValueError("invalid restore journal")
+    for entry in entries:
+        target = uploads_dir.joinpath(*Path(entry["target"]).parts).resolve()
+        if not target.is_relative_to(uploads_dir.resolve()):
+            raise ValueError("unsafe restore journal target")
+        parts = target.relative_to(uploads_dir.resolve()).parts
+        if len(parts) != 3 or parts[0] != "tenants":
+            raise ValueError("invalid restore journal target")
+        tenant_id = int(parts[1])
+        stored_name = parts[2]
+        row = session.scalar(
+            select(TenantAttachment.id).where(
+                TenantAttachment.tenant_id == tenant_id,
+                TenantAttachment.stored_name == stored_name,
+                TenantAttachment.size_bytes == entry["size"],
             )
-            staged = journal_dir / entry["staged_name"]
-            if row is None:
-                if target.exists():
-                    if (
-                        not target.is_file()
-                        or target.stat().st_size != entry["size"]
-                        or _file_sha256(target) != entry["sha256"]
-                    ):
-                        raise RestoreValidationError(
-                            "Orphan restore target contains different content"
-                        )
-                    target.unlink()
-                    fsync_directory(target.parent)
-                    _remove_empty_directories(target.parent, uploads_dir)
-                continue
-            if target.is_file():
+        )
+        staged = journal_dir / entry["staged_name"]
+        if row is None:
+            if target.exists():
                 if (
-                    target.stat().st_size != entry["size"]
+                    not target.is_file()
+                    or target.stat().st_size != entry["size"]
                     or _file_sha256(target) != entry["sha256"]
                 ):
                     raise RestoreValidationError(
-                        "Restore journal target contains different content"
+                        "Orphan restore target contains different content"
                     )
-                continue
-            if not staged.is_file() or _file_sha256(staged) != entry["sha256"]:
-                raise RestoreValidationError("Restore journal file is missing")
-            ensure_directory_durable(target.parent)
-            staged.replace(target)
-            fsync_directory(journal_dir)
-            fsync_directory(target.parent)
-    except Exception:
-        raise
+                target.unlink()
+                fsync_directory(target.parent)
+                _remove_empty_directories(target.parent, uploads_dir)
+            continue
+        if target.is_file():
+            if (
+                target.stat().st_size != entry["size"]
+                or _file_sha256(target) != entry["sha256"]
+            ):
+                raise RestoreValidationError(
+                    "Restore journal target contains different content"
+                )
+            continue
+        if not staged.is_file() or _file_sha256(staged) != entry["sha256"]:
+            raise RestoreValidationError("Restore journal file is missing")
+        ensure_directory_durable(target.parent)
+        staged.replace(target)
+        fsync_directory(journal_dir)
+        fsync_directory(target.parent)
     if remove_journal:
         _remove_restore_journal(journal_dir)
 
@@ -547,7 +544,7 @@ def recover_restore_journals(uploads_dir: Path, session_factory: Any) -> None:
     journal_root = uploads_dir / ".restore-journal"
     if not journal_root.is_dir():
         return
-    with data_store_lock(), session_factory() as session:
+    with write_session(session_factory) as session:
         for journal_dir in sorted(journal_root.iterdir()):
             if journal_dir.is_dir():
                 _finish_restore_journal(journal_dir, uploads_dir, session)
@@ -565,46 +562,79 @@ def _import_rows(
     summary: ImportSummary,
     pending_files: list[tuple[Path, Path]],
 ) -> None:
-    next_ids = {
-        model: (live_session.scalar(select(func.max(model.id))) or 0) + 1
-        for model in (Apartment, Service, Tenant, Invoice)
-    }
+    context = ImportContext(
+        source_session=source_session,
+        live_session=live_session,
+        uploads_dir=uploads_dir,
+        source_attachments=source_attachments,
+        staged_files=staged_files,
+        summary=summary,
+        pending_files=pending_files,
+    )
+    _import_apartments(context)
+    _import_services(context)
+    _import_tariffs(context)
+    _import_tenants(context)
+    _import_tenant_attachments(context)
+    _import_invoices(context)
+    _import_invoice_lines(context)
+    _import_exchange_rates(context)
 
-    def allocate_id(model: Any) -> int:
-        allocated = next_ids[model]
-        next_ids[model] += 1
+
+@dataclass
+class ImportContext:
+    source_session: Session
+    live_session: Session
+    uploads_dir: Path
+    source_attachments: list[TenantAttachment]
+    staged_files: dict[int, Path]
+    summary: ImportSummary
+    pending_files: list[tuple[Path, Path]]
+    apartment_map: dict[int, Apartment] = field(default_factory=dict)
+    service_map: dict[int, Service] = field(default_factory=dict)
+    tenant_map: dict[int, Tenant] = field(default_factory=dict)
+    invoice_map: dict[int, Invoice] = field(default_factory=dict)
+    new_invoice_ids: set[int] = field(default_factory=set)
+    next_ids: dict[type, int] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.next_ids = {
+            model: (self.live_session.scalar(select(func.max(model.id))) or 0) + 1
+            for model in (Apartment, Service, Tenant, Invoice)
+        }
+
+    def allocate_id(self, model: type) -> int:
+        allocated = self.next_ids[model]
+        self.next_ids[model] += 1
         return allocated
 
-    source_apartments = source_session.scalars(
+
+def _import_apartments(context: ImportContext) -> None:
+    source_rows = context.source_session.scalars(
         select(Apartment).order_by(Apartment.id)
     ).all()
-    apartment_key_counts = Counter(
-        (source.name, source.address) for source in source_apartments
-    )
-    apartment_map: dict[int, Apartment] = {}
-    apartment_exact = _exact_identity_matches(
-        live_session,
+    key_counts = Counter((source.name, source.address) for source in source_rows)
+    exact = _exact_identity_matches(
+        context.live_session,
         Apartment,
         "apartment",
-        {source.restore_key for source in source_apartments},
+        {source.restore_key for source in source_rows},
     )
-    claimed_apartment_ids: set[int] = {
-        row.id for row in apartment_exact.values()
-    }
-    for source in source_apartments:
-        apartment_key = (source.name, source.address)
-        apartment = _stable_existing_or_add(
-            live_session,
-            summary,
+    claimed_ids = {row.id for row in exact.values()}
+    for source in source_rows:
+        key = (source.name, source.address)
+        context.apartment_map[source.id] = _stable_existing_or_add(
+            context.live_session,
+            context.summary,
             "apartments",
             source.restore_key,
             select(Apartment).where(
                 Apartment.name == source.name,
                 Apartment.address == source.address,
             ),
-            apartment_key_counts[apartment_key] == 1,
+            key_counts[key] == 1,
             Apartment(
-                id=allocate_id(Apartment),
+                id=context.allocate_id(Apartment),
                 **_copy_columns(
                     source,
                     "restore_key",
@@ -614,48 +644,49 @@ def _import_rows(
                     "rent_currency",
                     "notes",
                     "is_active",
-                )
+                ),
             ),
-            claimed_apartment_ids,
-            apartment_exact.get(source.restore_key),
+            claimed_ids,
+            exact.get(source.restore_key),
         )
-        apartment_map[source.id] = apartment
-
     _copy_restore_aliases(
-        source_session,
-        live_session,
+        context.source_session,
+        context.live_session,
         "apartment",
-        apartment_map,
-        source_apartments,
+        context.apartment_map,
+        source_rows,
     )
 
-    source_services = source_session.scalars(select(Service).order_by(Service.id)).all()
-    service_key_counts = Counter(
-        (source.apartment_id, source.name) for source in source_services
+
+def _import_services(context: ImportContext) -> None:
+    source_rows = context.source_session.scalars(
+        select(Service).order_by(Service.id)
+    ).all()
+    key_counts = Counter(
+        (source.apartment_id, source.name) for source in source_rows
     )
-    service_map: dict[int, Service] = {}
-    service_exact = _exact_identity_matches(
-        live_session,
+    exact = _exact_identity_matches(
+        context.live_session,
         Service,
         "service",
-        {source.restore_key for source in source_services},
+        {source.restore_key for source in source_rows},
     )
-    claimed_service_ids: set[int] = {row.id for row in service_exact.values()}
-    for source in source_services:
-        service_key = (source.apartment_id, source.name)
-        apartment = apartment_map[source.apartment_id]
-        service = _stable_existing_or_add(
-            live_session,
-            summary,
+    claimed_ids = {row.id for row in exact.values()}
+    for source in source_rows:
+        key = (source.apartment_id, source.name)
+        apartment = context.apartment_map[source.apartment_id]
+        context.service_map[source.id] = _stable_existing_or_add(
+            context.live_session,
+            context.summary,
             "services",
             source.restore_key,
             select(Service).where(
                 Service.apartment_id == apartment.id,
                 Service.name == source.name,
             ),
-            service_key_counts[service_key] == 1,
+            key_counts[key] == 1,
             Service(
-                id=allocate_id(Service),
+                id=context.allocate_id(Service),
                 apartment_id=apartment.id,
                 **_copy_columns(
                     source,
@@ -668,24 +699,24 @@ def _import_rows(
                     "is_active",
                 ),
             ),
-            claimed_service_ids,
-            service_exact.get(source.restore_key),
+            claimed_ids,
+            exact.get(source.restore_key),
         )
-        service_map[source.id] = service
-
     _copy_restore_aliases(
-        source_session,
-        live_session,
+        context.source_session,
+        context.live_session,
         "service",
-        service_map,
-        source_services,
+        context.service_map,
+        source_rows,
     )
 
-    for source in source_session.scalars(select(Tariff).order_by(Tariff.id)):
-        service = service_map[source.service_id]
+
+def _import_tariffs(context: ImportContext) -> None:
+    for source in context.source_session.scalars(select(Tariff).order_by(Tariff.id)):
+        service = context.service_map[source.service_id]
         _existing_or_add(
-            live_session,
-            summary,
+            context.live_session,
+            context.summary,
             "tariffs",
             select(Tariff).where(
                 Tariff.service_id == service.id,
@@ -697,14 +728,15 @@ def _import_rows(
             ),
         )
 
-    tenant_map: dict[int, Tenant] = {}
-    tenant_candidates = list(live_session.scalars(select(Tenant)).all())
-    for source in source_session.scalars(select(Tenant).order_by(Tenant.id)):
-        apartment = apartment_map[source.apartment_id]
+
+def _import_tenants(context: ImportContext) -> None:
+    candidates = list(context.live_session.scalars(select(Tenant)).all())
+    for source in context.source_session.scalars(select(Tenant).order_by(Tenant.id)):
+        apartment = context.apartment_map[source.apartment_id]
         existing = next(
             (
                 candidate
-                for candidate in tenant_candidates
+                for candidate in candidates
                 if candidate.apartment_id == apartment.id
                 and candidate.full_name == source.full_name
                 and candidate.contract_start == source.contract_start
@@ -712,8 +744,8 @@ def _import_rows(
             None,
         )
         if existing is not None:
-            summary.skipped["tenants"] += 1
-            tenant_map[source.id] = existing
+            context.summary.skipped["tenants"] += 1
+            context.tenant_map[source.id] = existing
             continue
         overlaps = any(
             candidate.apartment_id == apartment.id
@@ -722,13 +754,13 @@ def _import_rows(
                 source.contract_end is None
                 or candidate.contract_start <= source.contract_end
             )
-            for candidate in tenant_candidates
+            for candidate in candidates
         )
         if overlaps:
-            summary.skipped["tenants"] += 1
+            context.summary.skipped["tenants"] += 1
             continue
         tenant = Tenant(
-            id=allocate_id(Tenant),
+            id=context.allocate_id(Tenant),
             apartment_id=apartment.id,
             **_copy_columns(
                 source,
@@ -741,35 +773,37 @@ def _import_rows(
                 "notes",
             ),
         )
-        live_session.add(tenant)
-        tenant_candidates.append(tenant)
-        summary.added["tenants"] += 1
-        tenant_map[source.id] = tenant
+        context.live_session.add(tenant)
+        candidates.append(tenant)
+        context.summary.added["tenants"] += 1
+        context.tenant_map[source.id] = tenant
 
-    for source in source_attachments:
-        tenant = tenant_map.get(source.tenant_id)
+
+def _import_tenant_attachments(context: ImportContext) -> None:
+    for source in context.source_attachments:
+        tenant = context.tenant_map.get(source.tenant_id)
         if tenant is None:
-            summary.skipped["tenant_attachments"] += 1
+            context.summary.skipped["tenant_attachments"] += 1
             continue
-        staged_path = staged_files[source.id]
+        staged_path = context.staged_files[source.id]
         target_path = _target_attachment_path(
             source,
             staged_path,
-            uploads_dir,
+            context.uploads_dir,
             tenant.id,
         )
-        existing = live_session.scalar(
+        existing = context.live_session.scalar(
             select(TenantAttachment).where(
                 TenantAttachment.tenant_id == tenant.id,
                 TenantAttachment.stored_name == source.stored_name,
             )
         )
         if existing is not None:
-            summary.skipped["tenant_attachments"] += 1
+            context.summary.skipped["tenant_attachments"] += 1
             if not target_path.exists():
-                pending_files.append((staged_path, target_path))
+                context.pending_files.append((staged_path, target_path))
             continue
-        live_session.add(
+        context.live_session.add(
             TenantAttachment(
                 tenant_id=tenant.id,
                 **_copy_columns(
@@ -782,26 +816,26 @@ def _import_rows(
                 ),
             )
         )
-        summary.added["tenant_attachments"] += 1
+        context.summary.added["tenant_attachments"] += 1
         if not target_path.exists():
-            pending_files.append((staged_path, target_path))
+            context.pending_files.append((staged_path, target_path))
 
-    invoice_map: dict[int, Invoice] = {}
-    new_invoice_ids: set[int] = set()
-    for source in source_session.scalars(select(Invoice).order_by(Invoice.id)):
-        apartment = apartment_map[source.apartment_id]
-        existing = live_session.scalar(
+
+def _import_invoices(context: ImportContext) -> None:
+    for source in context.source_session.scalars(select(Invoice).order_by(Invoice.id)):
+        apartment = context.apartment_map[source.apartment_id]
+        existing = context.live_session.scalar(
             select(Invoice).where(
                 Invoice.apartment_id == apartment.id,
                 Invoice.period == source.period,
             )
         )
         if existing is not None:
-            summary.skipped["invoices"] += 1
-            invoice_map[source.id] = existing
+            context.summary.skipped["invoices"] += 1
+            context.invoice_map[source.id] = existing
             continue
         invoice = Invoice(
-            id=allocate_id(Invoice),
+            id=context.allocate_id(Invoice),
             apartment_id=apartment.id,
             **_copy_columns(
                 source,
@@ -816,38 +850,45 @@ def _import_rows(
                 "grand_total",
             ),
         )
-        live_session.add(invoice)
-        summary.added["invoices"] += 1
-        invoice_map[source.id] = invoice
-        new_invoice_ids.add(source.id)
+        context.live_session.add(invoice)
+        context.summary.added["invoices"] += 1
+        context.invoice_map[source.id] = invoice
+        context.new_invoice_ids.add(source.id)
 
-    for source in source_session.scalars(select(InvoiceLine).order_by(InvoiceLine.id)):
-        if source.invoice_id not in new_invoice_ids:
-            summary.skipped["invoice_lines"] += 1
+
+def _import_invoice_lines(context: ImportContext) -> None:
+    for source in context.source_session.scalars(
+        select(InvoiceLine).order_by(InvoiceLine.id)
+    ):
+        if source.invoice_id not in context.new_invoice_ids:
+            context.summary.skipped["invoice_lines"] += 1
             continue
-        line = InvoiceLine(
-            invoice_id=invoice_map[source.invoice_id].id,
-            service_id=service_map[source.service_id].id,
-            **_copy_columns(
-                source,
-                "service_name",
-                "service_kind",
-                "prev_reading",
-                "curr_reading",
-                "consumed",
-                "tariff_value",
-                "amount",
-            ),
+        context.live_session.add(
+            InvoiceLine(
+                invoice_id=context.invoice_map[source.invoice_id].id,
+                service_id=context.service_map[source.service_id].id,
+                **_copy_columns(
+                    source,
+                    "service_name",
+                    "service_kind",
+                    "prev_reading",
+                    "curr_reading",
+                    "consumed",
+                    "tariff_value",
+                    "amount",
+                ),
+            )
         )
-        live_session.add(line)
-        summary.added["invoice_lines"] += 1
+        context.summary.added["invoice_lines"] += 1
 
-    for source in source_session.scalars(
+
+def _import_exchange_rates(context: ImportContext) -> None:
+    for source in context.source_session.scalars(
         select(ExchangeRate).order_by(ExchangeRate.id)
     ):
         _existing_or_add(
-            live_session,
-            summary,
+            context.live_session,
+            context.summary,
             "exchange_rates",
             select(ExchangeRate).where(
                 ExchangeRate.date == source.date,

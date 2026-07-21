@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.auth import get_db, require_auth
+from app.auth import get_write_db, require_auth
 from app.models import Apartment
 from app.schemas import ImportReportResponse
 from app.services.importer import ImportFormatError, import_xlsx
-from app.services.storage import coordinated_write
 
 router = APIRouter(tags=["import"], dependencies=[Depends(require_auth)])
 
@@ -15,12 +14,11 @@ router = APIRouter(tags=["import"], dependencies=[Depends(require_auth)])
     response_model=ImportReportResponse,
     status_code=status.HTTP_200_OK,
 )
-@coordinated_write
 def import_history(
     apartment_id: int,
     file: UploadFile = File(...),
     dry_run: bool = Query(default=False),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> ImportReportResponse:
     apartment = session.get(Apartment, apartment_id)
     if apartment is None:

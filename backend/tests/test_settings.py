@@ -16,6 +16,7 @@ import starlette.formparsers as formparsers
 
 import app.middleware as middleware_module
 import app.routers.settings as settings_router
+import app.services.backup_limits as backup_limits
 from app.config import Settings
 from app.main import create_app
 from app.services.backup import build_backup
@@ -406,6 +407,56 @@ async def test_restore_backup_rejects_zip_slip_member(
 
 
 @pytest.mark.parametrize(
+    ("collision_name", "collision_content"),
+    [
+        pytest.param("./manifest.json", b"{}", id="dot-segment"),
+        pytest.param("uploads//", b"", id="repeated-separator"),
+        pytest.param("uploads", b"file", id="file-directory-slash"),
+        pytest.param(r".\manifest.json", b"{}", id="windows-separator"),
+    ],
+)
+async def test_restore_backup_rejects_canonical_path_collisions_before_import(
+    tmp_path: Path,
+    collision_name: str,
+    collision_content: bytes,
+) -> None:
+    backup = await _build_backup_bytes(
+        tmp_path / "source",
+        [_apartment_payload("Не імпортувати", "500.00")],
+    )
+    malicious_backup = _add_archive_member(
+        backup,
+        collision_name,
+        collision_content,
+    )
+    async with _client(tmp_path / "target") as (client, settings):
+        await _login(client)
+        existing = await client.post(
+            "/api/apartments",
+            json=_apartment_payload("Локальна", "700.00"),
+        )
+        assert existing.status_code == 201
+        sentinel = settings.uploads_dir / "sentinel.txt"
+        sentinel.parent.mkdir(parents=True, exist_ok=True)
+        sentinel.write_bytes(b"unchanged")
+
+        response = await client.post(
+            "/api/settings/restore",
+            files={"file": ("backup.zip", malicious_backup, "application/zip")},
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == (
+            "Backup archive contains duplicate paths"
+        )
+        apartments = (await client.get("/api/apartments")).json()
+        assert [(item["name"], item["rent_amount"]) for item in apartments] == [
+            ("Локальна", "700.00")
+        ]
+        assert sentinel.read_bytes() == b"unchanged"
+
+
+@pytest.mark.parametrize(
     ("limit_name", "limit_value", "expected_detail"),
     [
         ("MAX_BACKUP_UPLOAD_SIZE", 10, "upload size"),
@@ -421,7 +472,7 @@ async def test_restore_backup_rejects_resource_limit_before_import(
     expected_detail: str,
 ) -> None:
     backup = await _build_backup_bytes(tmp_path / "source")
-    monkeypatch.setattr(settings_router, limit_name, limit_value)
+    monkeypatch.setattr(backup_limits, limit_name, limit_value)
     async with _client(tmp_path / "target") as (client, settings):
         await _login(client)
         response = await client.post(
@@ -443,7 +494,7 @@ async def test_restore_backup_rejects_high_ratio_untrusted_member(
 ) -> None:
     backup = await _build_backup_bytes(tmp_path / "source")
     malicious_backup = _add_archive_member(backup, "uploads/bomb.pdf", b"0" * 4096)
-    monkeypatch.setattr(settings_router, "MAX_BACKUP_COMPRESSION_RATIO", 2)
+    monkeypatch.setattr(backup_limits, "MAX_BACKUP_COMPRESSION_RATIO", 2)
     async with _client(tmp_path / "target") as (client, _settings):
         await _login(client)
 

@@ -13,10 +13,11 @@ from zipfile import ZIP_STORED, ZipFile
 
 from app.constants import APP_VERSION
 from app.services.backup_limits import (
-    MAX_BACKUP_COMPRESSION_RATIO,
+    ArchiveMetadataLimitError,
     MAX_BACKUP_MEMBERS,
     MAX_BACKUP_UNCOMPRESSED_SIZE,
     MAX_BACKUP_UPLOAD_SIZE,
+    validate_zip_metadata,
 )
 from app.services.storage import data_store_lock
 
@@ -81,22 +82,19 @@ def _validate_archive(archive_path: Path) -> None:
     if archive_path.stat().st_size > MAX_BACKUP_UPLOAD_SIZE:
         raise BackupLimitError("Backup archive exceeds the restore upload size limit")
     with ZipFile(archive_path) as archive:
-        members = archive.infolist()
-        if len(members) > MAX_BACKUP_MEMBERS:
-            raise BackupLimitError("Backup archive exceeds the restore member limit")
-        if sum(member.file_size for member in members) > MAX_BACKUP_UNCOMPRESSED_SIZE:
-            raise BackupLimitError(
-                "Backup archive exceeds the restore extracted size limit"
-            )
-        if any(
-            member.file_size > 0
-            and member.file_size / max(member.compress_size, 1)
-            > MAX_BACKUP_COMPRESSION_RATIO
-            for member in members
-        ):
-            raise BackupLimitError(
-                "Backup archive exceeds the restore compression limit"
-            )
+        try:
+            validate_zip_metadata(archive.infolist())
+        except ArchiveMetadataLimitError as error:
+            messages = {
+                "members": "Backup archive exceeds the restore member limit",
+                "uncompressed_size": (
+                    "Backup archive exceeds the restore extracted size limit"
+                ),
+                "compression_ratio": (
+                    "Backup archive exceeds the restore compression limit"
+                ),
+            }
+            raise BackupLimitError(messages[error.limit]) from error
 
 
 def _database_size_upper_bound(database_path: Path) -> int:

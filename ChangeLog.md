@@ -1,5 +1,44 @@
 # ChangeLog
 
+## [2026-07-21 16:05] Канонічні колізії шляхів restore-архіву
+
+- `backend/app/services/restore_archive.py` — перевірка дублікатів ZIP-членів тепер
+  порівнює канонічні extraction targets, тому dot-сегменти, повторні чи Windows-
+  роздільники та file/directory slash-варіанти відхиляються до розпакування.
+- `backend/tests/test_settings.py` — додано API-регресії для еквівалентних шляхів із
+  перевіркою `422`, незмінності live-БД та наявних uploads.
+- Docker-перевірка: backend — 205 тестів passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed; `git diff --check` — passed.
+- Зміна призначена для production backend. Перед розгортанням зробіть ручний архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; міграцій БД
+  немає, автоматичний деплой не виконувався.
+
+## [2026-07-21 15:39] Спрощення координації та restore pipeline
+
+- `backend/app/services/storage.py`, `backend/app/auth.py`, mutating router-и та
+  `backend/app/services/scheduler.py` — усі production DB writers переведено на
+  єдиний `write_session`/`get_write_db` transaction API замість розсипаних
+  декораторів і ручних outer-lock блоків; commit/rollback/close для owned session
+  тепер визначені в одному місці.
+- `backend/app/services/restore_archive.py`, `backend/app/routers/settings.py` —
+  потокове приймання upload, безпечне розпакування, manifest/revision validation і
+  запуск транзакційного merge винесено із HTTP router у restore archive service;
+  router залишає лише mapping доменних помилок у `413`/`422`.
+- `backend/app/services/backup_limits.py`, `backend/app/services/backup.py` — backup
+  і restore використовують одну перевірку member count, uncompressed size та
+  compression ratio, зберігаючи попередні backup error messages.
+- `backend/app/services/restore.py` — 299-рядковий `_import_rows` розбито на
+  типізований `ImportContext` і окремі helpers для квартир, послуг, тарифів,
+  орендарів, вкладень, рахунків, рядків та курсів; прибрано зайвий `except: raise`.
+- `backend/tests/test_{storage,backup,settings}.py` — додано commit/rollback регресію
+  централізованої write-session і переведено quota/concurrency перевірки на нові
+  спільні service API.
+- Docker-перевірка: backend — 201 тест passed, `ruff check .` — passed;
+  frontend — 171 тест passed, production build — passed; `git diff --check` — passed.
+- Зміна призначена для production backend. Перед розгортанням зробіть ручний архів
+  усього `data/`, потім виконайте rebuild/restart за `docs/deploy.md`; міграцій БД
+  немає, автоматичний деплой не виконувався.
+
 ## [2026-07-21 15:19] Crash-safe backup, restore і видалення tenant
 
 - `backend/app/services/{restore,storage}.py`, `backend/app/main.py` — restore тепер

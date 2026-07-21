@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.models import User
+from app.services.storage import write_session
 
 SESSION_COOKIE_NAME = "hometrap_session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7
@@ -122,7 +123,7 @@ def ensure_admin(
             "ADMIN_USERNAME and ADMIN_PASSWORD must be configured together"
         )
 
-    with session_factory() as session:
+    with write_session(session_factory) as session:
         existing_user = session.scalar(
             select(User).where(User.username == settings.admin_username)
         )
@@ -134,7 +135,6 @@ def ensure_admin(
                 password_hash=hash_password(settings.admin_password),
             )
         )
-        session.commit()
 
 
 def get_db(request: Request) -> Iterator[Session]:
@@ -143,6 +143,12 @@ def get_db(request: Request) -> Iterator[Session]:
         yield session
     finally:
         session.close()
+
+
+def get_write_db(request: Request) -> Iterator[Session]:
+    """Provide the single coordinated session boundary for HTTP mutations."""
+    with write_session(request.app.state.session_factory) as session:
+        yield session
 
 
 def _encode_session(user_id: int, secret_key: str) -> str:

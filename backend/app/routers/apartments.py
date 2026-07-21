@@ -2,10 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth import get_db, require_auth
+from app.auth import get_db, get_write_db, require_auth
 from app.models import Apartment, Invoice, Tenant
 from app.schemas import ApartmentCreate, ApartmentResponse, ApartmentUpdate
-from app.services.storage import coordinated_write
 
 router = APIRouter(
     prefix="/api/apartments",
@@ -98,10 +97,9 @@ def list_apartments(
 
 
 @router.post("", response_model=ApartmentResponse, status_code=status.HTTP_201_CREATED)
-@coordinated_write
 def create_apartment(
     payload: ApartmentCreate,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> dict:
     apartment = Apartment(**payload.model_dump())
     session.add(apartment)
@@ -123,11 +121,10 @@ def get_apartment(
 
 
 @router.put("/{apartment_id}", response_model=ApartmentResponse)
-@coordinated_write
 def update_apartment(
     apartment_id: int,
     payload: ApartmentUpdate,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> dict:
     apartment = _get_apartment(session, apartment_id)
     for field, value in payload.model_dump().items():
@@ -141,10 +138,9 @@ def update_apartment(
 
 
 @router.delete("/{apartment_id}", status_code=status.HTTP_204_NO_CONTENT)
-@coordinated_write
 def archive_apartment(
     apartment_id: int,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> Response:
     apartment = _get_apartment(session, apartment_id)
     apartment.is_active = False

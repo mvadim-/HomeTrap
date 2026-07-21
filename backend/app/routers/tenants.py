@@ -13,15 +13,13 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth import get_db, require_auth
+from app.auth import get_db, get_write_db, require_auth
 from app.models import Apartment, Tenant, TenantAttachment
 from app.schemas import TenantAttachmentOut, TenantEndContract, TenantIn, TenantOut
 from app.services.storage import (
     MAX_ATTACHMENT_FILES,
     MAX_ATTACHMENT_SIZE,
     attachment_path,
-    coordinated_write,
-    data_store_lock,
     delete_attachment,
     delete_staged_tenant_files,
     pending_tenant_file_deletions,
@@ -128,11 +126,10 @@ def list_tenants(
     response_model=TenantOut,
     status_code=status.HTTP_201_CREATED,
 )
-@coordinated_write
 def create_tenant(
     apartment_id: int,
     payload: TenantIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> Tenant:
     _get_apartment(session, apartment_id)
     active_tenant = session.scalar(
@@ -155,11 +152,10 @@ def create_tenant(
 
 
 @router.put("/api/tenants/{tenant_id}", response_model=TenantOut)
-@coordinated_write
 def update_tenant(
     tenant_id: int,
     payload: TenantIn,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> Tenant:
     tenant = _get_tenant(session, tenant_id)
     if payload.contract_end is None:
@@ -188,11 +184,10 @@ def update_tenant(
 
 
 @router.post("/api/tenants/{tenant_id}/end-contract", response_model=TenantOut)
-@coordinated_write
 def end_contract(
     tenant_id: int,
     payload: TenantEndContract,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> Tenant:
     tenant = _get_tenant(session, tenant_id)
     if tenant.contract_end is not None:
@@ -218,35 +213,34 @@ def end_contract(
 def delete_tenant(
     tenant_id: int,
     request: Request,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> Response:
     uploads_dir = request.app.state.settings.uploads_dir
-    with data_store_lock():
-        pending_deletions = pending_tenant_file_deletions(uploads_dir, tenant_id)
-        tenant = session.get(Tenant, tenant_id)
-        if tenant is None:
-            if not pending_deletions:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Tenant not found",
-                )
-            for staged in pending_deletions:
-                delete_staged_tenant_files(uploads_dir, staged)
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-        staged = stage_tenant_files(uploads_dir, tenant_id)
-        if staged is not None:
-            pending_deletions.append(staged)
-        session.delete(tenant)
-        try:
-            session.commit()
-        except Exception:
-            session.rollback()
-            if staged is not None:
-                restore_staged_tenant_files(uploads_dir, tenant_id, staged)
-            raise
+    pending_deletions = pending_tenant_file_deletions(uploads_dir, tenant_id)
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        if not pending_deletions:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tenant not found",
+            )
         for staged in pending_deletions:
             delete_staged_tenant_files(uploads_dir, staged)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    staged = stage_tenant_files(uploads_dir, tenant_id)
+    if staged is not None:
+        pending_deletions.append(staged)
+    session.delete(tenant)
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        if staged is not None:
+            restore_staged_tenant_files(uploads_dir, tenant_id, staged)
+        raise
+    for staged in pending_deletions:
+        delete_staged_tenant_files(uploads_dir, staged)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -259,7 +253,7 @@ def upload_attachments(
     tenant_id: int,
     request: Request,
     files: list[UploadFile] = File(...),
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> list[TenantAttachment]:
     _get_tenant(session, tenant_id)
     if not files:
@@ -292,31 +286,30 @@ def upload_attachments(
 
     saved_paths = []
     attachments = []
-    with data_store_lock():
-        try:
-            for file, content_type, content in prepared_files:
-                stored_name, saved_path = save_attachment(
-                    request.app.state.settings.uploads_dir,
-                    tenant_id,
-                    content_type,
-                    content,
-                )
-                saved_paths.append(saved_path)
-                attachment = TenantAttachment(
-                    tenant_id=tenant_id,
-                    original_name=file.filename,
-                    stored_name=stored_name,
-                    content_type=content_type,
-                    size_bytes=len(content),
-                )
-                session.add(attachment)
-                attachments.append(attachment)
-            session.commit()
-        except Exception:
-            session.rollback()
-            for path in saved_paths:
-                path.unlink(missing_ok=True)
-            raise
+    try:
+        for file, content_type, content in prepared_files:
+            stored_name, saved_path = save_attachment(
+                request.app.state.settings.uploads_dir,
+                tenant_id,
+                content_type,
+                content,
+            )
+            saved_paths.append(saved_path)
+            attachment = TenantAttachment(
+                tenant_id=tenant_id,
+                original_name=file.filename,
+                stored_name=stored_name,
+                content_type=content_type,
+                size_bytes=len(content),
+            )
+            session.add(attachment)
+            attachments.append(attachment)
+        session.commit()
+    except Exception:
+        session.rollback()
+        for path in saved_paths:
+            path.unlink(missing_ok=True)
+        raise
     return attachments
 
 
@@ -376,27 +369,26 @@ def download_attachment(
 def remove_attachment(
     attachment_id: int,
     request: Request,
-    session: Session = Depends(get_db),
+    session: Session = Depends(get_write_db),
 ) -> Response:
-    with data_store_lock():
-        attachment = _get_attachment(session, attachment_id)
-        tenant_id = attachment.tenant_id
-        stored_name = attachment.stored_name
-        session.delete(attachment)
-        try:
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        try:
-            delete_attachment(
-                request.app.state.settings.uploads_dir,
-                tenant_id,
-                stored_name,
-            )
-        except ValueError as error:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Attachment file not found",
-            ) from error
+    attachment = _get_attachment(session, attachment_id)
+    tenant_id = attachment.tenant_id
+    stored_name = attachment.stored_name
+    session.delete(attachment)
+    try:
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    try:
+        delete_attachment(
+            request.app.state.settings.uploads_dir,
+            tenant_id,
+            stored_name,
+        )
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Attachment file not found",
+        ) from error
     return Response(status_code=status.HTTP_204_NO_CONTENT)

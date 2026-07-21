@@ -13,8 +13,9 @@ import pytest
 from app.main import APP_VERSION
 from app.models import Apartment, Tenant, TenantAttachment
 import app.services.backup as backup_service
+import app.services.backup_limits as backup_limits
 from app.services.backup import BackupLimitError, build_backup
-from app.services.storage import attachment_path, data_store_lock, delete_attachment
+from app.services.storage import attachment_path, delete_attachment, write_session
 
 
 def _database_path(engine: Engine) -> Path:
@@ -102,7 +103,7 @@ def test_build_backup_output_always_satisfies_restore_quotas(
             )
             assert all(
                 member.file_size / max(member.compress_size, 1)
-                <= backup_service.MAX_BACKUP_COMPRESSION_RATIO
+                <= backup_limits.MAX_BACKUP_COMPRESSION_RATIO
                 for member in archive.infolist()
             )
 
@@ -220,7 +221,7 @@ def test_build_backup_serializes_attachment_deletion(
 
     def delete_worker() -> None:
         delete_attempted.set()
-        with data_store_lock(), Session(db_engine) as session:
+        with write_session(lambda: Session(db_engine)) as session:
             row = session.get(TenantAttachment, attachment.id)
             assert row is not None
             session.delete(row)
