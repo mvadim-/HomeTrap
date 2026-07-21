@@ -361,15 +361,17 @@
   run --rm frontend npm run build` — **built OK** (tsc -b && vite build)
 
 ### Task 11: [Final] Update documentation
-- [ ] додати запис у `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, зачеплені
+- [x] додати запис у `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, зачеплені
   файли, поведінка, примітка про міграцію та деплой)
-- [ ] оновити `docs/improvements-backlog.md`: статус #7 (🏗️→✔️) і примітку
+- [x] оновити `docs/improvements-backlog.md`: статус #7 (🏗️→✔️) і примітку
   #10 (реалізовано в межах цієї роботи; чек-вкладення — окремий кандидат)
-- [ ] update README.md if needed (нова сторінка «Витрати»/розділ статистики)
-- [ ] update CLAUDE.md if new patterns discovered (напр., read-only курс для
-  агрегацій)
-- [ ] створити окремий git-коміт циклу з коротким імперативним заголовком
-- [ ] move this plan to `docs/plans/completed/`
+- [x] update README.md if needed (нова сторінка «Витрати»/розділ статистики) —
+  додано розділ «Витрати та P&L», розширено «Статистика»
+- [x] update CLAUDE.md if new patterns discovered (напр., read-only курс для
+  агрегацій) — додано підрозділ «Statistics And Aggregations»
+- [x] створити окремий git-коміт циклу з коротким імперативним заголовком
+- [x] move this plan to `docs/plans/completed/` (перенос виконає оркестратор
+  після фаз рев'ю)
 
 ## Post-Completion
 *Ручні дії та зовнішні системи — інформаційно, без checkboxes*

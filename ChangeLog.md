@@ -1,5 +1,51 @@
 # ChangeLog
 
+## [2026-07-21 22:30] Фіча #7 + #10: облік витрат, P&L і тренди статистики (завершено)
+
+Зведений запис по завершеній фічі (деталі по тасках — у записах нижче:
+Task 2/3/5/6/8/9). Реалізовано ідею **#7 (облік витрат і чистий дохід, P&L)**
+разом із залишком **#10 (тренди/порівняння у статистиці)**.
+
+- **Backend — сутність і CRUD:** `backend/app/models.py` — модель `Expense`
+  (`ExpenseCategory` StrEnum, nullable `apartment_id` FK→apartments CASCADE,
+  `date`, `amount Numeric(12,2)`, `currency` дефолт `UAH`, `notes`, unique
+  `restore_key`); Alembic-ревізія `backend/alembic/versions/20260721_08_*`
+  (таблиця `expenses`, індекс `apartment_id`, unique `restore_key`).
+  `backend/app/schemas.py` — `ExpenseCreate/Update/Response`; роутер
+  `backend/app/routers/expenses.py` (GET/POST/PATCH/DELETE через
+  `write_session`) зареєстровано в `backend/app/main.py`.
+- **Backend — P&L і статистика:** `backend/app/routers/stats.py` — ендпойнт
+  `GET /api/stats/pnl` (дохід = `rent_amount_uah` ISSUED/PAID; витрати зведені
+  в грн; чистий, маржа лише коли дохід>0; помісячний тренд; `unconverted` для
+  витрат без збереженого курсу) і розширене `/consumption` (`cost` у точках +
+  `summary:{avg,min,max}`). `backend/app/services/nbu.py` — read-only helper
+  `get_stored_rate` (останній `ExchangeRate` ≤ дати, без фетчу/запису).
+- **Backend — backup/restore:** `backend/app/services/restore.py` — `expenses`
+  у `ENTITY_NAMES` та merge-only `_import_expenses` (ідентичність за
+  `restore_key`, ремапінг `apartment_id`, `NULL` → загальна витрата). Знімок —
+  повний SQLite, тому таблиця в архів потрапляє автоматично.
+- **Frontend:** `frontend/src/api/client.ts` — типи/функції витрат і
+  `getPnlStats`, розширені `ConsumptionPoint/Series`. Нова сторінка
+  `frontend/src/pages/Expenses.tsx` (CRUD) + маршрут у `frontend/src/App.tsx`
+  і пункт навігації в `frontend/src/components/Layout.tsx`. Секція P&L і тренди
+  споживання (YoY, дельти MoM/YoY, avg/min/max, перемикач одиниці/₴) у
+  `frontend/src/pages/Stats.tsx`; нові токени графіків у
+  `frontend/src/theme.css` (усі три блоки) і стилі в
+  `frontend/src/pages/portal.css`.
+- **Тести:** backend (`test_models`, `test_expenses`, `test_stats`,
+  `test_restore`, `test_backup`, `test_settings`) — 222 passed, ruff чисто;
+  frontend (`client.test.ts`, `Expenses.test.tsx`, `Stats.test.tsx`) —
+  193 passed; `npm run build` — OK.
+- **Документація:** оновлено `README.md` (розділ «Витрати та P&L», розширено
+  «Статистика»), `docs/improvements-backlog.md` (#7 → ✔️ готово, примітка #10),
+  `CLAUDE.md` (патерн read-only курсу для агрегацій).
+- **Деплой:** зміна містить **міграцію БД (`20260721_08`)** і зачіпає
+  production backend+frontend. Перед розгортанням на Synology — **ручний
+  DR-архів усього `data/`** (in-app restore сумісний лише з тією ж
+  Alembic-ревізією), потім rebuild/restart за `docs/deploy.md` (production
+  `docker/docker-compose.yml`, один Uvicorn-worker). Автоматичний деплой не
+  виконується.
+
 ## [2026-07-21 22:15] Task 9: Тренди й порівняння споживання (frontend)
 
 - `frontend/src/pages/Stats.tsx` — `MiniLineChart` отримав проп `mode`

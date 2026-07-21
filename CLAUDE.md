@@ -56,6 +56,15 @@ Always provide deployment instructions for any code that is meant to run in prod
   attachment bytes before the live SQLite write transaction to keep writer blocking
   bounded.
 
+### Statistics And Aggregations
+
+- Aggregation/report endpoints (e.g. `/api/stats/*`) run on read-only sessions and
+  must not mutate state. For currency conversion use the read-only
+  `nbu.get_stored_rate` (latest stored `ExchangeRate` ≤ date), never `nbu.get_rate`,
+  which fetches and writes. Amounts with no available stored rate are reported in a
+  separate `unconverted` bucket instead of being silently coerced to zero, and any
+  derived total that excludes them (net, margin) must be flagged incomplete in the UI.
+
 ### Frontend Styling Conventions
 
 - Treat `frontend/src/theme.css` as the source of truth for light and dark design
