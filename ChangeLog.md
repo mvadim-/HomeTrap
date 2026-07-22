@@ -1,5 +1,12 @@
 # ChangeLog
 
+## [2026-07-22 16:24] Завершення плану коригувань рахунку
+
+- `docs/plans/20260722-invoice-adjustment-lines.md` перенесено до
+  `docs/plans/completed/20260722-invoice-adjustment-lines.md` після завершення
+  всіх задач, локальних review-фаз і фінальної Docker-валідації.
+- Код застосунку не змінювався; production-деплой не виконувався.
+
 ## [2026-07-22 16:06] Виправлення smells: строгі типи й простіший редактор
 
 - `backend/app/models.py`, `backend/alembic/versions/20260722_09_invoice_adjustments.py`
