@@ -164,6 +164,107 @@ def test_can_create_apartment_and_general_expense(db_session: Session) -> None:
     assert general_expense.restore_key != apartment_expense.restore_key
 
 
+def test_can_create_adjustment_line_with_linked_expense(
+    db_session: Session,
+) -> None:
+    invoice = make_invoice(make_apartment(), date(2026, 7, 1))
+    line = InvoiceLine(
+        invoice=invoice,
+        service_name="Компенсація ремонту",
+        service_kind=ServiceKind.ADJUSTMENT.value,
+        tariff_value=Decimal("0"),
+        amount=Decimal("-1500.00"),
+    )
+    expense = Expense(
+        invoice_line=line,
+        apartment=invoice.apartment,
+        date=invoice.period,
+        category=ExpenseCategory.REPAIR.value,
+        amount=Decimal("1500.00"),
+    )
+    db_session.add(expense)
+    db_session.commit()
+
+    assert line.service_id is None
+    assert line.service is None
+    assert line.tariff_value == Decimal("0.00000")
+    assert expense.invoice_line_id == line.id
+    assert line.expense is expense
+
+
+def test_adjustment_fields_database_defaults_and_constraints(
+    db_session: Session,
+) -> None:
+    invoice = make_invoice(make_apartment(), date(2026, 7, 1))
+    invalid_line = InvoiceLine(
+        invoice=invoice,
+        service_name="Некоректний рядок",
+        service_kind="discount",
+        tariff_value=Decimal("0"),
+        amount=Decimal("-100.00"),
+    )
+    db_session.add(invalid_line)
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+
+    db_session.rollback()
+    assert invoice.adjustments_total == Decimal("0.00")
+
+
+def test_invoice_delete_cascades_adjustment_line_and_expense(
+    db_session: Session,
+) -> None:
+    invoice = make_invoice(make_apartment(), date(2026, 7, 1))
+    line = InvoiceLine(
+        invoice=invoice,
+        service_name="Компенсація ремонту",
+        service_kind=ServiceKind.ADJUSTMENT.value,
+        tariff_value=Decimal("0"),
+        amount=Decimal("-1500.00"),
+    )
+    line.expense = Expense(
+        apartment=invoice.apartment,
+        date=invoice.period,
+        category=ExpenseCategory.REPAIR.value,
+        amount=Decimal("1500.00"),
+    )
+    db_session.add(invoice)
+    db_session.commit()
+
+    db_session.delete(invoice)
+    db_session.commit()
+
+    assert db_session.scalar(select(func.count()).select_from(Invoice)) == 0
+    assert db_session.scalar(select(func.count()).select_from(InvoiceLine)) == 0
+    assert db_session.scalar(select(func.count()).select_from(Expense)) == 0
+
+
+def test_invoice_line_service_foreign_key_remains_restrictive(
+    db_session: Session,
+) -> None:
+    apartment = make_apartment()
+    service = Service(
+        apartment=apartment,
+        name="Газ",
+        kind=ServiceKind.FIXED.value,
+    )
+    line = InvoiceLine(
+        invoice=make_invoice(apartment, date(2026, 7, 1)),
+        service=service,
+        service_name=service.name,
+        service_kind=service.kind,
+        tariff_value=Decimal("10"),
+        amount=Decimal("10.00"),
+    )
+    db_session.add(line)
+    db_session.commit()
+
+    with pytest.raises(IntegrityError):
+        db_session.execute(delete(Service).where(Service.id == service.id))
+        db_session.commit()
+
+
 def test_expense_category_check_constraint_rejects_invalid(
     db_session: Session,
 ) -> None:
@@ -400,6 +501,20 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
             constraint["name"]
             for constraint in inspect(engine).get_check_constraints("invoice_lines")
         }
+        invoice_line_check_sql = {
+            constraint["name"]: constraint["sqltext"]
+            for constraint in inspect(engine).get_check_constraints("invoice_lines")
+        }
+        invoice_line_foreign_keys = inspect(engine).get_foreign_keys("invoice_lines")
+        invoice_line_indexes = inspect(engine).get_indexes("invoice_lines")
+        invoice_columns = {
+            column["name"]: column for column in inspect(engine).get_columns("invoices")
+        }
+        expense_columns = {
+            column["name"]: column for column in inspect(engine).get_columns("expenses")
+        }
+        expense_foreign_keys = inspect(engine).get_foreign_keys("expenses")
+        expense_indexes = inspect(engine).get_indexes("expenses")
         tenant_columns = {
             column["name"]: column for column in inspect(engine).get_columns("tenants")
         }
@@ -440,7 +555,29 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         "expenses",
     } <= table_names
     assert invoice_line_columns["service_kind"]["nullable"] is False
+    assert invoice_line_columns["service_id"]["nullable"] is True
     assert "ck_invoice_lines_service_kind" in invoice_line_checks
+    assert "adjustment" in invoice_line_check_sql["ck_invoice_lines_service_kind"]
+    assert {
+        (tuple(foreign_key["constrained_columns"]), foreign_key["options"]["ondelete"])
+        for foreign_key in invoice_line_foreign_keys
+    } == {(('invoice_id',), 'CASCADE'), (('service_id',), 'RESTRICT')}
+    assert {index["name"] for index in invoice_line_indexes} >= {
+        "ix_invoice_lines_invoice_id",
+        "ix_invoice_lines_service_id",
+    }
+    assert invoice_columns["adjustments_total"]["nullable"] is False
+    assert invoice_columns["adjustments_total"]["default"] == "0.00"
+    assert expense_columns["invoice_line_id"]["nullable"] is True
+    assert any(
+        foreign_key["constrained_columns"] == ["invoice_line_id"]
+        and foreign_key["referred_table"] == "invoice_lines"
+        and foreign_key["options"]["ondelete"] == "CASCADE"
+        for foreign_key in expense_foreign_keys
+    )
+    assert "ix_expenses_invoice_line_id" in {
+        index["name"] for index in expense_indexes
+    }
     assert tenant_columns["billing_day"]["nullable"] is True
     assert "ck_tenants_billing_day" in tenant_checks
     assert any(
@@ -499,7 +636,7 @@ def test_restore_key_migration_backfills_existing_duplicate_business_keys(
     assert len({row[0] for row in apartment_keys}) == 2
     assert len({row[0] for row in service_keys}) == 2
     assert all(len(row[0]) == 32 for row in apartment_keys + service_keys)
-    assert revision == ("20260721_08",)
+    assert revision == ("20260722_09",)
 
 
 def test_restore_key_migration_resumes_after_interrupted_column_add(
@@ -537,4 +674,4 @@ def test_restore_key_migration_resumes_after_interrupted_column_add(
     assert apartment_key is not None
     assert len(apartment_key[0]) == 32
     assert "restore_key" in service_columns
-    assert revision == ("20260721_08",)
+    assert revision == ("20260722_09",)

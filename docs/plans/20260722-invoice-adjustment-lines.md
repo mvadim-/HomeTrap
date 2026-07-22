@@ -169,22 +169,22 @@
 - Create: `backend/alembic/versions/20260722_09_invoice_adjustments.py`
 - Modify: `backend/tests/test_models.py`
 
-- [ ] `InvoiceLine.service_id` → nullable; додати `ServiceKind.ADJUSTMENT`;
+- [x] `InvoiceLine.service_id` → nullable; додати `ServiceKind.ADJUSTMENT`;
   розширити CHECK `service_kind` до `('metered','fixed','adjustment')`
-- [ ] `Invoice.adjustments_total Numeric(12,2)` default `0.00`;
+- [x] `Invoice.adjustments_total Numeric(12,2)` default `0.00`;
   `Expense.invoice_line_id` nullable FK→`invoice_lines.id` ondelete CASCADE
   (+relationship, +індекс)
-- [ ] міграція `20260722_09` (down_revision=`20260721_08`, ідемпотентна):
+- [x] міграція `20260722_09` (down_revision=`20260721_08`, ідемпотентна):
   **`batch_alter_table` recreate `invoice_lines`** зі збереженням УСІХ наявних
   констрейнтів (CHECK розширений, FK invoice_id CASCADE, FK service_id RESTRICT,
   індекси); + `adjustments_total` (заповнити 0), + `expenses.invoice_line_id` FK
   CASCADE + індекс
-- [ ] write tests: adjustment-лінія з `service_id=NULL` і `tariff_value=0`;
+- [x] write tests: adjustment-лінія з `service_id=NULL` і `tariff_value=0`;
   **каскад invoice→line→expense** усе ще спрацьовує після міграції (пряме
   `session.delete`, `PRAGMA foreign_keys=ON`)
-- [ ] write tests: CHECK відхиляє невалідний `service_kind`;
+- [x] write tests: CHECK відхиляє невалідний `service_kind`;
   FK service_id RESTRICT збережено; `adjustments_total` default; head → `09`
-- [ ] run migration + tests — must pass before task 2
+- [x] run migration + tests — must pass before task 2
 
 ### Task 2: Білінг — recalculate, update_draft, авто-expense sync
 

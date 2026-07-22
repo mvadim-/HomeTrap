@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-22 14:38] Task 1: модель рядків-коригувань рахунку
+
+- `backend/app/models.py` — додано `ServiceKind.ADJUSTMENT`, nullable
+  `InvoiceLine.service_id`, бакет `Invoice.adjustments_total` з default `0.00`
+  та двобічний зв'язок `Expense.invoice_line_id` з DB CASCADE.
+- `backend/alembic/versions/20260722_09_invoice_adjustments.py` — нова
+  ідемпотентна міграція: SQLite batch-recreate `invoice_lines` зі збереженням
+  CHECK, обох FK та індексів; додано колонку тоталу й nullable FK витрати.
+- `backend/tests/test_models.py` — перевірено adjustment без послуги,
+  `tariff_value=0`, default тоталу, CHECK, RESTRICT, структуру міграції та каскад
+  invoice → line → expense. Валідація: backend 229 passed, ruff чисто.
+- Зміна потребує production-міграції БД до `20260722_09`; автоматичний деплой
+  не виконувався. Перед production-розгортанням потрібен backup `data/`, потім
+  rebuild/restart за `docs/deploy.md`.
+
 ## [2026-07-22 14:13] План: рядок-коригування в рахунку з авто-витратою
 
 - `docs/plans/20260722-invoice-adjustment-lines.md` — новий план: разовий

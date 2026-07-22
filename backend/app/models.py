@@ -29,6 +29,7 @@ from app.db import Base
 class ServiceKind(StrEnum):
     METERED = "metered"
     FIXED = "fixed"
+    ADJUSTMENT = "adjustment"
 
 
 class InvoiceStatus(StrEnum):
@@ -202,6 +203,11 @@ class Invoice(Base):
     rent_amount_usd: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     rent_amount_uah: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     utilities_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    adjustments_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        default=Decimal("0.00"),
+        server_default=text("0.00"),
+    )
     grand_total: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
     apartment: Mapped[Apartment] = relationship(back_populates="invoices")
@@ -216,7 +222,7 @@ class InvoiceLine(Base):
     __tablename__ = "invoice_lines"
     __table_args__ = (
         CheckConstraint(
-            "service_kind IN ('metered', 'fixed')",
+            "service_kind IN ('metered', 'fixed', 'adjustment')",
             name="ck_invoice_lines_service_kind",
         ),
     )
@@ -226,7 +232,7 @@ class InvoiceLine(Base):
         ForeignKey("invoices.id", ondelete="CASCADE"),
         index=True,
     )
-    service_id: Mapped[int] = mapped_column(
+    service_id: Mapped[int | None] = mapped_column(
         ForeignKey("services.id", ondelete="RESTRICT"),
         index=True,
     )
@@ -239,7 +245,12 @@ class InvoiceLine(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
 
     invoice: Mapped[Invoice] = relationship(back_populates="lines")
-    service: Mapped[Service] = relationship(back_populates="invoice_lines")
+    service: Mapped[Service | None] = relationship(back_populates="invoice_lines")
+    expense: Mapped[Expense | None] = relationship(
+        back_populates="invoice_line",
+        passive_deletes="all",
+        uselist=False,
+    )
 
 
 class ExchangeRate(Base):
@@ -270,6 +281,10 @@ class Expense(Base):
         ForeignKey("apartments.id", ondelete="CASCADE"),
         index=True,
     )
+    invoice_line_id: Mapped[int | None] = mapped_column(
+        ForeignKey("invoice_lines.id", ondelete="CASCADE"),
+        index=True,
+    )
     date: Mapped[date] = mapped_column(Date)
     category: Mapped[str] = mapped_column(String(20))
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
@@ -277,6 +292,7 @@ class Expense(Base):
     notes: Mapped[str | None] = mapped_column(Text)
 
     apartment: Mapped[Apartment | None] = relationship(back_populates="expenses")
+    invoice_line: Mapped[InvoiceLine | None] = relationship(back_populates="expense")
 
 
 class RestoreAlias(Base):
