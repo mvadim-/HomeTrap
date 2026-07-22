@@ -1,5 +1,25 @@
 # ChangeLog
 
+## [2026-07-22 15:34] Task 8: агрегати коригувань і симетричний P&L
+
+- `backend/app/routers/stats.py`, `backend/app/schemas.py` — income API повертає
+  окремий adjustment-бакет і не включає такі рядки до найбільшої комунальної
+  статті; P&L відкладає прив'язану авто-витрату до виставлення рахунка, тоді як
+  dashboard свідомо показує зменшений `grand_total`.
+- `frontend/src/api/client.ts`, `frontend/src/pages/Stats.tsx`,
+  `frontend/src/pages/portal.css`, `frontend/src/theme.css` — контракт доходу та
+  waterfall-графік підтримують додатні й від'ємні коригування, включно з
+  від'ємним підсумком; колір визначено для light, explicit dark і system dark.
+- `backend/tests/test_stats.py`, `backend/tests/test_mockup_gap_acceptance.py`,
+  `frontend/src/pages/Stats.test.tsx`, `frontend/src/pages/Dashboard.test.tsx`,
+  `frontend/src/pages/ApartmentDetail.test.tsx` — перевірено income/top service,
+  draft→issued симетрію P&L, dashboard, графік і оновлений API-контракт.
+- У Docker пройдено 239 backend-тестів, Ruff, 208 frontend-тестів і production
+  build; `docs/plans/20260722-invoice-adjustment-lines.md` — Task 8 виконано.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  перед розгортанням потрібен backup `data/`, далі rebuild/restart за
+  `docs/deploy.md` із застосуванням міграції `20260722_09`.
+
 ## [2026-07-22 15:18] Task 7: read-only авто-витрати з рахунків
 
 - `backend/app/schemas.py`, `frontend/src/api/client.ts` — expense API-контракт

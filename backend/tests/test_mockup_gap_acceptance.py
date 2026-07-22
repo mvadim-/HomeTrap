@@ -133,6 +133,7 @@ async def test_tenant_attachments_history_and_empty_stats_acceptance(tmp_path) -
             assert income.json()["totals"] == {
                 "rent": "0.00",
                 "utilities": "0.00",
+                "adjustments": "0.00",
                 "total": "0.00",
             }
             assert income.json()["top_service"] is None

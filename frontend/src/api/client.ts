@@ -186,6 +186,7 @@ export interface IncomePoint {
   period: string;
   rent: string;
   utilities: string;
+  adjustments: string;
   total: string;
 }
 
@@ -197,6 +198,7 @@ export interface IncomeStats {
   totals: {
     rent: string;
     utilities: string;
+    adjustments: string;
     total: string;
   };
   top_service: {

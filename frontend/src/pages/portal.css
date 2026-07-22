@@ -1265,6 +1265,7 @@
 .chart-point,
 .income-rent,
 .income-utilities,
+.income-adjustments,
 .income-adjustment-marker {
   cursor: help;
 }
@@ -1272,6 +1273,7 @@
 .chart-point:focus,
 .income-rent:focus,
 .income-utilities:focus,
+.income-adjustments:focus,
 .income-adjustment-marker:focus {
   outline: none;
   filter: brightness(1.12);
@@ -1336,6 +1338,10 @@
 
 .utilities-swatch {
   background: var(--chart-util);
+}
+
+.adjustments-swatch {
+  background: var(--chart-adjustment);
 }
 
 .income-adjustment-marker {

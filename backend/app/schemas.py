@@ -341,12 +341,14 @@ class IncomePoint(ApiSchema):
     period: date
     rent: Decimal
     utilities: Decimal
+    adjustments: Decimal
     total: Decimal
 
 
 class IncomeTotals(ApiSchema):
     rent: Decimal
     utilities: Decimal
+    adjustments: Decimal
     total: Decimal
 
 

@@ -16,7 +16,7 @@ beforeEach(() => {
     apartment_id: 1,
     months: 12,
     values: [],
-    totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+    totals: { rent: "0.00", utilities: "0.00", adjustments: "0.00", total: "0.00" },
     top_service: null,
   });
 });
@@ -41,10 +41,10 @@ describe("ApartmentDetail", () => {
     vi.mocked(apiClient.getIncomeStats).mockResolvedValue({
       scope: "apartment", apartment_id: 1, months: 12,
       values: [
-        { period: "2026-05", rent: "13000.00", utilities: "2000.00", total: "15000.00" },
-        { period: "2026-06", rent: "13000.00", utilities: "3000.00", total: "16000.00" },
+        { period: "2026-05", rent: "13000.00", utilities: "2000.00", adjustments: "0.00", total: "15000.00" },
+        { period: "2026-06", rent: "13000.00", utilities: "3000.00", adjustments: "0.00", total: "16000.00" },
       ],
-      totals: { rent: "26000.00", utilities: "5000.00", total: "31000.00" },
+      totals: { rent: "26000.00", utilities: "5000.00", adjustments: "0.00", total: "31000.00" },
       top_service: null,
     });
     vi.spyOn(apiClient, "getServices").mockResolvedValue([

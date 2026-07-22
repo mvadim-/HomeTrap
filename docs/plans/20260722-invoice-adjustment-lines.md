@@ -301,20 +301,20 @@
 - Modify: `frontend/src/theme.css`
 - Modify: `frontend/src/pages/Stats.test.tsx`
 
-- [ ] `income_stats`: **виключити** `service_kind=='adjustment'` з
+- [x] `income_stats`: **виключити** `service_kind=='adjustment'` з
   `service_totals`/`top_service`; додати поле `adjustments` у помісячні точки,
   `totals` і схему `IncomeStats` (щоб `total = rent + utilities + adjustments`)
-- [ ] `/pnl`: **виключати витрати, прив'язані до рахунка-чернетки** (join
+- [x] `/pnl`: **виключати витрати, прив'язані до рахунка-чернетки** (join
   `invoice_line_id → invoice_lines → invoices.status`; рахувати лише
   `issued/paid` + усі непов'язані витрати)
-- [ ] `IncomeChart`: сегмент/обробка `adjustments`, щоб стек сходився з
+- [x] `IncomeChart`: сегмент/обробка `adjustments`, щоб стек сходився з
   `grand_total`; токен кольору в усі три блоки `theme.css` за потреби
-- [ ] write tests (backend): `/income` не рахує adjustment у top_service й
+- [x] write tests (backend): `/income` не рахує adjustment у top_service й
   віддає `adjustments`; `/pnl` не рахує витрату чернетки, але рахує після
   виставлення; `dashboard` `charged/outstanding` нетить коригування (свідомо)
-- [ ] write tests (frontend): місяць із коригуванням показує сегмент; тотал
+- [x] write tests (frontend): місяць із коригуванням показує сегмент; тотал
   сходиться; P&L-секція коректна
-- [ ] run tests — must pass before task 9
+- [x] run tests — must pass before task 9
 
 ### Task 9: Verify acceptance criteria
 - [ ] перевірити вимоги Overview: рядок-коригування зменшує рахунок; галочка

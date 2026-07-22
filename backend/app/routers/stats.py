@@ -5,7 +5,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth import get_db, require_auth
@@ -183,21 +183,31 @@ def income_stats(
     invoices = session.scalars(query.order_by(Invoice.period, Invoice.id)).all()
 
     monthly: dict[date, dict[str, Decimal | date]] = {}
-    totals = {"rent": ZERO, "utilities": ZERO, "total": ZERO}
+    totals = {"rent": ZERO, "utilities": ZERO, "adjustments": ZERO, "total": ZERO}
     service_totals: dict[str, Decimal] = {}
     service_monthly: dict[str, dict[date, Decimal]] = {}
     for invoice in invoices:
         point = monthly.setdefault(
             invoice.period,
-            {"period": invoice.period, "rent": ZERO, "utilities": ZERO, "total": ZERO},
+            {
+                "period": invoice.period,
+                "rent": ZERO,
+                "utilities": ZERO,
+                "adjustments": ZERO,
+                "total": ZERO,
+            },
         )
         point["rent"] += invoice.rent_amount_uah
         point["utilities"] += invoice.utilities_total
+        point["adjustments"] += invoice.adjustments_total
         point["total"] += invoice.grand_total
         totals["rent"] += invoice.rent_amount_uah
         totals["utilities"] += invoice.utilities_total
+        totals["adjustments"] += invoice.adjustments_total
         totals["total"] += invoice.grand_total
         for line in invoice.lines:
+            if line.service_kind == ServiceKind.ADJUSTMENT.value:
+                continue
             service_totals[line.service_name] = (
                 service_totals.get(line.service_name, ZERO) + line.amount
             )
@@ -264,7 +274,20 @@ def pnl_stats(
 
     # Expense.date is arbitrary (not month-first like Invoice.period), so the
     # upper bound must be the first day of the month AFTER period_end.
-    expense_query = select(Expense).where(Expense.date < _shift_month(period_end, 1))
+    expense_query = (
+        select(Expense)
+        .outerjoin(InvoiceLine, Expense.invoice_line_id == InvoiceLine.id)
+        .outerjoin(Invoice, InvoiceLine.invoice_id == Invoice.id)
+        .where(
+            Expense.date < _shift_month(period_end, 1),
+            or_(
+                Expense.invoice_line_id.is_(None),
+                Invoice.status.in_(
+                    [InvoiceStatus.ISSUED.value, InvoiceStatus.PAID.value]
+                ),
+            ),
+        )
+    )
     if period_start is not None:
         expense_query = expense_query.where(Expense.date >= period_start)
     if apartment_id is not None:

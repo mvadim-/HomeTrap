@@ -22,6 +22,7 @@
   --chart-water: #2a78d6;
   --chart-rent: #1baf7a;
   --chart-util: #4a3aa7;
+  --chart-adjustment: #c16f27;
   --chart-tenant-marker: #9c6644;
   --chart-expense: #c65b3c;
   --chart-net: #37474f;
@@ -55,6 +56,7 @@
   --chart-water: #3987e5;
   --chart-rent: #199e70;
   --chart-util: #9085e9;
+  --chart-adjustment: #d8954e;
   --chart-tenant-marker: #d6a36f;
   --chart-expense: #d3694a;
   --chart-net: #b7c2c8;
@@ -86,6 +88,7 @@
     --chart-water: #3987e5;
     --chart-rent: #199e70;
     --chart-util: #9085e9;
+    --chart-adjustment: #d8954e;
     --chart-tenant-marker: #d6a36f;
     --chart-expense: #d3694a;
     --chart-net: #b7c2c8;

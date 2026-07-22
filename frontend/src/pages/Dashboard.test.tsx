@@ -24,7 +24,7 @@ function mockDashboardShell(apartments: apiClient.Apartment[] = []) {
     apartment_id: null,
     months: 12,
     values: [],
-    totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+    totals: { rent: "0.00", utilities: "0.00", adjustments: "0.00", total: "0.00" },
     top_service: null,
   });
 }
@@ -93,7 +93,7 @@ describe("Dashboard", () => {
       apartment_id: null,
       months: 12,
       values: [],
-      totals: { rent: "120000.00", utilities: "23456.78", total: "143456.78" },
+      totals: { rent: "120000.00", utilities: "23456.78", adjustments: "0.00", total: "143456.78" },
       top_service: null,
     });
     vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([]);
@@ -148,7 +148,7 @@ describe("Dashboard", () => {
       apartment_id: null,
       months: 12,
       values: [],
-      totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+      totals: { rent: "0.00", utilities: "0.00", adjustments: "0.00", total: "0.00" },
       top_service: null,
     });
     vi.spyOn(apiClient, "getUpcomingBilling").mockResolvedValue([]);

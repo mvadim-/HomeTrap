@@ -504,23 +504,36 @@ function IncomeChart({ stats, periods, tenantStarts }: {
   const plotHeight = height - padding.top - padding.bottom;
   const pointsByPeriod = new Map(stats.values.map((point) => [point.period.slice(0, 7), point]));
   const periodIndexes = new Map(periods.map((period, index) => [period.slice(0, 7), index]));
-  const scale = niceScale(Math.max(...stats.values.map((point) => Math.max(Number(point.total), 0)), 1));
-  const ticks = scaleTicks(scale.max, scale.step);
+  const chartValues = stats.values.flatMap((point) => [
+    Number(point.rent),
+    Number(point.rent) + Number(point.utilities),
+    Number(point.total),
+  ]);
+  const topScale = niceScale(Math.max(...chartValues, 1));
+  const negMin = Math.min(...chartValues, 0);
+  const bottomScale = negMin < 0 ? niceScale(-negMin) : { max: 0, step: topScale.step };
+  const totalScale = topScale.max + bottomScale.max;
+  const zeroY = padding.top + (topScale.max / totalScale) * plotHeight;
+  const ticks = [
+    ...scaleTicks(topScale.max, topScale.step),
+    ...(bottomScale.max > 0
+      ? scaleTicks(bottomScale.max, bottomScale.step).slice(1).map((tick) => -tick)
+      : []),
+  ];
   const slotWidth = plotWidth / Math.max(periods.length, 1);
   const barWidth = Math.min(42, slotWidth * 0.62);
-  const barHeight = (value: number) => (value / scale.max) * plotHeight;
-  const tickY = (value: number) => padding.top + plotHeight - (value / scale.max) * plotHeight;
+  const y = (value: number) => zeroY - (value / totalScale) * plotHeight;
 
   return (
     <svg className="income-chart" role="img" aria-label="Стековий графік доходу" viewBox={`0 0 ${width} ${height}`}>
-      {ticks.slice(1).map((tick) => (
+      {ticks.filter((tick) => tick !== 0).map((tick) => (
         <g key={tick}>
-          <line className="chart-gridline" x1={padding.left} x2={width - padding.right} y1={tickY(tick)} y2={tickY(tick)} />
-          <text className="chart-label chart-tick-label" x="4" y={tickY(tick) + 4}>{numberLabel(tick, 0)} ₴</text>
+          <line className="chart-gridline" x1={padding.left} x2={width - padding.right} y1={y(tick)} y2={y(tick)} />
+          <text className="chart-label chart-tick-label" x="4" y={y(tick) + 4}>{numberLabel(tick, 0)} ₴</text>
         </g>
       ))}
-      <line className="chart-axis" x1={padding.left} x2={width - padding.right} y1={padding.top + plotHeight} y2={padding.top + plotHeight} />
-      <text className="chart-label" x="37" y={padding.top + plotHeight + 4}>0</text>
+      <line className="chart-axis" x1={padding.left} x2={width - padding.right} y1={zeroY} y2={zeroY} />
+      <text className="chart-label" x="37" y={zeroY + 4}>0</text>
       {tenantStarts.map((tenantStart) => {
         const index = periodIndexes.get(tenantStart.period);
         if (index === undefined) return null;
@@ -556,17 +569,16 @@ function IncomeChart({ stats, periods, tenantStarts }: {
         }
         const rent = Number(point.rent);
         const utilities = Number(point.utilities);
+        const adjustments = Number(point.adjustments);
         const total = Number(point.total);
-        const hasNegativeSegment = rent < 0 || utilities < 0 || total < 0;
-        const rentHeight = barHeight(rent);
-        const utilitiesHeight = barHeight(utilities);
-        const baseline = padding.top + plotHeight;
+        const gross = rent + utilities;
+        const hasLegacyNegativeSegment = rent < 0 || utilities < 0;
         return (
           <g key={point.period} className="chart-month-slot" data-period={point.period}>
-            {hasNegativeSegment ? (
+            {hasLegacyNegativeSegment ? (
               <polygon
                 className="income-adjustment-marker"
-                points={`${x + barWidth / 2},${baseline - 7} ${x + barWidth / 2 + 7},${baseline} ${x + barWidth / 2},${baseline + 7} ${x + barWidth / 2 - 7},${baseline}`}
+                points={`${x + barWidth / 2},${zeroY - 7} ${x + barWidth / 2 + 7},${zeroY} ${x + barWidth / 2},${zeroY + 7} ${x + barWidth / 2 - 7},${zeroY}`}
                 tabIndex={0}
                 aria-label={`${monthLabel(point.period)}, коригування: оренда ${formatUah(point.rent)}, комунальні ${formatUah(point.utilities)}, разом ${formatUah(point.total)}`}
                 aria-describedby={activeCorrection === point.period ? `correction-${index}` : undefined}
@@ -577,21 +589,37 @@ function IncomeChart({ stats, periods, tenantStarts }: {
               />
             ) : (
               <>
-                <rect className="income-rent" fill="var(--chart-rent)" stroke="var(--color-surface)" strokeWidth="2" x={x} y={baseline - rentHeight} width={barWidth} height={rentHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, оренда: ${formatUah(point.rent)}`}>
+                <rect className="income-rent" fill="var(--chart-rent)" stroke="var(--color-surface)" strokeWidth="2" x={x} y={Math.min(y(0), y(rent))} width={barWidth} height={Math.abs(y(0) - y(rent))} tabIndex={0} aria-label={`${monthLabel(point.period)}, оренда: ${formatUah(point.rent)}`}>
                   <title>{monthLabel(point.period)} · Оренда: {formatUah(point.rent)}</title>
                 </rect>
-                <rect className="income-utilities" fill="var(--chart-util)" stroke="var(--color-surface)" strokeWidth="2" x={x} y={baseline - rentHeight - utilitiesHeight} width={barWidth} height={utilitiesHeight} tabIndex={0} aria-label={`${monthLabel(point.period)}, комунальні: ${formatUah(point.utilities)}`}>
-                  <title>{monthLabel(point.period)} · Комунальні: {formatUah(point.utilities)} · Разом: {formatUah(point.total)}</title>
+                <rect className="income-utilities" fill="var(--chart-util)" stroke="var(--color-surface)" strokeWidth="2" x={x} y={Math.min(y(rent), y(gross))} width={barWidth} height={Math.abs(y(rent) - y(gross))} tabIndex={0} aria-label={`${monthLabel(point.period)}, комунальні: ${formatUah(point.utilities)}`}>
+                  <title>{monthLabel(point.period)} · Комунальні: {formatUah(point.utilities)}</title>
                 </rect>
-                <text className="income-value-label" textAnchor="middle" x={x + barWidth / 2} y={Math.max(13, baseline - rentHeight - utilitiesHeight - 7)}>{compactAmountLabel(total)}</text>
+                {adjustments !== 0 && (
+                  <rect
+                    className="income-adjustments"
+                    fill="var(--chart-adjustment)"
+                    stroke="var(--color-surface)"
+                    strokeWidth="2"
+                    x={x}
+                    y={Math.min(y(gross), y(total))}
+                    width={barWidth}
+                    height={Math.abs(y(gross) - y(total))}
+                    tabIndex={0}
+                    aria-label={`${monthLabel(point.period)}, коригування: ${formatUah(point.adjustments)}, разом: ${formatUah(point.total)}`}
+                  >
+                    <title>{monthLabel(point.period)} · Коригування: {formatUah(point.adjustments)} · Разом: {formatUah(point.total)}</title>
+                  </rect>
+                )}
+                <text className="income-value-label" textAnchor="middle" x={x + barWidth / 2} y={total >= 0 ? Math.max(13, y(total) - 7) : y(total) + 15}>{compactAmountLabel(total)}</text>
               </>
             )}
-            {hasNegativeSegment && activeCorrection === point.period && (
+            {hasLegacyNegativeSegment && activeCorrection === point.period && (
               <g
                 id={`correction-${index}`}
                 className="chart-tooltip"
                 role="tooltip"
-                transform={`translate(${Math.min(Math.max(x + barWidth / 2, 105), width - 105)} ${baseline - 22})`}
+                transform={`translate(${Math.min(Math.max(x + barWidth / 2, 105), width - 105)} ${zeroY - 22})`}
               >
                 <rect x="-100" y="-58" width="200" height="54" rx="6" />
                 <text textAnchor="middle" x="0" y="-42">Оренда: {formatUah(point.rent)}</text>
@@ -1011,7 +1039,7 @@ export function Stats() {
 
       <section className="section-card stats-section">
         <div className="section-heading income-heading">
-          <div><h2>Дохід</h2><p>Оренда та комунальні платежі помісячно</p></div>
+          <div><h2>Дохід</h2><p>Оренда, комунальні платежі та коригування помісячно</p></div>
           <div className="scope-switch" role="group" aria-label="Масштаб доходу">
             <button className={scope === "portfolio" ? "active" : ""} type="button" aria-pressed={scope === "portfolio"} onClick={() => setScope("portfolio")}>Портфель</button>
             <button className={scope === "apartment" ? "active" : ""} type="button" aria-pressed={scope === "apartment"} disabled={apartmentId === null} onClick={() => setScope("apartment")}>Квартира</button>
@@ -1027,7 +1055,7 @@ export function Stats() {
           <p className="muted-text">Завантажуємо дохід…</p>
         ) : income.values.length > 0 ? (
           <>
-            <div className="chart-legend"><span><i className="rent-swatch" />Оренда</span><span><i className="utilities-swatch" />Комунальні</span><strong>Разом: {formatUah(income.totals.total)}</strong></div>
+            <div className="chart-legend"><span><i className="rent-swatch" />Оренда</span><span><i className="utilities-swatch" />Комунальні</span><span><i className="adjustments-swatch" />Коригування</span><strong>Разом: {formatUah(income.totals.total)}</strong></div>
             <IncomeChart stats={income} periods={chartPeriods} tenantStarts={tenantStarts} />
           </>
         ) : (

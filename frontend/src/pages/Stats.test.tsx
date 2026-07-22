@@ -82,8 +82,8 @@ function incomeStats(apartmentId?: number): apiClient.IncomeStats {
     scope: apartmentId === undefined ? "portfolio" : "apartment",
     apartment_id: apartmentId ?? null,
     months: 12,
-    values: [{ period: "2026-01-01", rent: "13650.00", utilities: "2210.51", total: "15860.51" }],
-    totals: { rent: "13650.00", utilities: "2210.51", total: "15860.51" },
+    values: [{ period: "2026-01-01", rent: "13650.00", utilities: "2210.51", adjustments: "0.00", total: "15860.51" }],
+    totals: { rent: "13650.00", utilities: "2210.51", adjustments: "0.00", total: "15860.51" },
     top_service: { name: "Газ", share_percent: "62.50", peak_period: "2026-01-01" },
   };
 }
@@ -145,8 +145,8 @@ describe("Stats", () => {
       scope: "portfolio",
       apartment_id: null,
       months: 12,
-      values: [{ period: "2026-06-01", rent: "14521.00", utilities: "2210.51", total: "16731.51" }],
-      totals: { rent: "14521.00", utilities: "2210.51", total: "16731.51" },
+      values: [{ period: "2026-06-01", rent: "14521.00", utilities: "2210.51", adjustments: "0.00", total: "16731.51" }],
+      totals: { rent: "14521.00", utilities: "2210.51", adjustments: "0.00", total: "16731.51" },
       top_service: { name: "Газ", share_percent: "62.50", peak_period: "2026-06-01" },
     });
 
@@ -189,6 +189,38 @@ describe("Stats", () => {
     await waitFor(() => expect(getIncomeStats).toHaveBeenLastCalledWith(1, { months: 12 }));
   });
 
+  it("stacks negative adjustments to the invoice total, including below zero", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date(2026, 6, 16));
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue({
+      scope: "portfolio",
+      apartment_id: null,
+      months: 12,
+      values: [
+        { period: "2026-06-01", rent: "14521.00", utilities: "2210.51", adjustments: "-1000.00", total: "15731.51" },
+        { period: "2026-07-01", rent: "100.00", utilities: "20.00", adjustments: "-200.00", total: "-80.00" },
+      ],
+      totals: { rent: "14621.00", utilities: "2230.51", adjustments: "-1200.00", total: "15651.51" },
+      top_service: { name: "Газ", share_percent: "62.50", peak_period: "2026-06-01" },
+    });
+
+    renderStats();
+
+    const chart = await screen.findByRole("img", { name: "Стековий графік доходу" });
+    const adjustments = chart.querySelectorAll(".income-adjustments");
+    expect(adjustments).toHaveLength(2);
+    expect(adjustments[0]).toHaveAttribute("fill", "var(--chart-adjustment)");
+    expect(screen.getByLabelText(/черв, коригування: -1.?000,00 ₴, разом: 15.?731,51 ₴/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/лип, коригування: -200,00 ₴, разом: -80,00 ₴/i)).toBeInTheDocument();
+    expect(screen.getByText("Коригування")).toBeInTheDocument();
+    expect(screen.getByText(/Разом: 15.?651,51 ₴/)).toBeInTheDocument();
+    chart.querySelectorAll("[d], [points], [x], [y], [cx], [cy], [height]").forEach((element) => {
+      expect(element.outerHTML).not.toMatch(/NaN/);
+    });
+  });
+
   it("keeps missing months as empty slots and breaks consumption lines", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(2026, 6, 16));
@@ -212,10 +244,10 @@ describe("Stats", () => {
       apartment_id: null,
       months: 12,
       values: [
-        { period: "2025-09-01", rent: "100.00", utilities: "20.00", total: "120.00" },
-        { period: "2025-11-01", rent: "100.00", utilities: "30.00", total: "130.00" },
+        { period: "2025-09-01", rent: "100.00", utilities: "20.00", adjustments: "0.00", total: "120.00" },
+        { period: "2025-11-01", rent: "100.00", utilities: "30.00", adjustments: "0.00", total: "130.00" },
       ],
-      totals: { rent: "200.00", utilities: "50.00", total: "250.00" },
+      totals: { rent: "200.00", utilities: "50.00", adjustments: "0.00", total: "250.00" },
       top_service: null,
     });
 
@@ -410,7 +442,7 @@ describe("Stats", () => {
     await act(async () => incomeRequest.resolve({
       ...incomeStats(1),
       months: null,
-      values: [{ period: "2026-03-01", rent: "100.00", utilities: "20.00", total: "120.00" }],
+      values: [{ period: "2026-03-01", rent: "100.00", utilities: "20.00", adjustments: "0.00", total: "120.00" }],
     }));
 
     await waitFor(() => expect(vacancyTile).toHaveTextContent("3 міс"));
@@ -477,10 +509,10 @@ describe("Stats", () => {
       apartment_id: null,
       months: 12,
       values: [
-        { period: "2025-08-01", rent: "14521.00", utilities: "2210.51", total: "16731.51" },
-        { period: "2025-09-01", rent: "0.00", utilities: "-10740.93", total: "-10740.93" },
+        { period: "2025-08-01", rent: "14521.00", utilities: "2210.51", adjustments: "0.00", total: "16731.51" },
+        { period: "2025-09-01", rent: "0.00", utilities: "-10740.93", adjustments: "0.00", total: "-10740.93" },
       ],
-      totals: { rent: "14521.00", utilities: "-8530.42", total: "5990.58" },
+      totals: { rent: "14521.00", utilities: "-8530.42", adjustments: "0.00", total: "5990.58" },
       top_service: null,
     });
 
@@ -516,7 +548,7 @@ describe("Stats", () => {
       apartment_id: null,
       months: 6,
       values: [],
-      totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+      totals: { rent: "0.00", utilities: "0.00", adjustments: "0.00", total: "0.00" },
       top_service: null,
     });
 
@@ -553,8 +585,8 @@ describe("Stats", () => {
       scope: "portfolio",
       apartment_id: null,
       months: null,
-      values: [{ period: "2025-06-01", rent: "100.00", utilities: "20.00", total: "120.00" }],
-      totals: { rent: "100.00", utilities: "20.00", total: "120.00" },
+      values: [{ period: "2025-06-01", rent: "100.00", utilities: "20.00", adjustments: "0.00", total: "120.00" }],
+      totals: { rent: "100.00", utilities: "20.00", adjustments: "0.00", total: "120.00" },
       top_service: null,
     });
 
@@ -594,8 +626,8 @@ describe("Stats", () => {
     const getIncomeStats = vi.spyOn(apiClient, "getIncomeStats").mockImplementation((apartmentId) => Promise.resolve({
       ...incomeStats(apartmentId),
       months: null,
-      values: [{ period: "2027-02-01", rent: "100.00", utilities: "20.00", total: "120.00" }],
-      totals: { rent: "100.00", utilities: "20.00", total: "120.00" },
+      values: [{ period: "2027-02-01", rent: "100.00", utilities: "20.00", adjustments: "0.00", total: "120.00" }],
+      totals: { rent: "100.00", utilities: "20.00", adjustments: "0.00", total: "120.00" },
       top_service: null,
     }));
 
@@ -779,7 +811,7 @@ describe("Stats", () => {
       apartment_id: null,
       months: null,
       values: [],
-      totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+      totals: { rent: "0.00", utilities: "0.00", adjustments: "0.00", total: "0.00" },
       top_service: null,
     });
 
@@ -996,7 +1028,7 @@ describe("Stats", () => {
       apartment_id: null,
       months: 12,
       values: [],
-      totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+      totals: { rent: "0.00", utilities: "0.00", adjustments: "0.00", total: "0.00" },
       top_service: null,
     });
 
@@ -1029,7 +1061,7 @@ describe("Stats", () => {
       apartment_id: null,
       months: 6,
       values: [],
-      totals: { rent: "0.00", utilities: "0.00", total: "0.00" },
+      totals: { rent: "0.00", utilities: "0.00", adjustments: "0.00", total: "0.00" },
       top_service: null,
     });
 

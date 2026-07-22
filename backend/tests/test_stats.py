@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
@@ -593,6 +594,7 @@ async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:
         assert payload["totals"] == {
             "rent": "2100.00",
             "utilities": "750.00",
+            "adjustments": "0.00",
             "total": "2850.00",
         }
         assert [point["total"] for point in payload["values"]] == [
@@ -613,6 +615,7 @@ async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:
         assert payload["totals"] == {
             "rent": "4100.00",
             "utilities": "1050.00",
+            "adjustments": "0.00",
             "total": "5150.00",
         }
         assert [point["total"] for point in payload["values"]] == [
@@ -623,6 +626,162 @@ async def test_income_aggregates_apartment_and_portfolio(tmp_path) -> None:
             "name": "Утримання будинку",
             "share_percent": "42.86",
             "peak_period": _today().replace(day=1).isoformat(),
+        }
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_income_and_dashboard_net_adjustments_without_polluting_top_service(
+    tmp_path,
+) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        first_id, _, _ = _seed_stats(application)
+        current = _today().replace(day=1)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            invoice = session.scalar(
+                select(Invoice).where(
+                    Invoice.apartment_id == first_id,
+                    Invoice.period == current,
+                )
+            )
+            assert invoice is not None
+            invoice.lines.append(
+                InvoiceLine(
+                    service_id=None,
+                    service_name="Компенсація ремонту",
+                    service_kind="adjustment",
+                    prev_reading=None,
+                    curr_reading=None,
+                    consumed=None,
+                    tariff_value=Decimal("0"),
+                    amount=Decimal("-250.00"),
+                )
+            )
+            invoice.adjustments_total = Decimal("-250.00")
+            invoice.grand_total -= Decimal("250.00")
+            session.commit()
+        engine.dispose()
+
+        income = await client.get(
+            "/api/stats/income",
+            params={"apartment_id": first_id, "months": 2},
+        )
+        assert income.status_code == 200
+        payload = income.json()
+        assert payload["totals"] == {
+            "rent": "2100.00",
+            "utilities": "750.00",
+            "adjustments": "-250.00",
+            "total": "2600.00",
+        }
+        assert payload["values"][-1] == {
+            "period": current.isoformat(),
+            "rent": "1100.00",
+            "utilities": "600.00",
+            "adjustments": "-250.00",
+            "total": "1450.00",
+        }
+        assert payload["top_service"] == {
+            "name": "Утримання будинку",
+            "share_percent": "60.00",
+            "peak_period": current.isoformat(),
+        }
+
+        dashboard = await client.get("/api/stats/dashboard")
+        assert dashboard.status_code == 200
+        payload = dashboard.json()
+        assert payload["charged"] == "3750.00"
+        assert payload["paid"] == "2300.00"
+        assert payload["outstanding"] == "1450.00"
+        assert payload["needs_attention"][0]["grand_total"] == "1450.00"
+    finally:
+        await _close(lifespan, client)
+
+
+async def test_pnl_defers_invoice_adjustment_expense_until_invoice_is_issued(
+    tmp_path,
+) -> None:
+    application, lifespan, client = await _client(tmp_path)
+    try:
+        _, _, empty_id = _seed_stats(application)
+        current = _today().replace(day=1)
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            apartment = session.get(Apartment, empty_id)
+            assert apartment is not None
+            invoice = Invoice(
+                apartment=apartment,
+                period=current,
+                status="draft",
+                exchange_rate=Decimal("40.000000"),
+                rent_amount_usd=Decimal("25.00"),
+                rent_amount_uah=Decimal("1000.00"),
+                utilities_total=Decimal("0.00"),
+                adjustments_total=Decimal("-250.00"),
+                grand_total=Decimal("750.00"),
+            )
+            line = InvoiceLine(
+                invoice=invoice,
+                service_id=None,
+                service_name="Компенсація ремонту",
+                service_kind="adjustment",
+                prev_reading=None,
+                curr_reading=None,
+                consumed=None,
+                tariff_value=Decimal("0"),
+                amount=Decimal("-250.00"),
+            )
+            line.expense = Expense(
+                apartment=apartment,
+                date=current,
+                category="repair",
+                amount=Decimal("250.00"),
+                currency="UAH",
+            )
+            session.add(invoice)
+            session.commit()
+            invoice_id = invoice.id
+        engine.dispose()
+
+        draft = await client.get(
+            "/api/stats/pnl",
+            params={"apartment_id": empty_id, "months": 1},
+        )
+        assert draft.status_code == 200
+        assert draft.json()["values"] == []
+        assert draft.json()["totals"] == {
+            "income": "0.00",
+            "expenses_total": "0.00",
+            "expenses_by_category": {},
+            "net": "0.00",
+            "margin_percent": None,
+        }
+
+        engine = create_database_engine(application.state.settings.database_path)
+        with create_session_factory(engine)() as session:
+            invoice = session.get(Invoice, invoice_id)
+            assert invoice is not None
+            invoice.status = "issued"
+            session.commit()
+        engine.dispose()
+
+        issued = await client.get(
+            "/api/stats/pnl",
+            params={"apartment_id": empty_id, "months": 1},
+        )
+        assert issued.status_code == 200
+        assert issued.json()["values"] == [
+            {
+                "period": current.isoformat(),
+                "income": "1000.00",
+                "expenses": "250.00",
+                "net": "750.00",
+            }
+        ]
+        assert issued.json()["totals"]["expenses_by_category"] == {
+            "repair": "250.00"
         }
     finally:
         await _close(lifespan, client)
@@ -664,6 +823,7 @@ async def test_dashboard_and_empty_history(tmp_path) -> None:
         assert income.json()["totals"] == {
             "rent": "0.00",
             "utilities": "0.00",
+            "adjustments": "0.00",
             "total": "0.00",
         }
         assert income.json()["top_service"] is None
