@@ -1,6 +1,6 @@
 import { afterEach, vi } from "vitest";
 
-import { ApiError, browserNavigation, createExpense, deleteExpense, deleteInvoice, downloadBackup, getCurrentUser, getExpenses, getPnlStats, importApartmentHistory, login, logout, restoreBackup, updateExpense, uploadTenantAttachments } from "./client";
+import { ApiError, browserNavigation, createExpense, deleteExpense, deleteInvoice, downloadBackup, getCurrentUser, getExpenses, getInvoice, getPnlStats, importApartmentHistory, login, logout, restoreBackup, updateExpense, updateInvoice, uploadTenantAttachments } from "./client";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -60,6 +60,81 @@ describe("API transport", () => {
       method: "DELETE",
       credentials: "include",
     }));
+  });
+
+  it("parses invoice adjustment totals and linked expenses", async () => {
+    const invoice = {
+      id: 7,
+      apartment_id: 1,
+      period: "2026-07-01",
+      status: "draft",
+      issued_at: null,
+      paid_at: null,
+      exchange_rate: "44.680000",
+      rent_amount_usd: "325.00",
+      rent_amount_uah: "14521.00",
+      utilities_total: "275.05",
+      adjustments_total: "-250.00",
+      grand_total: "14546.05",
+      warnings: [],
+      lines: [{
+        id: 12,
+        service_id: null,
+        service_name: "Компенсація ремонту",
+        kind: "adjustment",
+        service_kind: "adjustment",
+        prev_reading: null,
+        curr_reading: null,
+        consumed: null,
+        tariff_value: "0.00",
+        amount: "-250.00",
+        expense: { id: 9, category: "repair" },
+      }],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(invoice), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await getInvoice(7);
+
+    expect(result.adjustments_total).toBe("-250.00");
+    expect(result.lines[0]).toEqual(expect.objectContaining({
+      kind: "adjustment",
+      service_id: null,
+      expense: { id: 9, category: "repair" },
+    }));
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/invoices/7");
+  });
+
+  it("updates an invoice with adjustment lines", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await updateInvoice(7, {
+      exchange_rate: "44.680000",
+      lines: [{ id: 10, curr_reading: "122.000" }],
+      adjustments: [{
+        id: 12,
+        label: "Компенсація ремонту",
+        amount: "-250.00",
+        record_as_expense: true,
+        category: "repair",
+      }],
+    });
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/invoices/7");
+    expect(options.method).toBe("PUT");
+    expect(JSON.parse(options.body as string)).toEqual({
+      exchange_rate: "44.680000",
+      lines: [{ id: 10, curr_reading: "122.000" }],
+      adjustments: [{
+        id: 12,
+        label: "Компенсація ремонту",
+        amount: "-250.00",
+        record_as_expense: true,
+        category: "repair",
+      }],
+    });
   });
 
   it("redirects a 401 response to login", async () => {

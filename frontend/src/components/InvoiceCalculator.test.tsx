@@ -16,11 +16,12 @@ const invoice: Invoice = {
   rent_amount_usd: "325.00",
   rent_amount_uah: "14521.00",
   utilities_total: "275.05",
+  adjustments_total: "0.00",
   grand_total: "14796.05",
   warnings: [],
   lines: [
-    { id: 10, service_id: 5, service_name: "Газ", service_kind: "metered", prev_reading: "100.000", curr_reading: "122.000", consumed: "22.000", tariff_value: "7.95689", amount: "175.05" },
-    { id: 11, service_id: 6, service_name: "Інтернет", service_kind: "fixed", prev_reading: null, curr_reading: null, consumed: null, tariff_value: "100.00", amount: "100.00" },
+    { id: 10, service_id: 5, service_name: "Газ", kind: "metered", service_kind: "metered", prev_reading: "100.000", curr_reading: "122.000", consumed: "22.000", tariff_value: "7.95689", amount: "175.05", expense: null },
+    { id: 11, service_id: 6, service_name: "Інтернет", kind: "fixed", service_kind: "fixed", prev_reading: null, curr_reading: null, consumed: null, tariff_value: "100.00", amount: "100.00", expense: null },
   ],
 };
 

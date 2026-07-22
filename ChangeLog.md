@@ -1,5 +1,22 @@
 # ChangeLog
 
+## [2026-07-22 15:10] Task 5: клієнтський API коригувань рахунку
+
+- `frontend/src/api/client.ts` — типи рахунку синхронізовано з backend-контрактом:
+  додано adjustment-kind, nullable `service_id`, `adjustments_total`, прив'язану
+  витрату й payload коригувань для `updateInvoice`.
+- `frontend/src/api/client.test.ts` — перевірено отримання adjustment-тоталу та
+  прив'язаної витрати через `getInvoice`, а також точну JSON-форму коригувань у
+  `updateInvoice`.
+- `frontend/src/components/InvoiceCalculator.test.tsx`,
+  `frontend/src/pages/InvoiceEdit.test.tsx` — fixture-и приведено до нового
+  обов'язкового типу відповіді рахунку. Валідація в Docker: 199 frontend-тестів
+  пройдено, production build успішний.
+- `docs/plans/20260722-invoice-adjustment-lines.md` — Task 5 позначено виконаним.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  після backup і застосування міграції `20260722_09` потрібно перебудувати та
+  перезапустити застосунок за `docs/deploy.md`.
+
 ## [2026-07-22 15:03] Task 4: backup/restore коригувань рахунку
 
 - `backend/app/services/restore.py` — restore копіює `adjustments_total`, підтримує

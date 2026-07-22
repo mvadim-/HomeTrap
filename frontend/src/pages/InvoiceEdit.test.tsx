@@ -11,8 +11,9 @@ afterEach(() => vi.restoreAllMocks());
 const draft: apiClient.Invoice = {
   id: 7, apartment_id: 1, period: "2026-07-01", status: "draft", issued_at: null,
   paid_at: null, exchange_rate: "44.68", rent_amount_usd: "325.00",
-  rent_amount_uah: "14521.00", utilities_total: "0.00", grand_total: "14521.00",
-  warnings: [], lines: [{ id: 10, service_id: 5, service_name: "Газ", service_kind: "metered", prev_reading: "100.000", curr_reading: null, consumed: null, tariff_value: "7.95689", amount: "0.00" }],
+  rent_amount_uah: "14521.00", utilities_total: "0.00", adjustments_total: "0.00",
+  grand_total: "14521.00", warnings: [],
+  lines: [{ id: 10, service_id: 5, service_name: "Газ", kind: "metered", service_kind: "metered", prev_reading: "100.000", curr_reading: null, consumed: null, tariff_value: "7.95689", amount: "0.00", expense: null }],
 };
 
 describe("InvoiceEdit", () => {

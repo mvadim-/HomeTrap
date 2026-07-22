@@ -36,30 +36,45 @@ export interface InvoiceListItem {
 
 export interface InvoiceLine {
   id: number;
-  service_id: number;
+  service_id: number | null;
   service_name: string;
-  service_kind: "metered" | "fixed";
+  kind: "metered" | "fixed" | "adjustment";
+  service_kind: "metered" | "fixed" | "adjustment";
   prev_reading: string | null;
   curr_reading: string | null;
   consumed: string | null;
   tariff_value: string;
   amount: string;
+  expense: {
+    id: number;
+    category: ExpenseCategory;
+  } | null;
 }
 
 export interface InvoiceWarning {
   code: string;
-  service_id: number;
+  service_id: number | null;
   message: string;
 }
 
 export interface Invoice extends InvoiceListItem {
+  adjustments_total: string;
   lines: InvoiceLine[];
   warnings: InvoiceWarning[];
+}
+
+export interface InvoiceAdjustmentPayload {
+  id?: number;
+  label: string;
+  amount: string;
+  record_as_expense: boolean;
+  category?: ExpenseCategory | null;
 }
 
 export interface InvoiceUpdatePayload {
   exchange_rate: string;
   lines: Array<{ id: number; curr_reading: string | null }>;
+  adjustments?: InvoiceAdjustmentPayload[];
 }
 
 export interface Apartment {

@@ -253,12 +253,12 @@
 - Modify: `frontend/src/api/client.ts`
 - Modify: `frontend/src/api/client.test.ts`
 
-- [ ] типи: `InvoiceLine.kind` +`'adjustment'`, `Invoice.adjustments_total`,
+- [x] типи: `InvoiceLine.kind` +`'adjustment'`, `Invoice.adjustments_total`,
   прив'язана `expense` у лінії; `InvoiceUpdatePayload` +`adjustments`
-- [ ] оновити `getInvoice`/`updateInvoice` під нові поля
-- [ ] write tests: форма тіла `updateInvoice` з коригуваннями; парсинг
+- [x] оновити `getInvoice`/`updateInvoice` під нові поля
+- [x] write tests: форма тіла `updateInvoice` з коригуваннями; парсинг
   `adjustments_total`
-- [ ] run tests — must pass before task 6
+- [x] run tests — must pass before task 6
 
 ### Task 6: UI редактора рахунку — рядки-коригування
 
