@@ -305,7 +305,10 @@ def test_update_draft_syncs_adjustment_and_expense_lifecycle(db_session) -> None
         ],
     )
     assert db_session.scalars(select(Expense)).all() == []
-    assert any(line.id == adjustment.id for line in without_expense.lines)
+    unlinked_adjustment = next(
+        line for line in without_expense.lines if line.id == adjustment.id
+    )
+    assert unlinked_adjustment.expense is None
 
     update_draft(
         db_session,
@@ -329,6 +332,59 @@ def test_update_draft_syncs_adjustment_and_expense_lifecycle(db_session) -> None
     assert cleared.adjustments_total == Decimal("0.00")
     assert cleared.grand_total == Decimal("1100.00")
     assert db_session.scalars(select(Expense)).all() == []
+
+
+def test_update_draft_rejects_duplicate_and_foreign_adjustment_ids(
+    db_session,
+) -> None:
+    first_invoice_id = _seed_service_draft(db_session)
+    created = update_draft(
+        db_session,
+        first_invoice_id,
+        None,
+        {},
+        [
+            {
+                "label": "Компенсація",
+                "amount": Decimal("-50.00"),
+                "record_as_expense": False,
+                "category": None,
+            }
+        ],
+    )
+    adjustment = next(
+        line for line in created.lines if line.service_kind == "adjustment"
+    )
+    duplicate = {
+        "id": adjustment.id,
+        "label": adjustment.service_name,
+        "amount": adjustment.amount,
+        "record_as_expense": False,
+        "category": None,
+    }
+
+    with pytest.raises(BillingValidationError, match="ids must be unique"):
+        update_draft(
+            db_session,
+            first_invoice_id,
+            None,
+            {},
+            [duplicate, duplicate],
+        )
+    db_session.rollback()
+
+    second_invoice_id = _seed_service_draft(db_session)
+    with pytest.raises(BillingValidationError, match="was not found"):
+        update_draft(
+            db_session,
+            second_invoice_id,
+            None,
+            {},
+            [duplicate],
+        )
+    db_session.rollback()
+
+    assert db_session.get(InvoiceLine, adjustment.id).service_name == "Компенсація"
 
 
 def test_update_draft_rejects_invalid_expense_and_non_draft(db_session) -> None:

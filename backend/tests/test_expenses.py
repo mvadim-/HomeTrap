@@ -1,7 +1,12 @@
+from datetime import date
+from decimal import Decimal
+
 from httpx import ASGITransport, AsyncClient
 
 from app.config import Settings
+from app.db import create_database_engine, create_session_factory
 from app.main import create_app
+from app.models import Apartment, Expense, Invoice, InvoiceLine
 
 
 async def _create_client(tmp_path):
@@ -31,6 +36,46 @@ async def _create_client(tmp_path):
 async def _close_client(lifespan, client: AsyncClient) -> None:
     await client.aclose()
     await lifespan.__aexit__(None, None, None)
+
+
+def _seed_linked_expense(database_path) -> int:
+    engine = create_database_engine(database_path)
+    with create_session_factory(engine)() as session:
+        apartment = Apartment(
+            name="Квартира з компенсацією",
+            address="Київ",
+            rent_amount=Decimal("500.00"),
+            rent_currency="USD",
+        )
+        invoice = Invoice(
+            apartment=apartment,
+            period=date(2026, 7, 1),
+            exchange_rate=Decimal("40.000000"),
+            rent_amount_usd=Decimal("500.00"),
+            rent_amount_uah=Decimal("20000.00"),
+            utilities_total=Decimal("0.00"),
+            adjustments_total=Decimal("-500.00"),
+            grand_total=Decimal("19500.00"),
+        )
+        line = InvoiceLine(
+            invoice=invoice,
+            service_name="Компенсація ремонту",
+            service_kind="adjustment",
+            tariff_value=Decimal("0"),
+            amount=Decimal("-500.00"),
+        )
+        expense = Expense(
+            apartment=apartment,
+            invoice_line=line,
+            date=invoice.period,
+            category="repair",
+            amount=Decimal("500.00"),
+        )
+        session.add(expense)
+        session.commit()
+        expense_id = expense.id
+    engine.dispose()
+    return expense_id
 
 
 async def _create_apartment(client: AsyncClient, name: str = "Квартира 1") -> dict:
@@ -100,6 +145,28 @@ async def test_expense_crud_happy_path(tmp_path) -> None:
         deleted = await client.delete(f"/api/expenses/{expense_id}")
         assert deleted.status_code == 204
         assert (await client.get("/api/expenses")).json() == []
+    finally:
+        await _close_client(lifespan, client)
+
+
+async def test_linked_expense_cannot_be_updated_or_deleted_directly(tmp_path) -> None:
+    lifespan, client = await _create_client(tmp_path)
+    try:
+        expense_id = _seed_linked_expense(tmp_path / "expenses.db")
+
+        patched = await client.patch(
+            f"/api/expenses/{expense_id}",
+            json={"amount": "1.00", "category": "tax"},
+        )
+        deleted = await client.delete(f"/api/expenses/{expense_id}")
+
+        assert patched.status_code == 409
+        assert deleted.status_code == 409
+        listed = await client.get("/api/expenses")
+        linked = next(row for row in listed.json() if row["id"] == expense_id)
+        assert linked["amount"] == "500.00"
+        assert linked["category"] == "repair"
+        assert linked["invoice_line_id"] is not None
     finally:
         await _close_client(lifespan, client)
 

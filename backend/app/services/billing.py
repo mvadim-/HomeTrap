@@ -201,7 +201,9 @@ def _sync_adjustment_expense(
 ) -> None:
     if not record_as_expense:
         if line.expense is not None:
-            session.delete(line.expense)
+            expense = line.expense
+            line.expense = None
+            session.delete(expense)
         return
 
     if category is None:

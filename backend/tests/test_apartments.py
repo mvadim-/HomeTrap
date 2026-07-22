@@ -236,6 +236,16 @@ async def test_service_crud_is_sorted_and_validated(tmp_path) -> None:
             json=_service_payload(kind="unknown"),
         )
         assert invalid_kind.status_code == 422
+        adjustment_kind = await client.post(
+            f"/api/apartments/{apartment['id']}/services",
+            json=_service_payload(kind="adjustment"),
+        )
+        assert adjustment_kind.status_code == 422
+        adjustment_update = await client.put(
+            f"/api/apartments/{apartment['id']}/services/{later['id']}",
+            json=_service_payload(kind="adjustment"),
+        )
+        assert adjustment_update.status_code == 422
     finally:
         await _close_client(lifespan, client)
 

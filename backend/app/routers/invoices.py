@@ -73,7 +73,11 @@ def update_invoice(
             invoice_id,
             payload.exchange_rate,
             {line.id: line.curr_reading for line in payload.lines},
-            [adjustment.model_dump() for adjustment in payload.adjustments],
+            (
+                [adjustment.model_dump() for adjustment in payload.adjustments]
+                if payload.adjustments is not None
+                else None
+            ),
         )
     except BillingError as error:
         raise _billing_http_error(error) from error

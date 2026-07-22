@@ -106,7 +106,7 @@ class TenantAttachmentOut(ApiSchema):
 
 class ServiceBase(ApiSchema):
     name: str = Field(min_length=1, max_length=200)
-    kind: ServiceKind
+    kind: Literal["metered", "fixed"]
     unit: str | None = Field(default=None, max_length=50)
     provider_account: str | None = Field(default=None, max_length=100)
     sort_order: int = 0
@@ -241,7 +241,7 @@ class InvoiceUpdate(ApiSchema):
         decimal_places=6,
     )
     lines: list[InvoiceLineUpdate] = Field(default_factory=list)
-    adjustments: list[AdjustmentInput] = Field(default_factory=list)
+    adjustments: list[AdjustmentInput] | None = None
 
 
 class InvoiceLineExpenseResponse(ApiSchema):

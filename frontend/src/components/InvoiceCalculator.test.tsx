@@ -311,6 +311,25 @@ describe("InvoiceCalculator", () => {
     expect(onDraftChange).toHaveBeenLastCalledWith(null, true);
   });
 
+  it("enforces backend precision limits for adjustment amounts", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceCalculator invoice={invoice} onSave={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Додати коригування" }));
+    const amount = screen.getByLabelText("Сума коригування 1");
+    await user.clear(amount);
+    await user.type(amount, "-1.001");
+    expect(screen.getByRole("button", { name: "Зберегти чернетку" })).toBeDisabled();
+
+    await user.clear(amount);
+    await user.type(amount, "-10000000000.00");
+    expect(screen.getByRole("button", { name: "Зберегти чернетку" })).toBeDisabled();
+
+    await user.clear(amount);
+    await user.type(amount, "-9999999999.99");
+    expect(screen.getByRole("button", { name: "Зберегти чернетку" })).toBeEnabled();
+  });
+
   it("shows persisted adjustments as read-only for an issued invoice", () => {
     render(<InvoiceCalculator invoice={{
       ...invoice,

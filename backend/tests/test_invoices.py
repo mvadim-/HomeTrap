@@ -114,6 +114,16 @@ async def test_adjustment_api_create_update_delete_and_serialize(tmp_path) -> No
         assert created["grand_total"] == "850.00"
 
         expense_id = adjustment["expense"]["id"]
+        omitted_response = await client.put(f"/api/invoices/{invoice_id}", json={})
+        assert omitted_response.status_code == 200
+        omitted_adjustment = next(
+            line
+            for line in omitted_response.json()["lines"]
+            if line["kind"] == "adjustment"
+        )
+        assert omitted_adjustment["id"] == adjustment["id"]
+        assert omitted_adjustment["expense"]["id"] == expense_id
+
         updated_response = await client.put(
             f"/api/invoices/{invoice_id}",
             json={
@@ -142,6 +152,25 @@ async def test_adjustment_api_create_update_delete_and_serialize(tmp_path) -> No
         assert next(
             line for line in detail.json()["lines"] if line["kind"] == "adjustment"
         )["expense"] == {"id": expense_id, "category": "other"}
+
+        unlinked = await client.put(
+            f"/api/invoices/{invoice_id}",
+            json={
+                "adjustments": [
+                    {
+                        "id": adjustment["id"],
+                        "label": "Компенсація заміни котла",
+                        "amount": "-300.00",
+                        "record_as_expense": False,
+                    }
+                ]
+            },
+        )
+        assert unlinked.status_code == 200
+        assert next(
+            line for line in unlinked.json()["lines"] if line["kind"] == "adjustment"
+        )["expense"] is None
+        assert all(row["id"] != expense_id for row in (await client.get("/api/expenses")).json())
 
         deleted = await client.put(
             f"/api/invoices/{invoice_id}", json={"adjustments": []}

@@ -33,6 +33,15 @@ interface DraftAdjustment extends InvoiceAdjustmentPayload {
 
 const EXPENSE_CATEGORIES = Object.entries(EXPENSE_CATEGORY_LABELS) as [ExpenseCategory, string][];
 
+function adjustmentAmountValid(value: string): boolean {
+  const amount = decimalInput(value);
+  if (!amount.valid || amount.normalized === null) return false;
+  const unsigned = amount.normalized.replace(/^[+-]/, "");
+  const [whole, fraction = ""] = unsigned.split(".");
+  const wholeDigits = whole.replace(/^0+/, "") || "0";
+  return wholeDigits.length <= 10 && fraction.length <= 2;
+}
+
 function invoiceAdjustments(invoice: Invoice): DraftAdjustment[] {
   return invoice.lines
     .filter((line) => line.service_kind === "adjustment")
@@ -166,11 +175,9 @@ export function InvoiceCalculator({
     (line) => line.service_kind !== "metered" || decimalInput(readings[line.id] || null).valid,
   );
   const adjustmentsValid = adjustments.every((adjustment) => {
-    const amount = decimalInput(adjustment.amount);
     return adjustment.label.trim().length > 0
       && adjustment.label.trim().length <= 200
-      && amount.valid
-      && amount.normalized !== null;
+      && adjustmentAmountValid(adjustment.amount);
   });
   const draftValid = isDraft && Boolean(numberValue(exchangeRate.exact)) && readingsValid && adjustmentsValid;
 

@@ -132,8 +132,10 @@
   `expenses.invoice_line_id` + FK CASCADE + індекс.
 - **Схеми:** додати `ServiceKind.ADJUSTMENT`; `InvoiceLineResponse.service_id`
   → **`int | None`** і `InvoiceWarning.service_id` теж (adjustment-лінія має
-  null). `InvoiceUpdate` +`adjustments: list[AdjustmentInput]`
+  null). `InvoiceUpdate` +`adjustments: list[AdjustmentInput] | None`
   (`id?`, `label`, `amount`, `record_as_expense: bool`, `category?`).
+  Відсутнє/`null` поле зберігає поточний стан, `[]` очищає коригування, а
+  непорожній список є повним бажаним станом.
   `InvoiceResponse` +`adjustments_total`; лінії серіалізують `kind`,
   `service_name` (мітку) і для adjustment — прив'язану `expense`
   (id/category) для round-trip у UI.
@@ -287,8 +289,9 @@
 
 - [x] прив'язані (авто) витрати (`invoice_line_id != null`) показуються з
   приміткою «з рахунку»; кнопки «Редагувати»/«Видалити» вимкнені/приховані
-  (керування лише через рахунок)
-- [x] write tests: прив'язана витрата read-only; звичайна — редагована як зараз
+  (керування лише через рахунок); backend PATCH/DELETE повертають `409`
+- [x] write tests: прив'язана витрата read-only у UI й API; звичайна —
+  редагована як зараз
 - [x] run tests — must pass before task 8
 
 ### Task 8: Агрегації — income/adjustments, P&L draft-фільтр, dashboard
@@ -324,7 +327,8 @@
   (CASCADE); редагування non-draft заблоковане; grand_total від'ємний;
   **P&L не рахує компенсацію поки рахунок чернетка, рахує після виставлення**;
   income top_service ігнорує коригування; backup/restore round-trip (у т.ч.
-  прив'язка до пропущеної лінії)
+  прив'язка до пропущеної лінії); expense PATCH/DELETE заблоковані;
+  recurring service типу `adjustment` відхиляється API
 - [x] run full backend suite + `ruff check .`
 - [x] run full frontend suite + `npm run build`
 

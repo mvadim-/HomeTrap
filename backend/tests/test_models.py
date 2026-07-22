@@ -675,3 +675,118 @@ def test_restore_key_migration_resumes_after_interrupted_column_add(
     assert len(apartment_key[0]) == 32
     assert "restore_key" in service_columns
     assert revision == ("20260722_09",)
+
+
+def test_invoice_adjustment_migration_preserves_populated_invoice_data(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "populated-invoice-adjustment.db"
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(backend_dir / "alembic.ini")
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{database_path}")
+    command.upgrade(config, "20260721_08")
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute(
+            """INSERT INTO apartments
+               (id, restore_key, name, address, rent_amount, rent_currency,
+                notes, is_active)
+               VALUES (1, ?, 'Квартира', 'Київ', 500, 'USD', NULL, 1)""",
+            ("a" * 32,),
+        )
+        connection.execute(
+            """INSERT INTO services
+               (id, restore_key, apartment_id, name, kind, unit,
+                provider_account, sort_order, is_active)
+               VALUES (1, ?, 1, 'Газ', 'fixed', NULL, NULL, 0, 1)""",
+            ("s" * 32,),
+        )
+        connection.execute(
+            """INSERT INTO invoices
+               (id, apartment_id, period, status, issued_at, paid_at,
+                exchange_rate, rent_amount_usd, rent_amount_uah,
+                utilities_total, grand_total)
+               VALUES (1, 1, '2026-07-01', 'draft', NULL, NULL,
+                       40, 500, 20000, 100, 20100)"""
+        )
+        connection.execute(
+            """INSERT INTO invoice_lines
+               (id, invoice_id, service_id, service_name, prev_reading,
+                curr_reading, consumed, tariff_value, amount, service_kind)
+               VALUES (1, 1, 1, 'Газ', NULL, NULL, NULL, 100, 100, 'fixed')"""
+        )
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        assert connection.execute(
+            "SELECT service_id, service_name, service_kind, amount "
+            "FROM invoice_lines WHERE id = 1"
+        ).fetchone() == (1, "Газ", "fixed", 100)
+        assert connection.execute(
+            "SELECT adjustments_total, grand_total FROM invoices WHERE id = 1"
+        ).fetchone() == (0, 20100)
+        connection.execute(
+            """INSERT INTO expenses
+               (id, restore_key, apartment_id, invoice_line_id, date, category,
+                amount, currency, notes)
+               VALUES (1, ?, 1, 1, '2026-07-01', 'repair', 100, 'UAH', NULL)""",
+            ("e" * 32,),
+        )
+        connection.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("DELETE FROM services WHERE id = 1")
+        connection.rollback()
+        connection.execute("DELETE FROM invoices WHERE id = 1")
+        connection.commit()
+        assert connection.execute("SELECT COUNT(*) FROM invoice_lines").fetchone() == (
+            0,
+        )
+        assert connection.execute("SELECT COUNT(*) FROM expenses").fetchone() == (0,)
+
+
+def test_invoice_adjustment_migration_repairs_partial_schema(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "partial-invoice-adjustment.db"
+    backend_dir = Path(__file__).resolve().parents[1]
+    config = Config(backend_dir / "alembic.ini")
+    config.set_main_option("script_location", str(backend_dir / "alembic"))
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{database_path}")
+    command.upgrade(config, "20260721_08")
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("ALTER TABLE expenses ADD COLUMN invoice_line_id INTEGER")
+
+    command.upgrade(config, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("DROP INDEX ix_invoice_lines_service_id")
+        connection.execute("DROP INDEX ix_expenses_invoice_line_id")
+        connection.execute(
+            "UPDATE alembic_version SET version_num = '20260721_08'"
+        )
+
+    command.upgrade(config, "head")
+
+    engine = create_database_engine(database_path)
+    try:
+        invoice_line_indexes = {
+            index["name"] for index in inspect(engine).get_indexes("invoice_lines")
+        }
+        expense_indexes = {
+            index["name"] for index in inspect(engine).get_indexes("expenses")
+        }
+        expense_foreign_keys = inspect(engine).get_foreign_keys("expenses")
+    finally:
+        engine.dispose()
+
+    assert "ix_invoice_lines_service_id" in invoice_line_indexes
+    assert "ix_expenses_invoice_line_id" in expense_indexes
+    assert any(
+        foreign_key["constrained_columns"] == ["invoice_line_id"]
+        and foreign_key["referred_table"] == "invoice_lines"
+        and foreign_key["options"].get("ondelete") == "CASCADE"
+        for foreign_key in expense_foreign_keys
+    )

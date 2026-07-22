@@ -1,5 +1,29 @@
 # ChangeLog
 
+## [2026-07-22 15:55] Виправлення review: безпечні контракти коригувань
+
+- `backend/app/schemas.py`, `backend/app/routers/invoices.py` — відсутнє або
+  `null` поле `adjustments` тепер зберігає поточні коригування; явний `[]`
+  очищає їх, непорожній список задає повний бажаний стан. Recurring service API
+  знову приймає лише `metered`/`fixed`, а не invoice-only `adjustment`.
+- `backend/app/routers/expenses.py`, `backend/app/services/billing.py` — прямі
+  PATCH/DELETE прив'язаної авто-витрати повертають `409`; зняття галочки одразу
+  очищає expense-зв'язок і в БД, і у відповіді рахунку.
+- `backend/alembic/versions/20260722_09_invoice_adjustments.py` — повторний запуск
+  міграції відновлює пропущені FK/індекси після часткового SQLite DDL.
+- `backend/tests/test_apartments.py`, `backend/tests/test_billing.py`,
+  `backend/tests/test_expenses.py`, `backend/tests/test_invoices.py`,
+  `backend/tests/test_models.py` — додано API/error-branch тести, populated
+  08→09 upgrade та interrupted-schema repair.
+- `frontend/src/components/InvoiceCalculator.tsx` і тест — сума коригування
+  перевіряється за backend-межею Numeric(12,2), тому некоректна точність не
+  доходить до 422 після натискання Save.
+- Docker-валідація: backend 244 passed, Ruff чистий; frontend 209 passed,
+  production build успішний.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  перед розгортанням потрібен backup `data/`, далі rebuild/restart за
+  `docs/deploy.md` із застосуванням міграції `20260722_09`.
+
 ## [2026-07-22 15:42] Task 10: документація коригувань рахунку
 
 - `README.md` — описано разові знакові коригування, авто-витрату, її read-only

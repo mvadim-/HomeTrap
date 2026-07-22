@@ -31,6 +31,14 @@ def _get_expense(session: Session, expense_id: int) -> Expense:
     return expense
 
 
+def _ensure_expense_is_editable(expense: Expense) -> None:
+    if expense.invoice_line_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Invoice-linked expenses can only be changed through the invoice",
+        )
+
+
 @router.get("/api/expenses", response_model=list[ExpenseResponse])
 def list_expenses(
     apartment_id: int | None = Query(default=None),
@@ -73,6 +81,7 @@ def update_expense(
     session: Session = Depends(get_write_db),
 ) -> Expense:
     expense = _get_expense(session, expense_id)
+    _ensure_expense_is_editable(expense)
     updates = payload.model_dump(exclude_unset=True)
     if "apartment_id" in updates and updates["apartment_id"] is not None:
         _get_apartment(session, updates["apartment_id"])
@@ -91,6 +100,7 @@ def delete_expense(
     session: Session = Depends(get_write_db),
 ) -> Response:
     expense = _get_expense(session, expense_id)
+    _ensure_expense_is_editable(expense)
     session.delete(expense)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
