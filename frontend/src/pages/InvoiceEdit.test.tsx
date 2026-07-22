@@ -71,6 +71,38 @@ describe("InvoiceEdit", () => {
     expect(screen.getByRole("button", { name: "Повернути в чернетку" })).toBeInTheDocument();
   });
 
+  it("saves adjustment edits before issuing the draft", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(apiClient, "getInvoice").mockResolvedValue(draft);
+    const update = vi.spyOn(apiClient, "updateInvoice").mockResolvedValue(draft);
+    vi.spyOn(apiClient, "transitionInvoice").mockResolvedValue({ ...draft, status: "issued" });
+
+    render(
+      <MemoryRouter initialEntries={["/invoices/7"]}>
+        <Routes><Route path="/invoices/:invoiceId" element={<InvoiceEdit />} /></Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Додати коригування" }));
+    await user.clear(screen.getByLabelText("Мітка коригування 1"));
+    await user.type(screen.getByLabelText("Мітка коригування 1"), "Компенсація котла");
+    await user.clear(screen.getByLabelText("Сума коригування 1"));
+    await user.type(screen.getByLabelText("Сума коригування 1"), "-1200");
+    await user.click(screen.getByLabelText("Врахувати коригування 1 як витрату"));
+    await user.selectOptions(screen.getByLabelText("Категорія витрати коригування 1"), "repair");
+    await user.click(screen.getByRole("button", { name: "Зберегти й виставити" }));
+
+    expect(update).toHaveBeenCalledWith(7, expect.objectContaining({
+      adjustments: [{
+        label: "Компенсація котла",
+        amount: "-1200",
+        record_as_expense: true,
+        category: "repair",
+      }],
+    }));
+    expect(apiClient.transitionInvoice).toHaveBeenCalledWith(7, "issue");
+  });
+
   it("shows trimmed readings and tariff values in the invoice table", async () => {
     vi.spyOn(apiClient, "getInvoice").mockResolvedValue({
       ...draft,

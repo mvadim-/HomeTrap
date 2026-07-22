@@ -1,5 +1,24 @@
 # ChangeLog
 
+## [2026-07-22 15:16] Task 6: UI коригувань рахунку
+
+- `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/pages/portal.css` —
+  у редакторі чернетки додано адаптивну секцію разових коригувань із міткою,
+  знаковою сумою, видаленням, окремим тоталом і негайним перерахунком суми рахунку;
+  виставлені та оплачені рахунки показують збережені рядки лише для читання.
+- `frontend/src/components/InvoiceCalculator.tsx` — для від'ємної компенсації
+  доступні галочка авто-витрати та категорія; додатна сума вимикає й очищає цей
+  стан, а невалідна сума або порожня мітка блокують збереження/виставлення.
+- `frontend/src/components/InvoiceCalculator.test.tsx`,
+  `frontend/src/pages/InvoiceEdit.test.tsx` — перевірено add/edit/delete,
+  checkbox+категорію, positive guard, валідацію, read-only режим, тотали та
+  передачу повного adjustment payload перед виставленням. У Docker пройдено
+  206 frontend-тестів і production build.
+- `docs/plans/20260722-invoice-adjustment-lines.md` — Task 6 позначено виконаним.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  після backup і застосування міграції `20260722_09` потрібно перебудувати та
+  перезапустити застосунок за `docs/deploy.md`.
+
 ## [2026-07-22 15:10] Task 5: клієнтський API коригувань рахунку
 
 - `frontend/src/api/client.ts` — типи рахунку синхронізовано з backend-контрактом:

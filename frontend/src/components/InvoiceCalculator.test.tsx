@@ -206,4 +206,127 @@ describe("InvoiceCalculator", () => {
       lines: [{ id: 10, curr_reading: "9583.500" }],
     }));
   });
+
+  it("adds and edits an adjustment and includes it in the grand total", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<InvoiceCalculator invoice={invoice} onSave={onSave} />);
+
+    await user.click(screen.getByRole("button", { name: "Додати коригування" }));
+    const label = screen.getByLabelText("Мітка коригування 1");
+    const amount = screen.getByLabelText("Сума коригування 1");
+    await user.clear(label);
+    await user.type(label, "Компенсація ремонту");
+    await user.clear(amount);
+    await user.type(amount, "-500");
+
+    expect(screen.getByText("14 296,05 ₴")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Зберегти чернетку" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      adjustments: [{
+        label: "Компенсація ремонту",
+        amount: "-500",
+        record_as_expense: false,
+        category: null,
+      }],
+    }));
+  });
+
+  it("records a negative adjustment as an expense with a selected category", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(<InvoiceCalculator invoice={invoice} onSave={onSave} />);
+
+    await user.click(screen.getByRole("button", { name: "Додати коригування" }));
+    const amount = screen.getByLabelText("Сума коригування 1");
+    await user.clear(amount);
+    await user.type(amount, "-300");
+    const expense = screen.getByLabelText("Врахувати коригування 1 як витрату");
+    expect(expense).toBeEnabled();
+    await user.click(expense);
+    await user.selectOptions(screen.getByLabelText("Категорія витрати коригування 1"), "other");
+    await user.click(screen.getByRole("button", { name: "Зберегти чернетку" }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      adjustments: [expect.objectContaining({
+        record_as_expense: true,
+        category: "other",
+      })],
+    }));
+  });
+
+  it("removes a persisted adjustment from the payload and recalculates the total", async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const adjustedInvoice: Invoice = {
+      ...invoice,
+      adjustments_total: "-500.00",
+      grand_total: "14296.05",
+      lines: [
+        ...invoice.lines,
+        { id: 12, service_id: null, service_name: "Ремонт", kind: "adjustment", service_kind: "adjustment", prev_reading: null, curr_reading: null, consumed: null, tariff_value: "0.00", amount: "-500.00", expense: null },
+      ],
+    };
+    render(<InvoiceCalculator invoice={adjustedInvoice} onSave={onSave} />);
+
+    expect(screen.getByText("14 296,05 ₴")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Видалити коригування 1" }));
+    expect(screen.getByText("14 796,05 ₴")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Зберегти чернетку" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ adjustments: [] }));
+  });
+
+  it("disables and clears expense recording for a positive adjustment", async () => {
+    const user = userEvent.setup();
+    render(<InvoiceCalculator invoice={invoice} onSave={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "Додати коригування" }));
+    const amount = screen.getByLabelText("Сума коригування 1");
+    await user.clear(amount);
+    await user.type(amount, "-100");
+    const expense = screen.getByLabelText("Врахувати коригування 1 як витрату");
+    await user.click(expense);
+    expect(screen.getByLabelText("Категорія витрати коригування 1")).toBeInTheDocument();
+
+    await user.clear(amount);
+    await user.type(amount, "100");
+
+    expect(expense).toBeDisabled();
+    expect(expense).not.toBeChecked();
+    expect(screen.queryByLabelText("Категорія витрати коригування 1")).not.toBeInTheDocument();
+    expect(screen.getByText("14 896,05 ₴")).toBeInTheDocument();
+  });
+
+  it("requires a label and decimal amount before saving an adjustment", async () => {
+    const user = userEvent.setup();
+    const onDraftChange = vi.fn();
+    render(<InvoiceCalculator invoice={invoice} onSave={vi.fn()} onDraftChange={onDraftChange} />);
+
+    await user.click(screen.getByRole("button", { name: "Додати коригування" }));
+    await user.clear(screen.getByLabelText("Мітка коригування 1"));
+    await user.clear(screen.getByLabelText("Сума коригування 1"));
+    await user.type(screen.getByLabelText("Сума коригування 1"), "1e3");
+
+    expect(screen.getByRole("button", { name: "Зберегти чернетку" })).toBeDisabled();
+    expect(onDraftChange).toHaveBeenLastCalledWith(null, true);
+  });
+
+  it("shows persisted adjustments as read-only for an issued invoice", () => {
+    render(<InvoiceCalculator invoice={{
+      ...invoice,
+      status: "issued",
+      adjustments_total: "-250.00",
+      grand_total: "14546.05",
+      lines: [
+        ...invoice.lines,
+        { id: 12, service_id: null, service_name: "Компенсація", kind: "adjustment", service_kind: "adjustment", prev_reading: null, curr_reading: null, consumed: null, tariff_value: "0.00", amount: "-250.00", expense: { id: 3, category: "repair" } },
+      ],
+    }} onSave={vi.fn()} />);
+
+    expect(screen.getByText("Компенсація")).toBeInTheDocument();
+    expect(screen.getByText(/Ремонт/)).toBeInTheDocument();
+    expect(screen.getAllByText("-250,00 ₴")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Додати коригування" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Мітка коригування 1")).not.toBeInTheDocument();
+  });
 });

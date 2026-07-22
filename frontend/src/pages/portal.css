@@ -882,6 +882,86 @@
   font-weight: 700;
 }
 
+.invoice-adjustments {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.adjustments-heading,
+.adjustment-readonly-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.adjustments-heading h3,
+.adjustments-heading p,
+.adjustment-empty {
+  margin: 0;
+}
+
+.adjustments-heading p {
+  margin-top: 4px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.adjustment-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.adjustment-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 0.4fr) minmax(260px, 1.25fr) minmax(150px, 0.6fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
+.adjustment-row label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.adjustment-row input:not([type="checkbox"]),
+.adjustment-row select {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.adjustment-row .adjustment-expense-check {
+  display: flex;
+  align-items: center;
+  align-self: center;
+}
+
+.adjustment-expense-check input {
+  flex: 0 0 auto;
+}
+
+.adjustment-remove {
+  align-self: end;
+}
+
+.adjustment-readonly-row {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+}
+
 .warning-box {
   margin-top: 18px;
   padding: 14px 16px;
@@ -1371,6 +1451,10 @@
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .adjustment-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 600px) {
@@ -1404,6 +1488,15 @@
   .invoice-totals {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .adjustments-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .adjustment-row {
+    grid-template-columns: 1fr;
   }
 
   .invoice-totals .grand-total {
