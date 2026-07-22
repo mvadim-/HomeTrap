@@ -208,6 +208,30 @@ class InvoiceLineUpdate(ApiSchema):
     )
 
 
+class AdjustmentInput(ApiSchema):
+    id: int | None = None
+    label: str = Field(min_length=1, max_length=200)
+    amount: Decimal = Field(max_digits=12, decimal_places=2)
+    record_as_expense: bool = False
+    category: ExpenseCategory | None = None
+
+    @field_validator("label")
+    @classmethod
+    def normalize_label(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("adjustment label is required")
+        return value
+
+    @model_validator(mode="after")
+    def validate_expense(self):
+        if self.record_as_expense and self.amount >= 0:
+            raise ValueError("only a negative adjustment can be recorded as an expense")
+        if self.record_as_expense and self.category is None:
+            raise ValueError("expense category is required")
+        return self
+
+
 class InvoiceUpdate(ApiSchema):
     exchange_rate: Decimal | None = Field(
         default=None,
@@ -216,23 +240,31 @@ class InvoiceUpdate(ApiSchema):
         decimal_places=6,
     )
     lines: list[InvoiceLineUpdate] = Field(default_factory=list)
+    adjustments: list[AdjustmentInput] = Field(default_factory=list)
+
+
+class InvoiceLineExpenseResponse(ApiSchema):
+    id: int
+    category: ExpenseCategory
 
 
 class InvoiceLineResponse(ApiSchema):
     id: int
-    service_id: int
+    service_id: int | None
     service_name: str
+    kind: ServiceKind
     service_kind: ServiceKind
     prev_reading: Decimal | None
     curr_reading: Decimal | None
     consumed: Decimal | None
     tariff_value: Decimal
     amount: Decimal
+    expense: InvoiceLineExpenseResponse | None = None
 
 
 class InvoiceWarning(ApiSchema):
     code: str
-    service_id: int
+    service_id: int | None
     message: str
 
 
@@ -247,6 +279,7 @@ class InvoiceResponse(ApiSchema):
     rent_amount_usd: Decimal
     rent_amount_uah: Decimal
     utilities_total: Decimal
+    adjustments_total: Decimal
     grand_total: Decimal
     lines: list[InvoiceLineResponse]
     warnings: list[InvoiceWarning]

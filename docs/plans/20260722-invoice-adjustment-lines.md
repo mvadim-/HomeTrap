@@ -211,19 +211,20 @@
 **Files:**
 - Modify: `backend/app/schemas.py`
 - Modify: `backend/app/routers/invoices.py`
+- Modify: `backend/app/services/billing.py`
 - Modify: `backend/tests/test_invoices.py`
 
-- [ ] `ServiceKind.ADJUSTMENT` у схемах; `InvoiceLineResponse.service_id` та
+- [x] `ServiceKind.ADJUSTMENT` у схемах; `InvoiceLineResponse.service_id` та
   `InvoiceWarning.service_id` → `int | None`
-- [ ] `InvoiceUpdate` +`adjustments` (`id?`, `label`, `amount`,
+- [x] `InvoiceUpdate` +`adjustments` (`id?`, `label`, `amount`,
   `record_as_expense`, `category?`) з валідацією; `InvoiceResponse`
   +`adjustments_total` + серіалізація `kind`/мітки + прив'язаної витрати
-- [ ] прокинути коригування з роутера в `update_draft`
-- [ ] write tests: створення/зміна/видалення коригування через API; серіалізація
+- [x] прокинути коригування з роутера в `update_draft`
+- [x] write tests: створення/зміна/видалення коригування через API; серіалізація
   тоталів і прив'язки
-- [ ] write tests: валідація (галочка лише для від'ємної; невалідна категорія;
+- [x] write tests: валідація (галочка лише для від'ємної; невалідна категорія;
   редагування non-draft → `409`)
-- [ ] run tests — must pass before task 4
+- [x] run tests — must pass before task 4
 
 ### Task 4: Backup/Restore покриття
 

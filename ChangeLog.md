@@ -1,5 +1,22 @@
 # ChangeLog
 
+## [2026-07-22 14:55] Task 3: API-схеми коригувань рахунку
+
+- `backend/app/schemas.py`, `backend/app/routers/invoices.py` — додано валідований
+  список коригувань у `InvoiceUpdate`, nullable `service_id` у рядках/попередженнях
+  і передавання payload до білінгу.
+- `backend/app/services/billing.py` — відповідь рахунку тепер містить
+  `adjustments_total`, канонічний `kind`, сумісний `service_kind`, мітку та компактну
+  прив'язку авто-витрати; витрати рядків завантажуються разом із рахунком.
+- `backend/tests/test_invoices.py` — перевірено API create/update/delete, тотали,
+  серіалізацію витрати, від'ємний знак, категорію та конфлікт non-draft.
+  Валідація: backend 234 passed, Ruff чисто — усе через Docker.
+- `docs/plans/20260722-invoice-adjustment-lines.md` — Task 3 позначено виконаним;
+  до переліку файлів додано billing-серіалізатор, потрібний для контракту відповіді.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  перед розгортанням потрібен backup `data/`, потім rebuild/restart за
+  `docs/deploy.md` із застосуванням міграції `20260722_09` з Task 1.
+
 ## [2026-07-22 14:46] Task 2: білінг коригувань та авто-витрат
 
 - `backend/app/services/billing.py` — перерахунок розділяє комунальні послуги й

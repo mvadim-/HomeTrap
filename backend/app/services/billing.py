@@ -352,7 +352,7 @@ def delete_draft(session: Session, invoice_id: int) -> None:
 def get_invoice(session: Session, invoice_id: int) -> Invoice:
     invoice = session.scalar(
         select(Invoice)
-        .options(selectinload(Invoice.lines))
+        .options(selectinload(Invoice.lines).selectinload(InvoiceLine.expense))
         .where(Invoice.id == invoice_id)
     )
     if invoice is None:
@@ -502,6 +502,26 @@ def warnings_for(session: Session, invoice: Invoice) -> list[dict[str, object]]:
 
 
 def invoice_response(session: Session, invoice: Invoice) -> dict[str, object]:
+    lines = [
+        {
+            "id": line.id,
+            "service_id": line.service_id,
+            "service_name": line.service_name,
+            "kind": line.service_kind,
+            "service_kind": line.service_kind,
+            "prev_reading": line.prev_reading,
+            "curr_reading": line.curr_reading,
+            "consumed": line.consumed,
+            "tariff_value": line.tariff_value,
+            "amount": line.amount,
+            "expense": (
+                {"id": line.expense.id, "category": line.expense.category}
+                if line.expense is not None
+                else None
+            ),
+        }
+        for line in invoice.lines
+    ]
     return {
         "id": invoice.id,
         "apartment_id": invoice.apartment_id,
@@ -513,7 +533,8 @@ def invoice_response(session: Session, invoice: Invoice) -> dict[str, object]:
         "rent_amount_usd": invoice.rent_amount_usd,
         "rent_amount_uah": invoice.rent_amount_uah,
         "utilities_total": invoice.utilities_total,
+        "adjustments_total": invoice.adjustments_total,
         "grand_total": invoice.grand_total,
-        "lines": invoice.lines,
+        "lines": lines,
         "warnings": warnings_for(session, invoice),
     }
