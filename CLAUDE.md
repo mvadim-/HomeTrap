@@ -65,6 +65,17 @@ Always provide deployment instructions for any code that is meant to run in prod
   separate `unconverted` bucket instead of being silently coerced to zero, and any
   derived total that excludes them (net, margin) must be flagged incomplete in the UI.
 
+### Invoice Adjustment Invariants
+
+- Invoice adjustments are one-off `InvoiceLine` records, not reusable services. Keep
+  `service_id` null, `service_kind` equal to `adjustment`, and `tariff_value` equal to
+  zero; include their signed amount only in `adjustments_total` and `grand_total`.
+- A negative adjustment may own one linked `Expense` through `invoice_line_id`.
+  Create, update, or remove that expense only through draft invoice updates, keep it
+  read-only in the expense UI, and preserve invoice-line CASCADE semantics.
+- Exclude linked expenses of draft invoices from P&L. Include them only after the
+  invoice is issued or paid so compensation reduces net income exactly once.
+
 ### Frontend Styling Conventions
 
 - Treat `frontend/src/theme.css` as the source of truth for light and dark design

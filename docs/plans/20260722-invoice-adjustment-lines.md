@@ -329,12 +329,13 @@
 - [x] run full frontend suite + `npm run build`
 
 ### Task 10: [Final] Update documentation
-- [ ] `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, файли, поведінка, примітка про
+- [x] `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, файли, поведінка, примітка про
   міграцію `20260722_09` і деплой)
-- [ ] README.md: описати рядок-коригування/компенсацію в рахунку
-- [ ] CLAUDE.md: за потреби (патерн авто-expense, прив'язаної до invoice-лінії)
-- [ ] `docs/improvements-backlog.md`: занотувати як покращення білінгу/P&L
-- [ ] окремий git-коміт циклу; move this plan to `docs/plans/completed/`
+- [x] README.md: описати рядок-коригування/компенсацію в рахунку
+- [x] CLAUDE.md: за потреби (патерн авто-expense, прив'язаної до invoice-лінії)
+- [x] `docs/improvements-backlog.md`: занотувати як покращення білінгу/P&L
+- [x] окремий git-коміт циклу; terminal move до `docs/plans/completed/`
+  відкладено оркестратору після review-фаз
 
 ## Post-Completion
 *Ручні дії та зовнішні системи — інформаційно, без checkbox*
