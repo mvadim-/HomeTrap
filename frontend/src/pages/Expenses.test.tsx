@@ -12,13 +12,18 @@ const apartment: apiClient.Apartment = {
 };
 
 const expense: apiClient.Expense = {
-  id: 10, apartment_id: 1, date: "2026-07-15", category: "repair",
+  id: 10, apartment_id: 1, invoice_line_id: null, date: "2026-07-15", category: "repair",
   amount: "1500.00", currency: "UAH", notes: "Фарба",
 };
 
 const generalExpense: apiClient.Expense = {
-  id: 11, apartment_id: null, date: "2026-07-10", category: "tax",
+  id: 11, apartment_id: null, invoice_line_id: null, date: "2026-07-10", category: "tax",
   amount: "800.00", currency: "UAH", notes: null,
+};
+
+const linkedExpense: apiClient.Expense = {
+  id: 12, apartment_id: 1, invoice_line_id: 42, date: "2026-07-20", category: "repair",
+  amount: "2500.00", currency: "UAH", notes: "Ремонт котла",
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -100,6 +105,23 @@ describe("Expenses", () => {
 
     await user.click(await screen.findByRole("button", { name: "Видалити" }));
     expect(remove).toHaveBeenCalledWith(10);
+  });
+
+  it("shows a linked invoice expense as read-only", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue([apartment]);
+    vi.spyOn(apiClient, "getExpenses").mockResolvedValue([linkedExpense, expense]);
+
+    render(<MemoryRouter><Expenses /></MemoryRouter>);
+
+    const linkedRow = (await screen.findByText("Ремонт котла")).closest("tr");
+    expect(within(linkedRow!).getByText("з рахунку")).toBeInTheDocument();
+    expect(within(linkedRow!).getByText("Керується в рахунку")).toBeInTheDocument();
+    expect(within(linkedRow!).queryByRole("button", { name: "Редагувати" })).not.toBeInTheDocument();
+    expect(within(linkedRow!).queryByRole("button", { name: "Видалити" })).not.toBeInTheDocument();
+
+    const regularRow = screen.getByText("Фарба").closest("tr");
+    expect(within(regularRow!).getByRole("button", { name: "Редагувати" })).toBeEnabled();
+    expect(within(regularRow!).getByRole("button", { name: "Видалити" })).toBeEnabled();
   });
 
   it("rejects a non-positive amount without calling the API", async () => {

@@ -219,6 +219,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
 export interface Expense {
   id: number;
   apartment_id: number | null;
+  invoice_line_id: number | null;
   date: string;
   category: ExpenseCategory;
   amount: string;

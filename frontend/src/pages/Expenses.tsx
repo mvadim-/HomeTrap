@@ -153,11 +153,16 @@ export function Expenses() {
                     <td>{apartmentLabel(expense.apartment_id)}</td>
                     <td>{EXPENSE_CATEGORY_LABELS[expense.category] ?? expense.category}</td>
                     <td><strong>{formatAmount(expense.amount, expense.currency)}</strong></td>
-                    <td>{expense.notes ?? "—"}</td>
                     <td>
-                      <button className="table-action" type="button" onClick={() => beginEdit(expense)}>Редагувати</button>
-                      {" · "}
-                      <button className="table-action" type="button" onClick={() => remove(expense.id)}>Видалити</button>
+                      {expense.notes ?? "—"}
+                      {expense.invoice_line_id !== null && <div className="muted-text">з рахунку</div>}
+                    </td>
+                    <td>
+                      {expense.invoice_line_id === null ? <>
+                        <button className="table-action" type="button" onClick={() => beginEdit(expense)}>Редагувати</button>
+                        {" · "}
+                        <button className="table-action" type="button" onClick={() => remove(expense.id)}>Видалити</button>
+                      </> : <span className="muted-text">Керується в рахунку</span>}
                     </td>
                   </tr>
                 ))}

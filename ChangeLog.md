@@ -1,5 +1,20 @@
 # ChangeLog
 
+## [2026-07-22 15:18] Task 7: read-only авто-витрати з рахунків
+
+- `backend/app/schemas.py`, `frontend/src/api/client.ts` — expense API-контракт
+  тепер повертає nullable `invoice_line_id`, щоб UI відрізняв авто-витрати.
+- `frontend/src/pages/Expenses.tsx` — прив'язані до рахунка витрати позначаються
+  як «з рахунку» і не мають дій редагування/видалення; звичайні витрати
+  зберігають обидві дії.
+- `backend/tests/test_expenses.py`, `frontend/src/pages/Expenses.test.tsx` — перевірено
+  нове поле API, read-only стан прив'язаної витрати та незмінну редагованість
+  звичайної.
+- `docs/plans/20260722-invoice-adjustment-lines.md` — Task 7 позначено виконаним.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  після backup і застосування міграції `20260722_09` потрібно перебудувати та
+  перезапустити застосунок за `docs/deploy.md`.
+
 ## [2026-07-22 15:16] Task 6: UI коригувань рахунку
 
 - `frontend/src/components/InvoiceCalculator.tsx`, `frontend/src/pages/portal.css` —

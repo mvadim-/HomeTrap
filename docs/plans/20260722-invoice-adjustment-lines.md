@@ -285,11 +285,11 @@
 - Modify: `frontend/src/pages/Expenses.tsx`
 - Modify: `frontend/src/pages/Expenses.test.tsx`
 
-- [ ] прив'язані (авто) витрати (`invoice_line_id != null`) показуються з
+- [x] прив'язані (авто) витрати (`invoice_line_id != null`) показуються з
   приміткою «з рахунку»; кнопки «Редагувати»/«Видалити» вимкнені/приховані
   (керування лише через рахунок)
-- [ ] write tests: прив'язана витрата read-only; звичайна — редагована як зараз
-- [ ] run tests — must pass before task 8
+- [x] write tests: прив'язана витрата read-only; звичайна — редагована як зараз
+- [x] run tests — must pass before task 8
 
 ### Task 8: Агрегації — income/adjustments, P&L draft-фільтр, dashboard
 

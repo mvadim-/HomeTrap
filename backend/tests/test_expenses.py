@@ -81,6 +81,7 @@ async def test_expense_crud_happy_path(tmp_path) -> None:
         assert expense["category"] == "repair"
         assert expense["amount"] == "1200.50"
         assert expense["currency"] == "UAH"
+        assert expense["invoice_line_id"] is None
         expense_id = expense["id"]
 
         listed = await client.get("/api/expenses")

@@ -168,6 +168,7 @@ class ExpenseUpdate(ApiSchema):
 
 class ExpenseResponse(ExpenseBase):
     id: int
+    invoice_line_id: int | None
 
 
 class TariffCreate(ApiSchema):
