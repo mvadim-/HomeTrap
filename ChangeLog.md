@@ -1,5 +1,18 @@
 # ChangeLog
 
+## [2026-07-22 15:40] Task 9: верифікація критеріїв коригувань
+
+- `backend/tests/test_billing.py` — додано окрему regression-перевірку, що велика
+  від'ємна компенсація коректно формує від'ємний `grand_total`.
+- Звірено acceptance та edge cases: життєвий цикл авто-витрати, CASCADE,
+  non-draft guard, симетрію draft/issued P&L, read-only витрати, income/top service,
+  графік і backup/restore round-trip мають пряме тестове покриття.
+- У Docker пройдено 240 backend-тестів, Ruff, 208 frontend-тестів і production
+  build; `docs/plans/20260722-invoice-adjustment-lines.md` — Task 9 виконано.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  перед розгортанням потрібен backup `data/`, потім rebuild/restart за
+  `docs/deploy.md` із застосуванням міграції `20260722_09`.
+
 ## [2026-07-22 15:34] Task 8: агрегати коригувань і симетричний P&L
 
 - `backend/app/routers/stats.py`, `backend/app/schemas.py` — income API повертає

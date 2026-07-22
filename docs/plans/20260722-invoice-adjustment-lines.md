@@ -317,16 +317,16 @@
 - [x] run tests — must pass before task 9
 
 ### Task 9: Verify acceptance criteria
-- [ ] перевірити вимоги Overview: рядок-коригування зменшує рахунок; галочка
+- [x] перевірити вимоги Overview: рядок-коригування зменшує рахунок; галочка
   створює прив'язану витрату; P&L падає на суму компенсації рівно раз;
   прив'язані витрати read-only; тотали/графік сходяться
-- [ ] edge cases: зняття галочки видаляє витрату; видалення лінії/рахунку
+- [x] edge cases: зняття галочки видаляє витрату; видалення лінії/рахунку
   (CASCADE); редагування non-draft заблоковане; grand_total від'ємний;
   **P&L не рахує компенсацію поки рахунок чернетка, рахує після виставлення**;
   income top_service ігнорує коригування; backup/restore round-trip (у т.ч.
   прив'язка до пропущеної лінії)
-- [ ] run full backend suite + `ruff check .`
-- [ ] run full frontend suite + `npm run build`
+- [x] run full backend suite + `ruff check .`
+- [x] run full frontend suite + `npm run build`
 
 ### Task 10: [Final] Update documentation
 - [ ] `ChangeLog.md` (`## [YYYY-MM-DD HH:MM] …`, файли, поведінка, примітка про

@@ -203,6 +203,30 @@ def test_recalculate_separates_adjustments_from_utilities() -> None:
     assert invoice.grand_total == Decimal("850.00")
 
 
+def test_recalculate_allows_negative_grand_total() -> None:
+    invoice = Invoice(
+        exchange_rate=Decimal("1.000000"),
+        rent_amount_usd=Decimal("1000.00"),
+        rent_amount_uah=Decimal("0.00"),
+        utilities_total=Decimal("0.00"),
+        adjustments_total=Decimal("0.00"),
+        grand_total=Decimal("0.00"),
+    )
+    invoice.lines.append(
+        InvoiceLine(
+            service_name="Компенсація ремонту",
+            service_kind="adjustment",
+            tariff_value=Decimal("0"),
+            amount=Decimal("-1250.00"),
+        )
+    )
+
+    recalculate(invoice)
+
+    assert invoice.adjustments_total == Decimal("-1250.00")
+    assert invoice.grand_total == Decimal("-250.00")
+
+
 def test_update_draft_syncs_adjustment_and_expense_lifecycle(db_session) -> None:
     invoice_id = _seed_service_draft(db_session)
 
