@@ -233,19 +233,19 @@
 - Modify: `backend/tests/test_restore.py`
 - Modify: `backend/tests/test_backup.py`
 
-- [ ] `_import_invoice_lines`: nullable `service_id`
+- [x] `_import_invoice_lines`: nullable `service_id`
   (`service_map[sid].id if sid is not None else None` — не `service_map[None]`)
   + `adjustment` kind; будувати `line_map` old→new id (лише для реально
   доданих ліній)
-- [ ] `_import_invoices`: копіювати `adjustments_total`; `_import_expenses`:
+- [x] `_import_invoices`: копіювати `adjustments_total`; `_import_expenses`:
   remap `invoice_line_id` через **`line_map.get(old)`** (miss → `None`)
-- [ ] звірити інваріант CLAUDE.md (copied fields, порядок імпорту, ідемпотентність)
-- [ ] write tests (round-trip): adjustment-лінія + `adjustments_total` +
+- [x] звірити інваріант CLAUDE.md (copied fields, порядок імпорту, ідемпотентність)
+- [x] write tests (round-trip): adjustment-лінія + `adjustments_total` +
   прив'язана витрата (`invoice_line_id`) переживають export→import; ремап
   коректний; повторний import ідемпотентний
-- [ ] write tests: витрата, прив'язана до лінії **наявного** (пропущеного при
+- [x] write tests: витрата, прив'язана до лінії **наявного** (пропущеного при
   merge) рахунка — `invoice_line_id` стає `None`, без KeyError, без дубля
-- [ ] run tests — must pass before task 5
+- [x] run tests — must pass before task 5
 
 ### Task 5: Клієнтські типи й API
 

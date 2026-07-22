@@ -4,6 +4,7 @@ from hashlib import sha256
 from pathlib import Path
 import sqlite3
 from threading import Barrier, Thread
+from zipfile import ZipFile
 
 import pytest
 from sqlalchemy import func, select
@@ -28,6 +29,7 @@ from app.models import (
     TenantAttachment,
     User,
 )
+from app.services.backup import build_backup
 from app.services.restore import (
     RestoreValidationError,
     import_backup,
@@ -162,6 +164,47 @@ def _create_source(tmp_path: Path) -> tuple[Path, Path, dict[str, object]]:
     source_attachment.parent.mkdir(parents=True)
     source_attachment.write_bytes(b"contract-content")
     return database_path, uploads_dir, source_ids
+
+
+def _add_adjustment_source(database_path: Path) -> dict[str, object]:
+    engine = create_database_engine(database_path)
+    session = create_session_factory(engine)()
+    try:
+        invoice = session.scalar(select(Invoice))
+        assert invoice is not None
+        apartment = invoice.apartment
+        invoice.adjustments_total = Decimal("-125.00")
+        invoice.grand_total = Decimal("21057.00")
+        adjustment = InvoiceLine(
+            id=47,
+            invoice=invoice,
+            service_id=None,
+            service_name="Компенсація ремонту",
+            service_kind="adjustment",
+            prev_reading=None,
+            curr_reading=None,
+            consumed=None,
+            tariff_value=Decimal("0.00000"),
+            amount=Decimal("-125.00"),
+        )
+        expense = Expense(
+            apartment=apartment,
+            invoice_line=adjustment,
+            date=invoice.period,
+            category="repair",
+            amount=Decimal("125.00"),
+            currency="UAH",
+            notes="Компенсація ремонту",
+        )
+        session.add(expense)
+        session.commit()
+        return {
+            "line_id": adjustment.id,
+            "expense_key": expense.restore_key,
+        }
+    finally:
+        session.close()
+        engine.dispose()
 
 
 def _manifest(database_path: Path, **overrides: object) -> dict[str, object]:
@@ -309,6 +352,125 @@ def test_import_expenses_is_idempotent(
     assert second.added["expenses"] == 0
     assert second.skipped["expenses"] == 2
     assert db_session.scalar(select(func.count()).select_from(Expense)) == 2
+
+
+def test_backup_restore_round_trips_adjustment_and_linked_expense_idempotently(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path / "source")
+    source_ids = _add_adjustment_source(database_path)
+    snapshot_path = tmp_path / "snapshot.db"
+
+    with build_backup(database_path, backup_uploads) as backup_path:
+        with ZipFile(backup_path) as archive:
+            snapshot_path.write_bytes(archive.read("hometrap.db"))
+
+    first = import_backup(
+        snapshot_path,
+        backup_uploads,
+        db_session,
+        tmp_path / "live-uploads",
+    )
+
+    invoice = db_session.scalar(select(Invoice))
+    adjustment = db_session.scalar(
+        select(InvoiceLine).where(InvoiceLine.service_kind == "adjustment")
+    )
+    expense = db_session.scalar(
+        select(Expense).where(Expense.restore_key == source_ids["expense_key"])
+    )
+    assert first.added["invoice_lines"] == 2
+    assert first.added["expenses"] == 3
+    assert invoice is not None
+    assert invoice.adjustments_total == Decimal("-125.00")
+    assert invoice.grand_total == Decimal("21057.00")
+    assert adjustment is not None
+    assert adjustment.id != source_ids["line_id"]
+    assert adjustment.service_id is None
+    assert adjustment.service_name == "Компенсація ремонту"
+    assert adjustment.amount == Decimal("-125.00")
+    assert expense is not None
+    assert expense.invoice_line_id == adjustment.id
+
+    second = import_backup(
+        snapshot_path,
+        backup_uploads,
+        db_session,
+        tmp_path / "live-uploads",
+    )
+
+    assert set(second.added.values()) == {0}
+    assert second.skipped["invoice_lines"] == 2
+    assert second.skipped["expenses"] == 3
+    assert db_session.scalar(
+        select(func.count()).select_from(InvoiceLine).where(
+            InvoiceLine.service_kind == "adjustment"
+        )
+    ) == 1
+    assert db_session.scalar(
+        select(func.count()).select_from(Expense).where(
+            Expense.restore_key == source_ids["expense_key"]
+        )
+    ) == 1
+
+
+def test_import_unlinks_expense_when_existing_invoice_lines_are_skipped(
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    database_path, backup_uploads, _ = _create_source(tmp_path / "source")
+    source_ids = _add_adjustment_source(database_path)
+    apartment = Apartment(
+        name="Квартира 1",
+        address="Київ, Хрещатик, 1",
+        rent_amount=Decimal("500.00"),
+        rent_currency="USD",
+    )
+    existing_invoice = Invoice(
+        apartment=apartment,
+        period=date(2026, 6, 1),
+        status="issued",
+        exchange_rate=Decimal("41.500000"),
+        rent_amount_usd=Decimal("500.00"),
+        rent_amount_uah=Decimal("20750.00"),
+        utilities_total=Decimal("0.00"),
+        adjustments_total=Decimal("0.00"),
+        grand_total=Decimal("20750.00"),
+    )
+    db_session.add(existing_invoice)
+    db_session.commit()
+
+    first = import_backup(
+        database_path,
+        backup_uploads,
+        db_session,
+        tmp_path / "live-uploads",
+    )
+
+    linked_expense = db_session.scalar(
+        select(Expense).where(Expense.restore_key == source_ids["expense_key"])
+    )
+    assert first.skipped["invoices"] == 1
+    assert first.skipped["invoice_lines"] == 2
+    assert first.added["expenses"] == 3
+    assert linked_expense is not None
+    assert linked_expense.invoice_line_id is None
+
+    second = import_backup(
+        database_path,
+        backup_uploads,
+        db_session,
+        tmp_path / "live-uploads",
+    )
+
+    assert second.added["expenses"] == 0
+    assert second.skipped["expenses"] == 3
+    assert db_session.scalar(
+        select(func.count()).select_from(Expense).where(
+            Expense.restore_key == source_ids["expense_key"]
+        )
+    ) == 1
 
 
 def test_import_keeps_existing_values_and_is_idempotent(

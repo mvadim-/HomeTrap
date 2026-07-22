@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 import pytest
 
 from app.main import APP_VERSION
-from app.models import Apartment, Tenant, TenantAttachment
+from app.models import Apartment, Expense, Invoice, InvoiceLine, Tenant, TenantAttachment
 import app.services.backup as backup_service
 import app.services.backup_limits as backup_limits
 from app.services.backup import BackupLimitError, build_backup
@@ -73,6 +74,72 @@ def test_build_backup_snapshot_is_a_readable_database(
 
     assert revision is not None
     assert expenses_table is not None
+
+
+def test_build_backup_snapshot_preserves_adjustment_and_expense_link(
+    db_engine: Engine,
+    db_session: Session,
+    tmp_path: Path,
+) -> None:
+    apartment = Apartment(
+        name="Квартира з коригуванням",
+        address="Київ",
+        rent_amount=Decimal("500.00"),
+        rent_currency="USD",
+    )
+    invoice = Invoice(
+        apartment=apartment,
+        period=date(2026, 7, 1),
+        status="draft",
+        exchange_rate=Decimal("41.500000"),
+        rent_amount_usd=Decimal("500.00"),
+        rent_amount_uah=Decimal("20750.00"),
+        utilities_total=Decimal("0.00"),
+        adjustments_total=Decimal("-125.00"),
+        grand_total=Decimal("20625.00"),
+    )
+    adjustment = InvoiceLine(
+        invoice=invoice,
+        service_id=None,
+        service_name="Компенсація ремонту",
+        service_kind="adjustment",
+        tariff_value=Decimal("0.00000"),
+        amount=Decimal("-125.00"),
+    )
+    expense = Expense(
+        apartment=apartment,
+        invoice_line=adjustment,
+        date=invoice.period,
+        category="repair",
+        amount=Decimal("125.00"),
+        currency="UAH",
+        notes="Компенсація ремонту",
+    )
+    db_session.add(expense)
+    db_session.commit()
+    extracted_database = tmp_path / "adjustment-snapshot.db"
+
+    with build_backup(_database_path(db_engine), tmp_path / "uploads") as backup_path:
+        with ZipFile(backup_path) as archive:
+            extracted_database.write_bytes(archive.read("hometrap.db"))
+
+    with sqlite3.connect(extracted_database) as connection:
+        invoice_row = connection.execute(
+            "SELECT adjustments_total, grand_total FROM invoices WHERE id = ?",
+            (invoice.id,),
+        ).fetchone()
+        line_row = connection.execute(
+            "SELECT service_id, service_kind, amount FROM invoice_lines WHERE id = ?",
+            (adjustment.id,),
+        ).fetchone()
+        expense_row = connection.execute(
+            "SELECT invoice_line_id FROM expenses WHERE id = ?",
+            (expense.id,),
+        ).fetchone()
+
+    assert invoice_row == (-125, 20625)
+    assert line_row == (None, "adjustment", -125)
+    assert expense_row == (adjustment.id,)
 
 
 def test_build_backup_supports_empty_uploads_and_cleans_temporary_files(

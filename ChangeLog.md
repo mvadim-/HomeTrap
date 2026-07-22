@@ -1,5 +1,19 @@
 # ChangeLog
 
+## [2026-07-22 15:03] Task 4: backup/restore коригувань рахунку
+
+- `backend/app/services/restore.py` — restore копіює `adjustments_total`, підтримує
+  adjustment-рядки без `service_id`, ремапить нові invoice line ID та безпечно
+  відв'язує витрату, якщо її рядок пропущено під час merge наявного рахунка.
+- `backend/tests/test_restore.py`, `backend/tests/test_backup.py` — перевірено
+  snapshot і повний export→import round-trip коригування з авто-витратою,
+  ремап зв'язку, повторний ідемпотентний import і missing-line merge без дубля.
+  Валідація: backend 237 passed, Ruff чисто — усе через Docker.
+- `docs/plans/20260722-invoice-adjustment-lines.md` — Task 4 позначено виконаним.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  перед розгортанням потрібен backup `data/`, потім rebuild/restart за
+  `docs/deploy.md` із застосуванням міграції `20260722_09` з Task 1.
+
 ## [2026-07-22 14:55] Task 3: API-схеми коригувань рахунку
 
 - `backend/app/schemas.py`, `backend/app/routers/invoices.py` — додано валідований

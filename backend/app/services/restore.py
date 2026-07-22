@@ -597,6 +597,7 @@ class ImportContext:
     service_map: dict[int, Service] = field(default_factory=dict)
     tenant_map: dict[int, Tenant] = field(default_factory=dict)
     invoice_map: dict[int, Invoice] = field(default_factory=dict)
+    line_map: dict[int, int] = field(default_factory=dict)
     new_invoice_ids: set[int] = field(default_factory=set)
     next_ids: dict[type, int] = field(init=False)
 
@@ -850,6 +851,7 @@ def _import_invoices(context: ImportContext) -> None:
                 "rent_amount_usd",
                 "rent_amount_uah",
                 "utilities_total",
+                "adjustments_total",
                 "grand_total",
             ),
         )
@@ -866,22 +868,27 @@ def _import_invoice_lines(context: ImportContext) -> None:
         if source.invoice_id not in context.new_invoice_ids:
             context.summary.skipped["invoice_lines"] += 1
             continue
-        context.live_session.add(
-            InvoiceLine(
-                invoice_id=context.invoice_map[source.invoice_id].id,
-                service_id=context.service_map[source.service_id].id,
-                **_copy_columns(
-                    source,
-                    "service_name",
-                    "service_kind",
-                    "prev_reading",
-                    "curr_reading",
-                    "consumed",
-                    "tariff_value",
-                    "amount",
-                ),
-            )
+        line = InvoiceLine(
+            invoice_id=context.invoice_map[source.invoice_id].id,
+            service_id=(
+                context.service_map[source.service_id].id
+                if source.service_id is not None
+                else None
+            ),
+            **_copy_columns(
+                source,
+                "service_name",
+                "service_kind",
+                "prev_reading",
+                "curr_reading",
+                "consumed",
+                "tariff_value",
+                "amount",
+            ),
         )
+        context.live_session.add(line)
+        context.live_session.flush()
+        context.line_map[source.id] = line.id
         context.summary.added["invoice_lines"] += 1
 
 
@@ -907,6 +914,7 @@ def _import_expenses(context: ImportContext) -> None:
         apartment_id = None
         if source.apartment_id is not None:
             apartment_id = context.apartment_map[source.apartment_id].id
+        invoice_line_id = context.line_map.get(source.invoice_line_id)
         _existing_or_add(
             context.live_session,
             context.summary,
@@ -914,6 +922,7 @@ def _import_expenses(context: ImportContext) -> None:
             select(Expense).where(Expense.restore_key == source.restore_key),
             Expense(
                 apartment_id=apartment_id,
+                invoice_line_id=invoice_line_id,
                 **_copy_columns(
                     source,
                     "restore_key",
