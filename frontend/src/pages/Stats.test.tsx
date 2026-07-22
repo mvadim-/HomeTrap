@@ -1204,6 +1204,24 @@ describe("Stats", () => {
     expect(screen.queryByLabelText("Підсумки P&L")).not.toBeInTheDocument();
   });
 
+  it("shows the unconverted warning when only unconverted expenses exist", async () => {
+    vi.spyOn(apiClient, "getApartments").mockResolvedValue(apartments);
+    vi.spyOn(apiClient, "getConsumptionStats").mockResolvedValue({ apartment_id: 1, months: 12, series: [] });
+    vi.spyOn(apiClient, "getIncomeStats").mockResolvedValue(incomeStats());
+    vi.spyOn(apiClient, "getPnlStats").mockResolvedValue(pnlStats({
+      values: [],
+      totals: { income: "0.00", expenses_total: "0.00", expenses_by_category: {}, net: "0.00", margin_percent: null },
+      unconverted: { count: 2, by_currency: { EUR: "300.00" } },
+    }));
+
+    renderStats();
+
+    const note = await screen.findByRole("note");
+    expect(note).toHaveTextContent(/2 витрат неконвертовано/);
+    expect(note).toHaveTextContent(/300 EUR/);
+    expect(screen.queryByText("Ще немає даних P&L за вибраний період.")).not.toBeInTheDocument();
+  });
+
   it("flags the net and margin as incomplete when expenses are unconverted", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date(2026, 6, 16));

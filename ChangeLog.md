@@ -1,5 +1,17 @@
 # ChangeLog
 
+## [2026-07-22 08:20] Виправлення code review (codex): P&L неповні дані
+
+- **Frontend:** `frontend/src/pages/Stats.tsx` — коли період має лише
+  неконвертовані витрати (`values: []`, `unconverted.count > 0`), P&L більше
+  не показує оманливе «немає даних», а виводить попередження про
+  неконвертовані витрати. Тест `frontend/src/pages/Stats.test.tsx`
+  («shows the unconverted warning when only unconverted expenses exist»).
+- **Docs:** `ChangeLog.md` — актуалізовано лічильники тестів (backend 225 /
+  frontend 197).
+- **Валідація:** backend pytest 225 passed, ruff чисто; frontend 197 passed,
+  `npm run build` — OK.
+
 ## [2026-07-21 22:30] Фіча #7 + #10: облік витрат, P&L і тренди статистики (завершено)
 
 Зведений запис по завершеній фічі (деталі по тасках — у записах нижче).
@@ -33,9 +45,9 @@
   `frontend/src/theme.css` (усі три блоки) і стилі в
   `frontend/src/pages/portal.css`.
 - **Тести:** backend (`test_models`, `test_expenses`, `test_stats`,
-  `test_restore`, `test_backup`, `test_settings`) — 222 passed, ruff чисто;
+  `test_restore`, `test_backup`, `test_settings`) — 225 passed, ruff чисто;
   frontend (`client.test.ts`, `Expenses.test.tsx`, `Stats.test.tsx`) —
-  193 passed; `npm run build` — OK.
+  197 passed; `npm run build` — OK.
 - **Документація:** оновлено `README.md` (розділ «Витрати та P&L», розширено
   «Статистика»), `docs/improvements-backlog.md` (#7 → ✔️ готово, примітка #10),
   `CLAUDE.md` (патерн read-only курсу для агрегацій).

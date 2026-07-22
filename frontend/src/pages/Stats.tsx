@@ -1098,6 +1098,14 @@ export function Stats() {
               </div>
             )}
           </>
+        ) : pnl.unconverted.count > 0 ? (
+          <p className="pnl-unconverted-note" role="note">
+            {`${pnl.unconverted.count} витрат неконвертовано (немає збереженого курсу): `}
+            {Object.entries(pnl.unconverted.by_currency)
+              .map(([currency, amount]) => `${numberLabel(Number(amount))} ${currency}`)
+              .join(", ")}
+            {" — їх виключено з витрат, тож дані P&L за вибраний період неповні."}
+          </p>
         ) : (
           <p className="empty-state">Ще немає даних P&amp;L за вибраний період.</p>
         )}
