@@ -192,19 +192,19 @@
 - Modify: `backend/app/services/billing.py`
 - Modify: `backend/tests/test_billing.py`
 
-- [ ] `recalculate`: `utilities_total` = metered+fixed; `adjustments_total` =
+- [x] `recalculate`: `utilities_total` = metered+fixed; `adjustments_total` =
   adjustment-лінії; `grand_total = rent + utilities + adjustments`
-- [ ] розширити `update_draft`: приймати коригування (add/edit/delete за `id`)
+- [x] розширити `update_draft`: приймати коригування (add/edit/delete за `id`)
   поряд із `readings`/`exchange_rate`; лише для draft
-- [ ] авто-expense sync під write-session: create/update/delete прив'язаної
+- [x] авто-expense sync під write-session: create/update/delete прив'язаної
   `Expense` за станом `record_as_expense`+`category`; **флаш нової лінії перед
   створенням витрати** (потрібен `invoice_line_id`); ідемпотентно (без дублів
   при повторному save/recalculate); adjustment-лінія має `tariff_value=0`
-- [ ] write tests: recalculate з коригуванням (тотали й grand_total);
+- [x] write tests: recalculate з коригуванням (тотали й grand_total);
   add/edit/delete коригування; галочка створює/оновлює/видаляє витрату
-- [ ] write tests: `record_as_expense` лише для від'ємної суми; non-draft →
+- [x] write tests: `record_as_expense` лише для від'ємної суми; non-draft →
   помилка; видалення лінії прибирає витрату (CASCADE)
-- [ ] run tests — must pass before task 3
+- [x] run tests — must pass before task 3
 
 ### Task 3: Схеми та API рахунку
 

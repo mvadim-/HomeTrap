@@ -10,12 +10,15 @@ from sqlalchemy import select
 from app.config import Settings
 from app.db import create_database_engine, create_session_factory
 from app.main import create_app
-from app.models import Apartment, Invoice, InvoiceLine, Service, Tariff
+from app.models import Apartment, Expense, Invoice, InvoiceLine, Service, Tariff
 from app.services.billing import (
     BillingConflictError,
+    BillingValidationError,
     delete_draft,
     get_invoice,
+    recalculate,
     transition_invoice,
+    update_draft,
 )
 from app.services.nbu import RateResult
 
@@ -126,6 +129,232 @@ def _seed_billing_data(
         result = apartment.id, gas.id
     engine.dispose()
     return result
+
+
+def _seed_service_draft(session) -> int:
+    apartment = Apartment(
+        name="Квартира для коригувань",
+        address="Київ",
+        rent_amount=Decimal("1000.00"),
+        rent_currency="UAH",
+    )
+    service = Service(
+        apartment=apartment,
+        name="Утримання будинку",
+        kind="fixed",
+        unit="грн",
+        sort_order=1,
+    )
+    invoice = Invoice(
+        apartment=apartment,
+        period=date(2026, 7, 1),
+        status="draft",
+        exchange_rate=Decimal("1.000000"),
+        rent_amount_usd=Decimal("1000.00"),
+        rent_amount_uah=Decimal("1000.00"),
+        utilities_total=Decimal("100.00"),
+        adjustments_total=Decimal("0.00"),
+        grand_total=Decimal("1100.00"),
+    )
+    invoice.lines.append(
+        InvoiceLine(
+            service=service,
+            service_name=service.name,
+            service_kind="fixed",
+            tariff_value=Decimal("100.00000"),
+            amount=Decimal("100.00"),
+        )
+    )
+    session.add(invoice)
+    session.commit()
+    return invoice.id
+
+
+def test_recalculate_separates_adjustments_from_utilities() -> None:
+    invoice = Invoice(
+        exchange_rate=Decimal("1.000000"),
+        rent_amount_usd=Decimal("1000.00"),
+        rent_amount_uah=Decimal("0.00"),
+        utilities_total=Decimal("0.00"),
+        adjustments_total=Decimal("0.00"),
+        grand_total=Decimal("0.00"),
+    )
+    invoice.lines.extend(
+        [
+            InvoiceLine(
+                service_name="Утримання будинку",
+                service_kind="fixed",
+                tariff_value=Decimal("100.00000"),
+                amount=Decimal("100.00"),
+            ),
+            InvoiceLine(
+                service_name="Компенсація ремонту",
+                service_kind="adjustment",
+                tariff_value=Decimal("0"),
+                amount=Decimal("-250.00"),
+            ),
+        ]
+    )
+
+    recalculate(invoice)
+
+    assert invoice.utilities_total == Decimal("100.00")
+    assert invoice.adjustments_total == Decimal("-250.00")
+    assert invoice.grand_total == Decimal("850.00")
+
+
+def test_update_draft_syncs_adjustment_and_expense_lifecycle(db_session) -> None:
+    invoice_id = _seed_service_draft(db_session)
+
+    created = update_draft(
+        db_session,
+        invoice_id,
+        None,
+        {},
+        [
+            {
+                "label": "Компенсація ремонту котла",
+                "amount": Decimal("-250.00"),
+                "record_as_expense": True,
+                "category": "repair",
+            }
+        ],
+    )
+    adjustment = next(
+        line for line in created.lines if line.service_kind == "adjustment"
+    )
+    expense = db_session.scalar(
+        select(Expense).where(Expense.invoice_line_id == adjustment.id)
+    )
+    assert adjustment.service_id is None
+    assert adjustment.tariff_value == Decimal("0.00000")
+    assert created.utilities_total == Decimal("100.00")
+    assert created.adjustments_total == Decimal("-250.00")
+    assert created.grand_total == Decimal("850.00")
+    assert expense is not None
+    assert expense.apartment_id == created.apartment_id
+    assert expense.date == date(2026, 7, 1)
+    assert expense.category == "repair"
+    assert expense.amount == Decimal("250.00")
+    assert expense.currency == "UAH"
+    first_expense_id = expense.id
+
+    updated = update_draft(
+        db_session,
+        invoice_id,
+        None,
+        {},
+        [
+            {
+                "id": adjustment.id,
+                "label": "Компенсація заміни котла",
+                "amount": Decimal("-300.00"),
+                "record_as_expense": True,
+                "category": "other",
+            }
+        ],
+    )
+    updated_adjustment = next(
+        line for line in updated.lines if line.service_kind == "adjustment"
+    )
+    expenses = db_session.scalars(select(Expense)).all()
+    assert updated_adjustment.service_name == "Компенсація заміни котла"
+    assert updated.adjustments_total == Decimal("-300.00")
+    assert len(expenses) == 1
+    assert expenses[0].id == first_expense_id
+    assert expenses[0].category == "other"
+    assert expenses[0].amount == Decimal("300.00")
+
+    without_expense = update_draft(
+        db_session,
+        invoice_id,
+        None,
+        {},
+        [
+            {
+                "id": adjustment.id,
+                "label": "Компенсація заміни котла",
+                "amount": Decimal("-300.00"),
+                "record_as_expense": False,
+                "category": None,
+            }
+        ],
+    )
+    assert db_session.scalars(select(Expense)).all() == []
+    assert any(line.id == adjustment.id for line in without_expense.lines)
+
+    update_draft(
+        db_session,
+        invoice_id,
+        None,
+        {},
+        [
+            {
+                "id": adjustment.id,
+                "label": "Компенсація заміни котла",
+                "amount": Decimal("-300.00"),
+                "record_as_expense": True,
+                "category": "repair",
+            }
+        ],
+    )
+    assert db_session.scalar(select(Expense.id)) is not None
+
+    cleared = update_draft(db_session, invoice_id, None, {}, [])
+    assert all(line.service_kind != "adjustment" for line in cleared.lines)
+    assert cleared.adjustments_total == Decimal("0.00")
+    assert cleared.grand_total == Decimal("1100.00")
+    assert db_session.scalars(select(Expense)).all() == []
+
+
+def test_update_draft_rejects_invalid_expense_and_non_draft(db_session) -> None:
+    invoice_id = _seed_service_draft(db_session)
+
+    with pytest.raises(
+        BillingValidationError,
+        match="Only a negative adjustment",
+    ):
+        update_draft(
+            db_session,
+            invoice_id,
+            None,
+            {},
+            [
+                {
+                    "label": "Доплата",
+                    "amount": Decimal("50.00"),
+                    "record_as_expense": True,
+                    "category": "repair",
+                }
+            ],
+        )
+    db_session.rollback()
+    assert (
+        db_session.scalars(
+            select(InvoiceLine).where(InvoiceLine.service_kind == "adjustment")
+        ).all()
+        == []
+    )
+    assert db_session.scalars(select(Expense)).all() == []
+
+    invoice = db_session.get(Invoice, invoice_id)
+    invoice.status = "issued"
+    db_session.commit()
+    with pytest.raises(BillingConflictError, match="Only draft invoices"):
+        update_draft(
+            db_session,
+            invoice_id,
+            None,
+            {},
+            [
+                {
+                    "label": "Знижка",
+                    "amount": Decimal("-50.00"),
+                    "record_as_expense": False,
+                    "category": None,
+                }
+            ],
+        )
 
 
 async def test_create_and_recalculate_real_invoice_example(tmp_path, monkeypatch) -> None:

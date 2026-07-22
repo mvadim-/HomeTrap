@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
+from typing import NotRequired, TypedDict
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session, selectinload
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.db import get_tariff_for_period
 from app.models import (
     Apartment,
+    Expense,
+    ExpenseCategory,
     Invoice,
     InvoiceLine,
     InvoiceStatus,
@@ -20,6 +23,15 @@ from app.models import (
 MONEY_QUANTUM = Decimal("0.01")
 ANOMALY_THRESHOLD = Decimal("0.50")
 HISTORY_MONTHS = 6
+EXPENSE_CATEGORIES = {item.value for item in ExpenseCategory}
+
+
+class AdjustmentData(TypedDict):
+    id: NotRequired[int | None]
+    label: str
+    amount: Decimal
+    record_as_expense: bool
+    category: NotRequired[ExpenseCategory | str | None]
 
 
 class BillingError(RuntimeError):
@@ -77,7 +89,7 @@ def _locked_invoice(session: Session, invoice_id: int) -> Invoice:
     serialize_invoice_mutations(session, apartment_id)
     invoice = session.scalar(
         select(Invoice)
-        .options(selectinload(Invoice.lines))
+        .options(selectinload(Invoice.lines).selectinload(InvoiceLine.expense))
         .execution_options(populate_existing=True)
         .where(Invoice.id == invoice_id)
     )
@@ -156,7 +168,11 @@ def create_draft(
 
 def recalculate(invoice: Invoice) -> None:
     utilities = Decimal("0.00")
+    adjustments = Decimal("0.00")
     for line in invoice.lines:
+        if line.service_kind == ServiceKind.ADJUSTMENT.value:
+            adjustments += line.amount
+            continue
         if line.service_kind == ServiceKind.METERED.value:
             if line.prev_reading is not None and line.curr_reading is not None:
                 line.consumed = line.curr_reading - line.prev_reading
@@ -167,7 +183,122 @@ def recalculate(invoice: Invoice) -> None:
         utilities += line.amount
     invoice.rent_amount_uah = money(invoice.rent_amount_usd * invoice.exchange_rate)
     invoice.utilities_total = money(utilities)
-    invoice.grand_total = money(invoice.rent_amount_uah + invoice.utilities_total)
+    invoice.adjustments_total = money(adjustments)
+    invoice.grand_total = money(
+        invoice.rent_amount_uah
+        + invoice.utilities_total
+        + invoice.adjustments_total
+    )
+
+
+def _sync_adjustment_expense(
+    session: Session,
+    invoice: Invoice,
+    line: InvoiceLine,
+    *,
+    record_as_expense: bool,
+    category: str | None,
+) -> None:
+    if not record_as_expense:
+        if line.expense is not None:
+            session.delete(line.expense)
+        return
+
+    if category is None:
+        raise BillingValidationError("Expense category is required")
+
+    if line.expense is None:
+        session.flush()
+        line.expense = Expense(
+            apartment_id=invoice.apartment_id,
+            invoice_line_id=line.id,
+            date=invoice.period,
+            category=category,
+            amount=money(abs(line.amount)),
+            currency="UAH",
+        )
+        return
+
+    line.expense.apartment_id = invoice.apartment_id
+    line.expense.date = invoice.period
+    line.expense.category = category
+    line.expense.amount = money(abs(line.amount))
+    line.expense.currency = "UAH"
+
+
+def _sync_adjustments(
+    session: Session,
+    invoice: Invoice,
+    adjustments: list[AdjustmentData],
+) -> None:
+    existing = {
+        line.id: line
+        for line in invoice.lines
+        if line.service_kind == ServiceKind.ADJUSTMENT.value
+    }
+    normalized: list[tuple[int | None, str, Decimal, bool, str | None]] = []
+    for item in adjustments:
+        label = item["label"].strip()
+        if not label:
+            raise BillingValidationError("Adjustment label is required")
+        amount = money(item["amount"])
+        category_value = item.get("category")
+        category = (
+            category_value.value
+            if isinstance(category_value, ExpenseCategory)
+            else category_value
+        )
+        record_as_expense = item["record_as_expense"]
+        if record_as_expense and amount >= 0:
+            raise BillingValidationError(
+                "Only a negative adjustment can be recorded as an expense"
+            )
+        if record_as_expense and category is None:
+            raise BillingValidationError("Expense category is required")
+        if category is not None and category not in EXPENSE_CATEGORIES:
+            raise BillingValidationError(f"Invalid expense category: {category}")
+        normalized.append(
+            (item.get("id"), label, amount, record_as_expense, category)
+        )
+
+    requested_ids = [line_id for line_id, *_ in normalized if line_id is not None]
+    if len(requested_ids) != len(set(requested_ids)):
+        raise BillingValidationError("Adjustment line ids must be unique")
+    unknown_ids = set(requested_ids) - existing.keys()
+    if unknown_ids:
+        raise BillingValidationError(
+            f"Adjustment line {min(unknown_ids)} was not found"
+        )
+
+    for line_id, label, amount, record_as_expense, category in normalized:
+        if line_id is None:
+            line = InvoiceLine(
+                service_id=None,
+                service_name=label,
+                service_kind=ServiceKind.ADJUSTMENT.value,
+                prev_reading=None,
+                curr_reading=None,
+                consumed=None,
+                tariff_value=Decimal("0"),
+                amount=amount,
+            )
+            invoice.lines.append(line)
+        else:
+            line = existing[line_id]
+            line.service_name = label
+            line.amount = amount
+        _sync_adjustment_expense(
+            session,
+            invoice,
+            line,
+            record_as_expense=record_as_expense,
+            category=category,
+        )
+
+    retained_ids = set(requested_ids)
+    for line_id, line in existing.items():
+        if line_id not in retained_ids:
+            invoice.lines.remove(line)
 
 
 def update_draft(
@@ -175,6 +306,7 @@ def update_draft(
     invoice_id: int,
     exchange_rate: Decimal | None,
     readings: dict[int, Decimal | None],
+    adjustments: list[AdjustmentData] | None = None,
 ) -> Invoice:
     invoice = _locked_invoice(session, invoice_id)
     if invoice.status != "draft":
@@ -197,6 +329,8 @@ def update_draft(
         if line.service_kind != ServiceKind.METERED.value:
             raise BillingValidationError(f"Invoice line {line_id} is not metered")
         line.curr_reading = current
+    if adjustments is not None:
+        _sync_adjustments(session, invoice, adjustments)
     recalculate(invoice)
     session.commit()
     return get_invoice(session, invoice.id)

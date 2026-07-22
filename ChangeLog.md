@@ -1,5 +1,21 @@
 # ChangeLog
 
+## [2026-07-22 14:46] Task 2: білінг коригувань та авто-витрат
+
+- `backend/app/services/billing.py` — перерахунок розділяє комунальні послуги й
+  коригування та включає обидва бакети в `grand_total`; `update_draft` підтримує
+  повний список add/edit/delete коригувань лише для чернеток.
+- `backend/app/services/billing.py` — від'ємне коригування за галочкою створює
+  або ідемпотентно оновлює прив'язану UAH-витрату; зняття галочки чи видалення
+  рядка прибирає витрату, а нова лінія флашиться перед прив'язкою.
+- `backend/tests/test_billing.py` — перевірено тотали, add/edit/delete, sync і
+  desync витрати, заборону витрати для додатної суми, non-draft guard та CASCADE.
+  Валідація: backend 232 passed, Ruff чисто — усе через Docker.
+- `docs/plans/20260722-invoice-adjustment-lines.md` — Task 2 позначено виконаним.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  перед розгортанням потрібен backup `data/`, потім rebuild/restart за
+  `docs/deploy.md` із застосуванням міграції `20260722_09` з Task 1.
+
 ## [2026-07-22 14:38] Task 1: модель рядків-коригувань рахунку
 
 - `backend/app/models.py` — додано `ServiceKind.ADJUSTMENT`, nullable
