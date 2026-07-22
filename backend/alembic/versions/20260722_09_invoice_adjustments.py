@@ -152,11 +152,22 @@ def upgrade() -> None:
         ),
         None,
     )
-    expense_indexes = {index["name"] for index in inspector.get_indexes("expenses")}
+    expense_indexes = {
+        index["name"]: index for index in inspector.get_indexes("expenses")
+    }
     invoice_line_column_missing = "invoice_line_id" not in expense_columns
     expense_fk_missing = expense_invoice_line_fk is None
-    expense_index_missing = "ix_expenses_invoice_line_id" not in expense_indexes
-    if invoice_line_column_missing or expense_fk_missing or expense_index_missing:
+    expense_index = expense_indexes.get("ix_expenses_invoice_line_id")
+    expense_index_missing = expense_index is None
+    expense_index_not_unique = (
+        expense_index is not None and not expense_index["unique"]
+    )
+    if (
+        invoice_line_column_missing
+        or expense_fk_missing
+        or expense_index_missing
+        or expense_index_not_unique
+    ):
         with op.batch_alter_table("expenses", recreate="always") as batch_op:
             if invoice_line_column_missing:
                 batch_op.add_column(
@@ -170,10 +181,13 @@ def upgrade() -> None:
                     ["id"],
                     ondelete="CASCADE",
                 )
-            if expense_index_missing:
+            if expense_index_not_unique:
+                batch_op.drop_index("ix_expenses_invoice_line_id")
+            if expense_index_missing or expense_index_not_unique:
                 batch_op.create_index(
                     "ix_expenses_invoice_line_id",
                     ["invoice_line_id"],
+                    unique=True,
                 )
 
 

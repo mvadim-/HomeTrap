@@ -1,5 +1,27 @@
 # ChangeLog
 
+## [2026-07-22 16:06] Виправлення smells: строгі типи й простіший редактор
+
+- `backend/app/models.py`, `backend/alembic/versions/20260722_09_invoice_adjustments.py`
+  — `Expense.invoice_line_id` тепер має DB UNIQUE, тому одна invoice-лінія не
+  може отримати дві авто-витрати; міграція також відновлює unique index після
+  частково виконаного SQLite DDL.
+- `backend/app/models.py`, `backend/app/schemas.py`, `backend/app/services/billing.py`,
+  `backend/app/routers/stats.py` — recurring `ServiceKind` відокремлено від
+  ширшого `InvoiceLineKind`, щоб invoice-only adjustment не був типом послуги.
+- `frontend/src/components/InvoiceAdjustmentsEditor.tsx`,
+  `frontend/src/components/InvoiceCalculator.tsx` — станова розмітка й чисті
+  helper-и коригувань винесені у сфокусований компонент; калькулятор лишив за
+  собою тотали, показники та save orchestration.
+- `backend/tests/test_models.py`, `CLAUDE.md`,
+  `docs/plans/20260722-invoice-adjustment-lines.md` — додано regression-тест
+  дубльованого зв'язку й зафіксовано unique-index/enum інваріанти.
+- Docker-валідація: backend 245 passed, Ruff чистий; frontend 209 passed,
+  production build успішний.
+- Зміна призначена для production, але автоматичний деплой не виконувався;
+  перед розгортанням потрібен backup `data/`, далі rebuild/restart за
+  `docs/deploy.md` із застосуванням міграції `20260722_09`.
+
 ## [2026-07-22 15:55] Виправлення review: безпечні контракти коригувань
 
 - `backend/app/schemas.py`, `backend/app/routers/invoices.py` — відсутнє або

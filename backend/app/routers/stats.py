@@ -14,9 +14,9 @@ from app.models import (
     Expense,
     Invoice,
     InvoiceLine,
+    InvoiceLineKind,
     InvoiceStatus,
     Service,
-    ServiceKind,
 )
 from app.schemas import ConsumptionStats, DashboardStats, IncomeStats, PnlStats
 from app.services.billing import money
@@ -115,7 +115,7 @@ def consumption_stats(
         .join(Invoice, Invoice.id == InvoiceLine.invoice_id)
         .where(
             Service.apartment_id == apartment_id,
-            InvoiceLine.service_kind == ServiceKind.METERED.value,
+            InvoiceLine.service_kind == InvoiceLineKind.METERED.value,
             Invoice.status.in_([InvoiceStatus.ISSUED.value, InvoiceStatus.PAID.value]),
             Invoice.period <= period_end,
             InvoiceLine.consumed.is_not(None),
@@ -206,7 +206,7 @@ def income_stats(
         totals["adjustments"] += invoice.adjustments_total
         totals["total"] += invoice.grand_total
         for line in invoice.lines:
-            if line.service_kind == ServiceKind.ADJUSTMENT.value:
+            if line.service_kind == InvoiceLineKind.ADJUSTMENT.value:
                 continue
             service_totals[line.service_name] = (
                 service_totals.get(line.service_name, ZERO) + line.amount

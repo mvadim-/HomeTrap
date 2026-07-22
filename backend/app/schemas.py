@@ -17,7 +17,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.models import ExpenseCategory, ServiceKind
+from app.models import ExpenseCategory, InvoiceLineKind, ServiceKind
 
 
 class ApiSchema(BaseModel):
@@ -106,7 +106,7 @@ class TenantAttachmentOut(ApiSchema):
 
 class ServiceBase(ApiSchema):
     name: str = Field(min_length=1, max_length=200)
-    kind: Literal["metered", "fixed"]
+    kind: ServiceKind
     unit: str | None = Field(default=None, max_length=50)
     provider_account: str | None = Field(default=None, max_length=100)
     sort_order: int = 0
@@ -253,8 +253,8 @@ class InvoiceLineResponse(ApiSchema):
     id: int
     service_id: int | None
     service_name: str
-    kind: ServiceKind
-    service_kind: ServiceKind
+    kind: InvoiceLineKind
+    service_kind: InvoiceLineKind
     prev_reading: Decimal | None
     curr_reading: Decimal | None
     consumed: Decimal | None

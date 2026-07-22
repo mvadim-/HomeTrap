@@ -29,6 +29,11 @@ from app.db import Base
 class ServiceKind(StrEnum):
     METERED = "metered"
     FIXED = "fixed"
+
+
+class InvoiceLineKind(StrEnum):
+    METERED = "metered"
+    FIXED = "fixed"
     ADJUSTMENT = "adjustment"
 
 
@@ -273,6 +278,7 @@ class Expense(Base):
             name="ck_expenses_category",
         ),
         UniqueConstraint("restore_key", name="uq_expenses_restore_key"),
+        Index("ix_expenses_invoice_line_id", "invoice_line_id", unique=True),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -283,7 +289,6 @@ class Expense(Base):
     )
     invoice_line_id: Mapped[int | None] = mapped_column(
         ForeignKey("invoice_lines.id", ondelete="CASCADE"),
-        index=True,
     )
     date: Mapped[date] = mapped_column(Date)
     category: Mapped[str] = mapped_column(String(20))

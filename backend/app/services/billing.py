@@ -14,6 +14,7 @@ from app.models import (
     ExpenseCategory,
     Invoice,
     InvoiceLine,
+    InvoiceLineKind,
     InvoiceStatus,
     Service,
     ServiceKind,
@@ -170,10 +171,10 @@ def recalculate(invoice: Invoice) -> None:
     utilities = Decimal("0.00")
     adjustments = Decimal("0.00")
     for line in invoice.lines:
-        if line.service_kind == ServiceKind.ADJUSTMENT.value:
+        if line.service_kind == InvoiceLineKind.ADJUSTMENT.value:
             adjustments += line.amount
             continue
-        if line.service_kind == ServiceKind.METERED.value:
+        if line.service_kind == InvoiceLineKind.METERED.value:
             if line.prev_reading is not None and line.curr_reading is not None:
                 line.consumed = line.curr_reading - line.prev_reading
                 line.amount = money(line.consumed * line.tariff_value)
@@ -236,7 +237,7 @@ def _sync_adjustments(
     existing = {
         line.id: line
         for line in invoice.lines
-        if line.service_kind == ServiceKind.ADJUSTMENT.value
+        if line.service_kind == InvoiceLineKind.ADJUSTMENT.value
     }
     normalized: list[tuple[int | None, str, Decimal, bool, str | None]] = []
     for item in adjustments:
@@ -277,7 +278,7 @@ def _sync_adjustments(
             line = InvoiceLine(
                 service_id=None,
                 service_name=label,
-                service_kind=ServiceKind.ADJUSTMENT.value,
+                service_kind=InvoiceLineKind.ADJUSTMENT.value,
                 prev_reading=None,
                 curr_reading=None,
                 consumed=None,
@@ -328,7 +329,7 @@ def update_draft(
         invoice.exchange_rate = exchange_rate
     for line_id, current in readings.items():
         line = lines_by_id[line_id]
-        if line.service_kind != ServiceKind.METERED.value:
+        if line.service_kind != InvoiceLineKind.METERED.value:
             raise BillingValidationError(f"Invoice line {line_id} is not metered")
         line.curr_reading = current
     if adjustments is not None:
@@ -386,7 +387,7 @@ def transition_invoice(session: Session, invoice_id: int, action: str) -> Invoic
             (
                 line
                 for line in invoice.lines
-                if line.service_kind == ServiceKind.METERED.value
+                if line.service_kind == InvoiceLineKind.METERED.value
                 and line.curr_reading is None
             ),
             None,

@@ -1,10 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
-  EXPENSE_CATEGORY_LABELS,
-  ExpenseCategory,
   Invoice,
-  InvoiceAdjustmentPayload,
   InvoiceUpdatePayload,
 } from "../api/client";
 import {
@@ -17,6 +14,14 @@ import {
   subtractDecimals,
 } from "../utils/decimal";
 import { formatRate, formatReading, formatTariff, formatUah } from "../utils/format";
+import {
+  adjustmentsAreDirty,
+  adjustmentsAreValid,
+  DraftAdjustment,
+  InvoiceAdjustmentsEditor,
+  invoiceAdjustments,
+  toAdjustmentPayload,
+} from "./InvoiceAdjustmentsEditor";
 import "../pages/portal.css";
 
 interface InvoiceCalculatorProps {
@@ -24,35 +29,6 @@ interface InvoiceCalculatorProps {
   onSave: (payload: InvoiceUpdatePayload) => Promise<void>;
   saving?: boolean;
   onDraftChange?: (payload: InvoiceUpdatePayload | null, dirty: boolean) => void;
-}
-
-interface DraftAdjustment extends InvoiceAdjustmentPayload {
-  key: string;
-  category: ExpenseCategory;
-}
-
-const EXPENSE_CATEGORIES = Object.entries(EXPENSE_CATEGORY_LABELS) as [ExpenseCategory, string][];
-
-function adjustmentAmountValid(value: string): boolean {
-  const amount = decimalInput(value);
-  if (!amount.valid || amount.normalized === null) return false;
-  const unsigned = amount.normalized.replace(/^[+-]/, "");
-  const [whole, fraction = ""] = unsigned.split(".");
-  const wholeDigits = whole.replace(/^0+/, "") || "0";
-  return wholeDigits.length <= 10 && fraction.length <= 2;
-}
-
-function invoiceAdjustments(invoice: Invoice): DraftAdjustment[] {
-  return invoice.lines
-    .filter((line) => line.service_kind === "adjustment")
-    .map((line) => ({
-      key: `saved-${line.id}`,
-      id: line.id,
-      label: line.service_name,
-      amount: line.amount,
-      record_as_expense: line.expense !== null,
-      category: line.expense?.category ?? "repair",
-    }));
 }
 
 export function InvoiceCalculator({
@@ -73,7 +49,6 @@ export function InvoiceCalculator({
     ])),
   );
   const [adjustments, setAdjustments] = useState<DraftAdjustment[]>(() => invoiceAdjustments(invoice));
-  const nextAdjustmentKey = useRef(1);
 
   useEffect(() => {
     setExchangeRate({
@@ -122,17 +97,7 @@ export function InvoiceCalculator({
     return { lines, rent, utilities, adjustments: adjustmentTotal, total };
   }, [adjustments, exchangeRate.exact, invoice, isDraft, readings]);
 
-  const adjustmentPayload = useMemo<InvoiceAdjustmentPayload[]>(() => adjustments.map((adjustment) => {
-    const amount = decimalInput(adjustment.amount);
-    const canRecordExpense = amount.numeric !== null && amount.numeric < 0;
-    return {
-      ...(adjustment.id === undefined ? {} : { id: adjustment.id }),
-      label: adjustment.label.trim(),
-      amount: amount.normalized ?? adjustment.amount,
-      record_as_expense: canRecordExpense && adjustment.record_as_expense,
-      category: canRecordExpense && adjustment.record_as_expense ? adjustment.category : null,
-    };
-  }), [adjustments]);
+  const adjustmentPayload = useMemo(() => toAdjustmentPayload(adjustments), [adjustments]);
 
   const payload = useMemo<InvoiceUpdatePayload | null>(() => {
     if (!isDraft) return null;
@@ -154,16 +119,7 @@ export function InvoiceCalculator({
       adjustments: adjustmentPayload,
     };
   }, [adjustmentPayload, exchangeRate.exact, invoice.exchange_rate, invoice.lines, isDraft, readings]);
-  const savedAdjustments = invoice.lines.filter((line) => line.service_kind === "adjustment");
-  const adjustmentsDirty = adjustments.length !== savedAdjustments.length || adjustments.some((adjustment, index) => {
-    const saved = savedAdjustments[index];
-    return !saved
-      || adjustment.id !== saved.id
-      || adjustment.label.trim() !== saved.service_name
-      || !sameNumber(adjustment.amount, saved.amount)
-      || adjustment.record_as_expense !== (saved.expense !== null)
-      || (adjustment.record_as_expense && adjustment.category !== saved.expense?.category);
-  });
+  const adjustmentsDirty = adjustmentsAreDirty(adjustments, invoice);
   const dirty = isDraft && (
     !sameNumber(exchangeRate.exact, invoice.exchange_rate)
     || invoice.lines.some(
@@ -174,11 +130,7 @@ export function InvoiceCalculator({
   const readingsValid = isDraft && invoice.lines.every(
     (line) => line.service_kind !== "metered" || decimalInput(readings[line.id] || null).valid,
   );
-  const adjustmentsValid = adjustments.every((adjustment) => {
-    return adjustment.label.trim().length > 0
-      && adjustment.label.trim().length <= 200
-      && adjustmentAmountValid(adjustment.amount);
-  });
+  const adjustmentsValid = adjustmentsAreValid(adjustments);
   const draftValid = isDraft && Boolean(numberValue(exchangeRate.exact)) && readingsValid && adjustmentsValid;
 
   useEffect(() => {
@@ -207,22 +159,6 @@ export function InvoiceCalculator({
   async function save() {
     if (!draftValid || payload === null) return;
     await onSave(payload);
-  }
-
-  function addAdjustment() {
-    setAdjustments([...adjustments, {
-      key: `new-${nextAdjustmentKey.current++}`,
-      label: "Коригування",
-      amount: "-0.00",
-      record_as_expense: false,
-      category: "repair",
-    }]);
-  }
-
-  function updateAdjustment(key: string, changes: Partial<DraftAdjustment>) {
-    setAdjustments(adjustments.map((adjustment) => (
-      adjustment.key === key ? { ...adjustment, ...changes } : adjustment
-    )));
   }
 
   return (
@@ -295,103 +231,11 @@ export function InvoiceCalculator({
         </div>
       )}
 
-      {(isDraft || adjustments.length > 0) && (
-        <section className="invoice-adjustments" aria-labelledby="invoice-adjustments-title">
-          <div className="adjustments-heading">
-            <div>
-              <h3 id="invoice-adjustments-title">Коригування</h3>
-              <p>Разові знижки або доплати в цьому рахунку.</p>
-            </div>
-            {isDraft && (
-              <button className="secondary-button" type="button" onClick={addAdjustment}>
-                Додати коригування
-              </button>
-            )}
-          </div>
-          {adjustments.length === 0 ? (
-            <p className="muted-text adjustment-empty">Коригувань немає.</p>
-          ) : (
-            <div className="adjustment-list">
-              {adjustments.map((adjustment, index) => {
-                const amount = numberValue(adjustment.amount);
-                const expenseAvailable = amount !== null && amount < 0;
-                return isDraft ? (
-                  <div className="adjustment-row" key={adjustment.key}>
-                    <label>
-                      Мітка
-                      <input
-                        aria-label={`Мітка коригування ${index + 1}`}
-                        maxLength={200}
-                        type="text"
-                        value={adjustment.label}
-                        onChange={(event) => updateAdjustment(adjustment.key, { label: event.target.value })}
-                      />
-                    </label>
-                    <label>
-                      Сума
-                      <input
-                        aria-label={`Сума коригування ${index + 1}`}
-                        inputMode="decimal"
-                        type="text"
-                        value={adjustment.amount}
-                        onChange={(event) => {
-                          const nextAmount = event.target.value;
-                          const nextNumeric = numberValue(nextAmount);
-                          updateAdjustment(adjustment.key, {
-                            amount: nextAmount,
-                            ...(nextNumeric !== null && nextNumeric >= 0 ? { record_as_expense: false } : {}),
-                          });
-                        }}
-                      />
-                    </label>
-                    <label className="adjustment-expense-check">
-                      <input
-                        aria-label={`Врахувати коригування ${index + 1} як витрату`}
-                        checked={expenseAvailable && adjustment.record_as_expense}
-                        disabled={!expenseAvailable}
-                        type="checkbox"
-                        onChange={(event) => updateAdjustment(adjustment.key, {
-                          record_as_expense: event.target.checked,
-                        })}
-                      />
-                      Оплата за рахунок орендаря → врахувати як витрату
-                    </label>
-                    {expenseAvailable && adjustment.record_as_expense && (
-                      <label>
-                        Категорія
-                        <select
-                          aria-label={`Категорія витрати коригування ${index + 1}`}
-                          value={adjustment.category}
-                          onChange={(event) => updateAdjustment(adjustment.key, {
-                            category: event.target.value as ExpenseCategory,
-                          })}
-                        >
-                          {EXPENSE_CATEGORIES.map(([value, label]) => (
-                            <option key={value} value={value}>{label}</option>
-                          ))}
-                        </select>
-                      </label>
-                    )}
-                    <button
-                      aria-label={`Видалити коригування ${index + 1}`}
-                      className="danger-button adjustment-remove"
-                      type="button"
-                      onClick={() => setAdjustments(adjustments.filter((item) => item.key !== adjustment.key))}
-                    >
-                      Видалити
-                    </button>
-                  </div>
-                ) : (
-                  <div className="adjustment-readonly-row" key={adjustment.key}>
-                    <span><strong>{adjustment.label}</strong>{adjustment.record_as_expense && ` · ${EXPENSE_CATEGORY_LABELS[adjustment.category]}`}</span>
-                    <strong>{formatUah(Number(amountCents(adjustment.amount)) / 100)}</strong>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      )}
+      <InvoiceAdjustmentsEditor
+        adjustments={adjustments}
+        isDraft={isDraft}
+        onChange={setAdjustments}
+      />
 
       <div className="invoice-totals">
         <span>Оренда <strong>{formatUah(Number(calculated.rent) / 100)}</strong></span>

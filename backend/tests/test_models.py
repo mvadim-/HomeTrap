@@ -20,6 +20,7 @@ from app.models import (
     ExpenseCategory,
     Invoice,
     InvoiceLine,
+    InvoiceLineKind,
     InvoiceStatus,
     PushSubscription,
     Service,
@@ -171,7 +172,7 @@ def test_can_create_adjustment_line_with_linked_expense(
     line = InvoiceLine(
         invoice=invoice,
         service_name="Компенсація ремонту",
-        service_kind=ServiceKind.ADJUSTMENT.value,
+        service_kind=InvoiceLineKind.ADJUSTMENT.value,
         tariff_value=Decimal("0"),
         amount=Decimal("-1500.00"),
     )
@@ -190,6 +191,39 @@ def test_can_create_adjustment_line_with_linked_expense(
     assert line.tariff_value == Decimal("0.00000")
     assert expense.invoice_line_id == line.id
     assert line.expense is expense
+
+
+def test_invoice_line_accepts_only_one_linked_expense(db_session: Session) -> None:
+    invoice = make_invoice(make_apartment(), date(2026, 7, 1))
+    line = InvoiceLine(
+        invoice=invoice,
+        service_name="Компенсація ремонту",
+        service_kind=InvoiceLineKind.ADJUSTMENT.value,
+        tariff_value=Decimal("0"),
+        amount=Decimal("-1500.00"),
+    )
+    db_session.add(
+        Expense(
+            invoice_line=line,
+            apartment=invoice.apartment,
+            date=invoice.period,
+            category=ExpenseCategory.REPAIR.value,
+            amount=Decimal("1000.00"),
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        Expense(
+            invoice_line_id=line.id,
+            apartment_id=invoice.apartment_id,
+            date=invoice.period,
+            category=ExpenseCategory.OTHER.value,
+            amount=Decimal("500.00"),
+        )
+    )
+
+    with pytest.raises(IntegrityError):
+        db_session.commit()
 
 
 def test_adjustment_fields_database_defaults_and_constraints(
@@ -219,7 +253,7 @@ def test_invoice_delete_cascades_adjustment_line_and_expense(
     line = InvoiceLine(
         invoice=invoice,
         service_name="Компенсація ремонту",
-        service_kind=ServiceKind.ADJUSTMENT.value,
+        service_kind=InvoiceLineKind.ADJUSTMENT.value,
         tariff_value=Decimal("0"),
         amount=Decimal("-1500.00"),
     )
@@ -575,9 +609,12 @@ async def test_application_startup_applies_migrations(tmp_path) -> None:
         and foreign_key["options"]["ondelete"] == "CASCADE"
         for foreign_key in expense_foreign_keys
     )
-    assert "ix_expenses_invoice_line_id" in {
-        index["name"] for index in expense_indexes
-    }
+    assert any(
+        index["name"] == "ix_expenses_invoice_line_id"
+        and index["column_names"] == ["invoice_line_id"]
+        and index["unique"]
+        for index in expense_indexes
+    )
     assert tenant_columns["billing_day"]["nullable"] is True
     assert "ck_tenants_billing_day" in tenant_checks
     assert any(
@@ -765,6 +802,10 @@ def test_invoice_adjustment_migration_repairs_partial_schema(
         connection.execute("DROP INDEX ix_invoice_lines_service_id")
         connection.execute("DROP INDEX ix_expenses_invoice_line_id")
         connection.execute(
+            "CREATE INDEX ix_expenses_invoice_line_id "
+            "ON expenses (invoice_line_id)"
+        )
+        connection.execute(
             "UPDATE alembic_version SET version_num = '20260721_08'"
         )
 
@@ -776,7 +817,8 @@ def test_invoice_adjustment_migration_repairs_partial_schema(
             index["name"] for index in inspect(engine).get_indexes("invoice_lines")
         }
         expense_indexes = {
-            index["name"] for index in inspect(engine).get_indexes("expenses")
+            index["name"]: index
+            for index in inspect(engine).get_indexes("expenses")
         }
         expense_foreign_keys = inspect(engine).get_foreign_keys("expenses")
     finally:
@@ -784,6 +826,7 @@ def test_invoice_adjustment_migration_repairs_partial_schema(
 
     assert "ix_invoice_lines_service_id" in invoice_line_indexes
     assert "ix_expenses_invoice_line_id" in expense_indexes
+    assert expense_indexes["ix_expenses_invoice_line_id"]["unique"]
     assert any(
         foreign_key["constrained_columns"] == ["invoice_line_id"]
         and foreign_key["referred_table"] == "invoice_lines"

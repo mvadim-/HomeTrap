@@ -76,14 +76,16 @@
 - **Модель:**
   - `InvoiceLine.service_id` → **nullable** (коригування не має послуги; лінії
     послуг лишаються з FK RESTRICT). `service_kind` CHECK розширюється до
-    `('metered','fixed','adjustment')`; додається член enum
-    **`ServiceKind.ADJUSTMENT`**. Для adjustment: `service_name` = мітка,
+    `('metered','fixed','adjustment')`; додається окремий enum
+    **`InvoiceLineKind`** із `ADJUSTMENT`, тоді як `ServiceKind` лишається
+    тільки `metered`/`fixed`. Для adjustment: `service_name` = мітка,
     `amount` = знакова сума, метрові поля `None`, **`tariff_value=Decimal("0")`**
     (колонка NOT NULL — обов'язково задавати 0, не лишати null).
   - `Invoice.adjustments_total Numeric(12,2)` default `0.00`;
     **`grand_total = rent + utilities + adjustments`**.
-  - `Expense.invoice_line_id` nullable FK → `invoice_lines.id`
-    **ondelete CASCADE** (видалення лінії/рахунку прибирає авто-витрату).
+  - `Expense.invoice_line_id` nullable unique FK → `invoice_lines.id`
+    **ondelete CASCADE** (одна авто-витрата на лінію; видалення лінії/рахунку
+    прибирає авто-витрату).
 - **Білінг:**
   - `recalculate`: `utilities_total` = сума metered+fixed; `adjustments_total`
     = сума adjustment-ліній; `grand_total` = rent + utilities + adjustments.
@@ -129,8 +131,8 @@
   `('metered','fixed','adjustment')`), FK `invoice_id` (ondelete CASCADE), FK
   `service_id` (ondelete RESTRICT) та індекси — інакше batch тихо їх втратить.
   Додати `invoices.adjustments_total` (default 0, заповнити наявним),
-  `expenses.invoice_line_id` + FK CASCADE + індекс.
-- **Схеми:** додати `ServiceKind.ADJUSTMENT`; `InvoiceLineResponse.service_id`
+  `expenses.invoice_line_id` + FK CASCADE + unique index.
+- **Схеми:** додати `InvoiceLineKind.ADJUSTMENT`; `InvoiceLineResponse.service_id`
   → **`int | None`** і `InvoiceWarning.service_id` теж (adjustment-лінія має
   null). `InvoiceUpdate` +`adjustments: list[AdjustmentInput] | None`
   (`id?`, `label`, `amount`, `record_as_expense: bool`, `category?`).
@@ -171,16 +173,16 @@
 - Create: `backend/alembic/versions/20260722_09_invoice_adjustments.py`
 - Modify: `backend/tests/test_models.py`
 
-- [x] `InvoiceLine.service_id` → nullable; додати `ServiceKind.ADJUSTMENT`;
+- [x] `InvoiceLine.service_id` → nullable; додати `InvoiceLineKind.ADJUSTMENT`;
   розширити CHECK `service_kind` до `('metered','fixed','adjustment')`
 - [x] `Invoice.adjustments_total Numeric(12,2)` default `0.00`;
-  `Expense.invoice_line_id` nullable FK→`invoice_lines.id` ondelete CASCADE
-  (+relationship, +індекс)
+  `Expense.invoice_line_id` nullable unique FK→`invoice_lines.id` ondelete CASCADE
+  (+relationship, +unique index)
 - [x] міграція `20260722_09` (down_revision=`20260721_08`, ідемпотентна):
   **`batch_alter_table` recreate `invoice_lines`** зі збереженням УСІХ наявних
   констрейнтів (CHECK розширений, FK invoice_id CASCADE, FK service_id RESTRICT,
   індекси); + `adjustments_total` (заповнити 0), + `expenses.invoice_line_id` FK
-  CASCADE + індекс
+  CASCADE + unique index
 - [x] write tests: adjustment-лінія з `service_id=NULL` і `tariff_value=0`;
   **каскад invoice→line→expense** усе ще спрацьовує після міграції (пряме
   `session.delete`, `PRAGMA foreign_keys=ON`)
@@ -216,7 +218,7 @@
 - Modify: `backend/app/services/billing.py`
 - Modify: `backend/tests/test_invoices.py`
 
-- [x] `ServiceKind.ADJUSTMENT` у схемах; `InvoiceLineResponse.service_id` та
+- [x] `InvoiceLineKind.ADJUSTMENT` у схемах; `InvoiceLineResponse.service_id` та
   `InvoiceWarning.service_id` → `int | None`
 - [x] `InvoiceUpdate` +`adjustments` (`id?`, `label`, `amount`,
   `record_as_expense`, `category?`) з валідацією; `InvoiceResponse`
@@ -266,6 +268,7 @@
 
 **Files:**
 - Modify: `frontend/src/components/InvoiceCalculator.tsx`
+- Create: `frontend/src/components/InvoiceAdjustmentsEditor.tsx`
 - Modify: `frontend/src/pages/InvoiceEdit.tsx`
 - Modify: `frontend/src/pages/portal.css`
 - Modify: `frontend/src/components/InvoiceCalculator.test.tsx`

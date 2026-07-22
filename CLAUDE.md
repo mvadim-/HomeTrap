@@ -70,7 +70,8 @@ Always provide deployment instructions for any code that is meant to run in prod
 - Invoice adjustments are one-off `InvoiceLine` records, not reusable services. Keep
   `service_id` null, `service_kind` equal to `adjustment`, and `tariff_value` equal to
   zero; include their signed amount only in `adjustments_total` and `grand_total`.
-- A negative adjustment may own one linked `Expense` through `invoice_line_id`.
+- A negative adjustment may own one linked `Expense` through the nullable unique
+  `invoice_line_id` foreign key.
   Create, update, or remove that expense only through draft invoice updates, keep it
   read-only in the expense UI, and preserve invoice-line CASCADE semantics.
 - Exclude linked expenses of draft invoices from P&L. Include them only after the
